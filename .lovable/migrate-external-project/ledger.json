@@ -1,0 +1,11 @@
+{
+  "source": "code-archive (LIEGE-Lovable-Transfer.zip)",
+  "capabilities": [
+    { "capability": "React SPA code (home, marketplace, agent pages, workspace, docs, baseline)", "source": "zip src/", "outcome": "port to TanStack Start routes", "status": "in_progress", "next_action": "wire routes and verify build" },
+    { "capability": "Static assets (brand, fonts, reference media)", "source": "zip public/", "outcome": "copied to public/", "status": "done", "next_action": "none" },
+    { "capability": "Wallet connection (Phantom/MetaMask, Robinhood Chain 4663)", "source": "src/wallet", "outcome": "preserve client-side code", "status": "in_progress", "next_action": "verify in preview" },
+    { "capability": "Backend / database / auth", "source": "none in archive", "outcome": "absent — app is browser-only, sample data", "status": "not_applicable", "next_action": "none" },
+    { "capability": "Records/user exports", "source": "none", "outcome": "absent", "status": "not_applicable", "next_action": "none" },
+    { "capability": "Env config VITE_PUBLIC_APP_URL / VITE_X_URL / VITE_TELEGRAM_URL", "source": ".env.example", "outcome": "optional; Coming-soon state preserved without them", "status": "pending", "next_action": "user may supply official URLs later" }
+  ]
+}
