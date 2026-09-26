@@ -10,33 +10,113 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppRouteImport } from './routes/app'
+import { Route as BaselineRouteImport } from './routes/baseline'
+import { Route as DocsRouteImport } from './routes/docs'
+import { Route as MarketplaceRouteImport } from './routes/marketplace'
+import { Route as DocsTopicRouteImport } from './routes/docs.$topic'
+import { Route as MarketplaceAgentRouteImport } from './routes/marketplace.$agent'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppRoute = AppRouteImport.update({
+  id: '/app',
+  path: '/app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BaselineRoute = BaselineRouteImport.update({
+  id: '/baseline',
+  path: '/baseline',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DocsRoute = DocsRouteImport.update({
+  id: '/docs',
+  path: '/docs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MarketplaceRoute = MarketplaceRouteImport.update({
+  id: '/marketplace',
+  path: '/marketplace',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DocsTopicRoute = DocsTopicRouteImport.update({
+  id: '/$topic',
+  path: '/$topic',
+  getParentRoute: () => DocsRoute,
+} as any)
+const MarketplaceAgentRoute = MarketplaceAgentRouteImport.update({
+  id: '/$agent',
+  path: '/$agent',
+  getParentRoute: () => MarketplaceRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/app': typeof AppRoute
+  '/baseline': typeof BaselineRoute
+  '/docs': typeof DocsRouteWithChildren
+  '/marketplace': typeof MarketplaceRouteWithChildren
+  '/docs/$topic': typeof DocsTopicRoute
+  '/marketplace/$agent': typeof MarketplaceAgentRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/app': typeof AppRoute
+  '/baseline': typeof BaselineRoute
+  '/docs': typeof DocsRouteWithChildren
+  '/marketplace': typeof MarketplaceRouteWithChildren
+  '/docs/$topic': typeof DocsTopicRoute
+  '/marketplace/$agent': typeof MarketplaceAgentRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/app': typeof AppRoute
+  '/baseline': typeof BaselineRoute
+  '/docs': typeof DocsRouteWithChildren
+  '/marketplace': typeof MarketplaceRouteWithChildren
+  '/docs/$topic': typeof DocsTopicRoute
+  '/marketplace/$agent': typeof MarketplaceAgentRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/app'
+    | '/baseline'
+    | '/docs'
+    | '/marketplace'
+    | '/docs/$topic'
+    | '/marketplace/$agent'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/app'
+    | '/baseline'
+    | '/docs'
+    | '/marketplace'
+    | '/docs/$topic'
+    | '/marketplace/$agent'
+  id:
+    | '__root__'
+    | '/'
+    | '/app'
+    | '/baseline'
+    | '/docs'
+    | '/marketplace'
+    | '/docs/$topic'
+    | '/marketplace/$agent'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AppRoute: typeof AppRoute
+  BaselineRoute: typeof BaselineRoute
+  DocsRoute: typeof DocsRouteWithChildren
+  MarketplaceRoute: typeof MarketplaceRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +128,79 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/app': {
+      id: '/app'
+      path: '/app'
+      fullPath: '/app'
+      preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/baseline': {
+      id: '/baseline'
+      path: '/baseline'
+      fullPath: '/baseline'
+      preLoaderRoute: typeof BaselineRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/docs': {
+      id: '/docs'
+      path: '/docs'
+      fullPath: '/docs'
+      preLoaderRoute: typeof DocsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/marketplace': {
+      id: '/marketplace'
+      path: '/marketplace'
+      fullPath: '/marketplace'
+      preLoaderRoute: typeof MarketplaceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/docs/$topic': {
+      id: '/docs/$topic'
+      path: '/$topic'
+      fullPath: '/docs/$topic'
+      preLoaderRoute: typeof DocsTopicRouteImport
+      parentRoute: typeof DocsRoute
+    }
+    '/marketplace/$agent': {
+      id: '/marketplace/$agent'
+      path: '/$agent'
+      fullPath: '/marketplace/$agent'
+      preLoaderRoute: typeof MarketplaceAgentRouteImport
+      parentRoute: typeof MarketplaceRoute
+    }
   }
 }
 
+interface DocsRouteChildren {
+  DocsTopicRoute: typeof DocsTopicRoute
+}
+
+const DocsRouteChildren: DocsRouteChildren = {
+  DocsTopicRoute: DocsTopicRoute,
+}
+
+const DocsRouteWithChildren = DocsRoute._addFileChildren(DocsRouteChildren)
+
+interface MarketplaceRouteChildren {
+  MarketplaceAgentRoute: typeof MarketplaceAgentRoute
+}
+
+const MarketplaceRouteChildren: MarketplaceRouteChildren = {
+  MarketplaceAgentRoute: MarketplaceAgentRoute,
+}
+
+const MarketplaceRouteWithChildren = MarketplaceRoute._addFileChildren(
+  MarketplaceRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AppRoute: AppRoute,
+  BaselineRoute: BaselineRoute,
+  DocsRoute: DocsRouteWithChildren,
+  MarketplaceRoute: MarketplaceRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
