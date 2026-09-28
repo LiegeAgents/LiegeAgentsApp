@@ -29,10 +29,16 @@ def rewritten_identity(line: bytes) -> bytes:
     return match.group(1) + b" " + PUBLIC_NAME.encode() + b" <" + PUBLIC_EMAIL.encode() + b"> " + match.group(2) + b"\n"
 
 
+def scrub_commit_message(payload: bytes) -> bytes:
+    """Remove GitHub co-author trailers without touching ordinary commit text."""
+    return re.sub(rb"(?im)^co-authored-by:[^\r\n]*(?:\r?\n|$)", b"", payload)
+
+
 def rewrite_export(stream: bytes) -> bytes:
     """Rewrite only fast-export headers; opaque `data N` payloads are copied byte-for-byte."""
     output = bytearray()
     cursor = 0
+    record_kind: bytes | None = None
     while cursor < len(stream):
         newline = stream.find(b"\n", cursor)
         if newline == -1:
@@ -40,14 +46,25 @@ def rewrite_export(stream: bytes) -> bytes:
             break
         line = stream[cursor : newline + 1]
         cursor = newline + 1
+        if line == b"blob\n":
+            record_kind = b"blob"
+        elif line.startswith(b"commit "):
+            record_kind = b"commit"
+        elif line.startswith(b"tag "):
+            record_kind = b"tag"
         if line.startswith(b"data "):
-            output.extend(line)
             try:
                 size = int(line[5:-1])
             except ValueError as error:
                 raise RuntimeError(f"Unexpected fast-export data directive: {line!r}") from error
-            output.extend(stream[cursor : cursor + size])
+            payload = stream[cursor : cursor + size]
             cursor += size
+            if record_kind in (b"commit", b"tag"):
+                payload = scrub_commit_message(payload)
+                output.extend(f"data {len(payload)}\n".encode())
+            else:
+                output.extend(line)
+            output.extend(payload)
             if cursor < len(stream) and stream[cursor : cursor + 1] == b"\n":
                 output.extend(b"\n")
                 cursor += 1
