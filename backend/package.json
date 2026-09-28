@@ -1,0 +1,27 @@
+{
+  "name": "@liege/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "check": "tsc --noEmit",
+    "test": "bun test",
+    "migrate": "bun src/db/migrate.ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "pg": "^8.16.3",
+    "viem": "^2.37.6",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/pg": "^8.15.5",
+    "@types/supertest": "^6.0.3",
+    "bun-types": "^1.4.2",
+    "supertest": "^7.1.4",
+    "typescript": "^5.8.3"
+  }
+}
