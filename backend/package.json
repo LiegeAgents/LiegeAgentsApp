@@ -6,7 +6,7 @@
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
     "check": "tsc --noEmit",
-    "test": "bun test",
+    "test": "NODE_ENV=test bun test",
     "migrate": "bun src/db/migrate.ts"
   },
   "dependencies": {
