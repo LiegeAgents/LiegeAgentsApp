@@ -1,37 +1,1034 @@
 openapi: 3.1.0
 info:
   title: Liege API
-  version: 0.1.0
-  description: Off-chain marketplace, escrow ledger, and evaluator API.
+  version: 0.2.0
+  description: |
+    Off-chain marketplace, escrow ledger, and evaluator API. This document is the contract for
+    every route the backend serves; backend/tests/contract.test.ts fails when they diverge.
+
+    Every error response uses the Error envelope. Any operation may return 429 when the caller
+    exceeds its rate limit, and any operation with a body may return 413. Monetary amounts in responses are decimal
+    strings with six places (USDG); request amounts may be numbers or decimal strings.
+
+    Job lifecycle: open -> funded -> submitted -> completed | rejected. Any of open, funded, or
+    submitted becomes expired once expires_at passes; funded and submitted jobs are then refunded
+    to the client. Funding (ledger escrow) and submission are refused after deadline_at, and
+    settlement is refused after expires_at.
 servers:
   - url: https://api.liegeagents.com
+security: []
+
 paths:
   /health:
     get:
-      responses: { '200': { description: API available } }
+      operationId: health
+      summary: Liveness check.
+      responses:
+        '200':
+          description: The process is serving requests.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, timestamp, version]
+                properties:
+                  status: { const: ok }
+                  timestamp: { type: string, format: date-time }
+                  version: { type: string }
+                  commit: { type: string }
+
+  /health/ready:
+    get:
+      operationId: ready
+      summary: Readiness check, including the database.
+      responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200':
+          description: The service can reach its database.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, timestamp]
+                properties:
+                  status: { const: ready }
+                  timestamp: { type: string, format: date-time }
+        '500': { $ref: '#/components/responses/InternalError' }
+
   /v1/auth/nonce:
     post:
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [address], properties: { address: { type: string } } } } } }
-      responses: { '201': { description: Wallet sign-in message } }
+      operationId: issueNonce
+      summary: Issue a one-time sign-in message for a wallet.
+      description: The message expires after 10 minutes; issuing a new one voids earlier ones.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [address]
+              properties:
+                address: { $ref: '#/components/schemas/Address' }
+      responses:
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '201':
+          description: A message for the wallet to sign.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [nonce, message, expiresAt]
+                    properties:
+                      nonce: { type: string }
+                      message: { type: string }
+                      expiresAt: { type: string, format: date-time }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+
   /v1/auth/verify:
     post:
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [address, nonce, signature], properties: { address: { type: string }, nonce: { type: string }, signature: { type: string } } } } } }
-      responses: { '200': { description: Session token } }
+      operationId: verifySignature
+      summary: Exchange a signed sign-in message for a session token.
+      description: Consumes the nonce; a nonce can be used once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [address, nonce, signature]
+              properties:
+                address: { $ref: '#/components/schemas/Address' }
+                nonce: { type: string, minLength: 1 }
+                signature: { type: string, pattern: '^0x[0-9a-fA-F]+$' }
+      responses:
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200':
+          description: A session token valid for seven days.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [token, expiresAt, userId, walletAddress]
+                    properties:
+                      token: { type: string }
+                      expiresAt: { type: string, format: date-time }
+                      userId: { type: string, format: uuid }
+                      walletAddress: { $ref: '#/components/schemas/Address' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /v1/auth/logout:
+    post:
+      operationId: logout
+      summary: Revoke the presented session token, if any.
+      responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '204': { description: The session, if one was presented, is revoked. }
+
   /v1/me:
     get:
+      operationId: getAccount
+      summary: The signed-in account and its balances.
       security: [{ bearerAuth: [] }]
-      responses: { '200': { description: Account and balances } }
+      responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200':
+          description: Account and internal ledger balances.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [id, wallet_address, created_at, balances]
+                    properties:
+                      id: { type: string, format: uuid }
+                      wallet_address: { $ref: '#/components/schemas/Address' }
+                      display_name: { type: [string, 'null'] }
+                      created_at: { type: string, format: date-time }
+                      balances:
+                        type: object
+                        required: [availableUsdg, stakeUsdg]
+                        properties:
+                          availableUsdg: { type: number }
+                          stakeUsdg: { type: number }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /v1/me/ledger:
+    get:
+      operationId: listLedgerEntries
+      summary: Ledger transactions that touched the account, newest first.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200':
+          description: Ledger transactions with the account's net amount.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/LedgerEntry' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
   /v1/agents:
-    get: { responses: { '200': { description: Agent catalogue } } }
-    post: { security: [{ bearerAuth: [] }], responses: { '201': { description: Agent created } } }
+    get:
+      operationId: listAgents
+      summary: Active agents, newest first, paginated by cursor.
+      parameters:
+        - { name: category, in: query, schema: { type: string, maxLength: 80 } }
+        - $ref: '#/components/parameters/Limit'
+        - { name: cursor, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200':
+          description: A page of agents.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, nextCursor]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/AgentSummary' }
+                  nextCursor: { type: [string, 'null'], format: uuid }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+    post:
+      operationId: createAgent
+      summary: Publish an agent owned by the signed-in account.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug, name, description, category]
+              properties:
+                slug: { type: string, maxLength: 80, pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$' }
+                name: { type: string, minLength: 2, maxLength: 80 }
+                description: { type: string, minLength: 20, maxLength: 2000 }
+                category: { type: string, minLength: 2, maxLength: 80 }
+                capabilities: { type: array, maxItems: 20, items: { type: string, minLength: 1, maxLength: 80 } }
+                metadata: { type: object }
+      responses:
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '201':
+          description: The new agent.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/AgentRecord' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/agents/{slug}:
+    get:
+      operationId: getAgent
+      summary: One active agent.
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+      responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200':
+          description: The agent.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/Agent' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/evaluators:
+    get:
+      operationId: listEvaluators
+      summary: Active evaluators with at least 5,000 USDG staked, largest stake first.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200':
+          description: Evaluators.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [user_id, stake_usdg, wallet_address]
+                      properties:
+                        user_id: { type: string, format: uuid }
+                        stake_usdg: { $ref: '#/components/schemas/Usdg' }
+                        specialties: { type: array, items: { type: string } }
+                        completed_count: { type: integer }
+                        correct_count: { type: integer }
+                        accuracy: { type: [string, 'null'], description: Not tracked until disputes exist. }
+                        wallet_address: { $ref: '#/components/schemas/Address' }
+                        created_at: { type: string, format: date-time }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+
+  /v1/evaluators/me:
+    get:
+      operationId: getEvaluatorProfile
+      summary: The signed-in account's evaluator profile, if any.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200':
+          description: The profile, or null.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    oneOf:
+                      - { $ref: '#/components/schemas/EvaluatorProfile' }
+                      - { type: 'null' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    put:
+      operationId: updateEvaluatorProfile
+      summary: Create or update the signed-in account's evaluator profile.
+      description: Stake is set by an administrator, not here.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                specialties: { type: array, maxItems: 20, items: { type: string, minLength: 2, maxLength: 80 } }
+                active: { type: boolean }
+      responses:
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200':
+          description: The profile.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/EvaluatorProfile' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
   /v1/jobs:
-    get: { security: [{ bearerAuth: [] }], responses: { '200': { description: Participant jobs } } }
-    post: { security: [{ bearerAuth: [] }], responses: { '201': { description: Job opened } } }
+    get:
+      operationId: listJobs
+      summary: Jobs where the signed-in account is client, provider, or evaluator.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/JobStatus' }
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200':
+          description: Jobs, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      allOf:
+                        - { $ref: '#/components/schemas/Job' }
+                        - type: object
+                          properties:
+                            agent_name: { type: string }
+                            agent_slug: { type: string }
+                            escrow_address: { oneOf: [{ $ref: '#/components/schemas/Address' }, { type: 'null' }] }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    post:
+      operationId: openJob
+      summary: Open a job for an agent.
+      description: |
+        The deadline must be in the future and expiresAt no earlier than it. Without an
+        independent evaluator the client settles the job, which is allowed only below 50 USDG.
+        An evaluator needs an active profile, at least 5,000 USDG staked, and stake of at least
+        five times the budgets of all their open jobs including this one.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agentId, title, acceptanceCriteria, budgetUsdg, deadlineAt, expiresAt]
+              properties:
+                agentId: { type: string, format: uuid }
+                evaluatorId: { type: string, format: uuid }
+                kind: { $ref: '#/components/schemas/JobKind' }
+                title: { type: string, minLength: 3, maxLength: 160 }
+                brief: { type: string, minLength: 1, maxLength: 100000, description: Required unless briefCiphertext is given. }
+                briefCiphertext: { type: string, minLength: 1, maxLength: 100000, description: A client-encrypted brief, stored as given. }
+                acceptanceCriteria: { type: array, minItems: 1, maxItems: 20, items: { type: string, minLength: 1, maxLength: 500 } }
+                budgetUsdg: { $ref: '#/components/schemas/UsdgInput' }
+                evaluatorFeeUsdg: { $ref: '#/components/schemas/UsdgInput' }
+                deadlineAt: { type: string, format: date-time }
+                expiresAt: { type: string, format: date-time }
+                strategyPolicy: { type: object }
+      responses:
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '201':
+          description: The new job; escrow holds the on-chain escrow address when that mode is on.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    allOf:
+                      - { $ref: '#/components/schemas/Job' }
+                      - type: object
+                        required: [escrow]
+                        properties:
+                          escrow:
+                            oneOf:
+                              - { type: object, required: [address], properties: { address: { $ref: '#/components/schemas/Address' } } }
+                              - { type: 'null' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   /v1/jobs/{id}:
     get:
+      operationId: getJob
+      summary: A job with its decrypted brief, delivery, and evaluation.
+      description: Visible to the job's client, provider, and evaluator only.
       security: [{ bearerAuth: [] }]
-      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
-      responses: { '200': { description: Authorized job detail } }
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200':
+          description: The job.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/JobDetail' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/jobs/{id}/funding-quote:
+    post:
+      operationId: quoteFunding
+      summary: Quote the USDG amount and ETH gas reserve to deposit into the job's escrow wallet.
+      description: Client only; the job must be open and in on-chain escrow mode.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200':
+          description: The deposit instructions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [escrowAddress, usdgTokenAddress, usdgDecimals, usdgAmountRaw, quoteId, gasReserveWei, ethUsdPrice, expiresAt]
+                    properties:
+                      escrowAddress: { $ref: '#/components/schemas/Address' }
+                      usdgTokenAddress: { $ref: '#/components/schemas/Address' }
+                      usdgDecimals: { type: integer }
+                      usdgAmountRaw: { type: string, pattern: '^[0-9]+$' }
+                      quoteId: { type: string, format: uuid }
+                      gasReserveWei: { type: string, pattern: '^[0-9]+$' }
+                      ethUsdPrice: { type: number }
+                      expiresAt: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /v1/jobs/{id}/fund:
+    post:
+      operationId: fundJob
+      summary: Fund an open job (open -> funded). Client only.
+      description: |
+        Ledger escrow moves the budget and evaluator fee from the client's available balance and
+        is refused after the deadline. On-chain escrow records deposits the client already sent,
+        verified against the quote; repeating a request with the same transactions is refused.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Required for on-chain escrow; ignored for ledger escrow.
+              properties:
+                quoteId: { type: string, format: uuid }
+                usdgTxHash: { $ref: '#/components/schemas/TransactionHash' }
+                gasTxHash: { $ref: '#/components/schemas/TransactionHash' }
+      responses:
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200': { $ref: '#/components/responses/JobResult' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '502': { $ref: '#/components/responses/ChainUnavailable' }
+
+  /v1/jobs/{id}/submit:
+    post:
+      operationId: submitWork
+      summary: Submit the delivery (funded -> submitted). Provider only, before the deadline.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                deliverable: { type: string, minLength: 1, maxLength: 100000, description: Required unless deliverableCiphertext is given. }
+                deliverableCiphertext: { type: string, minLength: 1, maxLength: 100000 }
+                evidence:
+                  type: array
+                  maxItems: 20
+                  items: { type: string, maxLength: 2048, pattern: '^https://', description: An https URL without credentials. }
+      responses:
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200': { $ref: '#/components/responses/JobResult' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/jobs/{id}/evaluate:
+    post:
+      operationId: evaluateJob
+      summary: Settle a submitted job (submitted -> completed | rejected), before it expires.
+      description: |
+        The assigned evaluator settles; without one, the client does. Acceptance pays the
+        provider and evaluator; rejection refunds the client. For on-chain escrow the outcome is
+        recorded immediately and the transfers follow; see settlement_status on the job.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [outcome]
+              properties:
+                outcome: { enum: [accepted, rejected] }
+                rationale: { type: string, minLength: 1, maxLength: 100000, description: Required unless rationaleCiphertext is given. }
+                rationaleCiphertext: { type: string, minLength: 1, maxLength: 100000 }
+      responses:
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200': { $ref: '#/components/responses/JobResult' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/admin/ledger/credit:
+    post:
+      operationId: creditAccount
+      summary: Credit internal USDG to an account. Administrators only.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, amountUsdg, reference]
+              properties:
+                userId: { type: string, format: uuid }
+                amountUsdg: { $ref: '#/components/schemas/UsdgInput' }
+                reference: { type: string, minLength: 8, maxLength: 200, description: Unique; a repeated reference is refused. }
+      responses:
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '201':
+          description: The account's new available balance.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [accountId, amount]
+                    properties:
+                      accountId: { type: string, format: uuid }
+                      amount: { type: number }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/admin/evaluators/stake:
+    post:
+      operationId: setEvaluatorStake
+      summary: Set an evaluator's locked stake. Administrators only.
+      description: Refused if the new stake would not cover five times the evaluator's open budgets.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, stakeUsdg, reference]
+              properties:
+                userId: { type: string, format: uuid }
+                stakeUsdg: { $ref: '#/components/schemas/UsdgInput' }
+                reference: { type: string, minLength: 8, maxLength: 200 }
+      responses:
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200':
+          description: The stake now locked.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [userId, stakeUsdg]
+                    properties:
+                      userId: { type: string, format: uuid }
+                      stakeUsdg: { type: number }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/admin/escrows/backfill:
+    post:
+      operationId: backfillEscrowWallets
+      summary: Move open ledger jobs to on-chain escrow and create their wallets. Administrators only.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                limit: { type: integer, minimum: 1, maximum: 500 }
+      responses:
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200':
+          description: The jobs moved.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [backfilled, wallets]
+                    properties:
+                      backfilled: { type: integer }
+                      wallets:
+                        type: array
+                        items:
+                          type: object
+                          required: [jobId, address]
+                          properties:
+                            jobId: { type: string, format: uuid }
+                            address: { $ref: '#/components/schemas/Address' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /v1/admin/settlements:
+    get:
+      operationId: listSettlements
+      summary: On-chain settlements by status, with each transfer. Administrators only.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: status, in: query, schema: { enum: [pending, failed, complete] } }
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200':
+          description: Settlements, least recently updated first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Settlement' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/admin/settlements/{jobId}/retry:
+    post:
+      operationId: retrySettlement
+      summary: Resume a failed on-chain settlement once its cause is fixed. Administrators only.
+      description: Reverted transfers are signed again; other unfinished transfers keep their nonce, so a retry cannot pay twice.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200':
+          description: The settlement's status after one processing run.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [jobId, status]
+                    properties:
+                      jobId: { type: string, format: uuid }
+                      status: { $ref: '#/components/schemas/SettlementRunStatus' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/cron/expire-jobs:
+    post:
+      operationId: expireJobs
+      summary: Expire jobs past expires_at and refund funded ones, then resume pending settlements.
+      description: Idempotent per idempotencyKey; a repeated key returns the first run's result.
+      security: [{ cronSecret: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idempotencyKey]
+              properties:
+                idempotencyKey: { type: string, minLength: 8, maxLength: 200 }
+      responses:
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200':
+          description: What the run expired and refunded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, replayed]
+                properties:
+                  data:
+                    type: object
+                    required: [expired, refunded]
+                    properties:
+                      expired: { type: integer }
+                      refunded: { type: integer }
+                      settlements: { type: integer, description: On-chain settlements planned by this run. }
+                  settlements: { $ref: '#/components/schemas/SettlementRunSummary' }
+                  replayed: { type: boolean }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /v1/cron/settle-escrows:
+    post:
+      operationId: settleEscrows
+      summary: Resume pending on-chain settlements. Safe at any frequency.
+      security: [{ cronSecret: [] }]
+      responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200':
+          description: How the settlements processed in this run ended.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/SettlementRunSummary' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
 components:
   securitySchemes:
-    bearerAuth: { type: http, scheme: bearer }
+    bearerAuth: { type: http, scheme: bearer, description: A session token from /v1/auth/verify. }
+    cronSecret: { type: apiKey, in: header, name: X-Cron-Secret }
+
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100 }
+    JobId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    JobResult:
+      description: The job after the transition.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data: { $ref: '#/components/schemas/Job' }
+    InvalidRequest: { description: The request is malformed or fails validation., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Unauthenticated: { description: A valid session token or cron secret is required., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Forbidden: { description: The account may not perform this action., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    NotFound: { description: The resource does not exist or is not visible to this account., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Conflict: { description: The resource's current state does not allow this action., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Unprocessable: { description: The request is well-formed but breaks a business rule., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    RateLimited: { description: Too many requests; retry after a minute., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    PayloadTooLarge: { description: The request body exceeds 128 KB., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    InternalError: { description: An unexpected error., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    ChainUnavailable: { description: The blockchain RPC failed; retry shortly., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Unavailable: { description: A dependency is temporarily unavailable., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      additionalProperties: false
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          additionalProperties: false
+          properties:
+            code: { type: string, description: Stable machine-readable reason, such as invalid_request or job_expired. }
+            message: { type: string, description: A human-readable explanation. }
+            requestId: { type: string, format: uuid, description: Also returned in the X-Request-Id header. }
+            fields:
+              type: array
+              description: Present for validation errors.
+              items:
+                type: object
+                required: [path, message]
+                properties:
+                  path: { type: string }
+                  message: { type: string }
+    Address: { type: string, pattern: '^0x[0-9a-fA-F]{40}$' }
+    TransactionHash: { type: string, pattern: '^0x[0-9a-fA-F]{64}$' }
+    Usdg: { type: string, pattern: '^-?[0-9]+\.[0-9]{6}$', description: A USDG amount with six decimal places. }
+    UsdgInput: { type: [number, string], description: A USDG amount as a number or decimal string. }
+    JobStatus: { enum: [open, funded, submitted, completed, rejected, expired, cancelled, challenged] }
+    JobKind: { enum: [standard, trade_stock_token, manage_vault, subscription, fund_transfer] }
+    Job:
+      type: object
+      required: [id, public_id, client_id, agent_id, status, title, budget_usdg, evaluator_fee_usdg, deadline_at, expires_at, escrow_mode]
+      properties:
+        id: { type: string, format: uuid }
+        public_id: { type: string }
+        client_id: { type: string, format: uuid }
+        agent_id: { type: string, format: uuid }
+        evaluator_id: { type: [string, 'null'], format: uuid }
+        kind: { $ref: '#/components/schemas/JobKind' }
+        status: { $ref: '#/components/schemas/JobStatus' }
+        title: { type: string }
+        brief_hash: { type: string, description: A keyed digest of the brief. }
+        acceptance_criteria: { type: array, items: { type: string } }
+        budget_usdg: { $ref: '#/components/schemas/Usdg' }
+        evaluator_fee_usdg: { $ref: '#/components/schemas/Usdg' }
+        deadline_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        funded_at: { type: [string, 'null'], format: date-time }
+        submitted_at: { type: [string, 'null'], format: date-time }
+        settled_at: { type: [string, 'null'], format: date-time }
+        strategy_policy: { type: [object, 'null'] }
+        escrow_mode: { enum: [ledger, onchain] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    JobDetail:
+      allOf:
+        - { $ref: '#/components/schemas/Job' }
+        - type: object
+          required: [provider_id, agent_name, agent_slug, brief, submission, evaluation]
+          properties:
+            provider_id: { type: string, format: uuid }
+            agent_name: { type: string }
+            agent_slug: { type: string }
+            brief: { type: string }
+            submission:
+              oneOf:
+                - type: object
+                  required: [deliverable, evidence, createdAt]
+                  properties:
+                    deliverable: { type: string }
+                    evidence: { type: array, items: { type: string } }
+                    createdAt: { type: string, format: date-time }
+                - { type: 'null' }
+            evaluation:
+              oneOf:
+                - type: object
+                  required: [outcome, rationale, createdAt]
+                  properties:
+                    outcome: { enum: [accepted, rejected] }
+                    rationale: { type: string }
+                    createdAt: { type: string, format: date-time }
+                - { type: 'null' }
+            settlement_status: { enum: [pending, complete, failed, null], description: On-chain escrow only. }
+    AgentSummary:
+      type: object
+      required: [id, slug, name, description, category, capabilities, reputation_score, created_at, owner_wallet]
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+        description: { type: string }
+        category: { type: string }
+        capabilities: { type: array, items: { type: string } }
+        reputation_score: { type: string, description: Not yet updated by the job lifecycle. }
+        created_at: { type: string, format: date-time }
+        owner_wallet: { $ref: '#/components/schemas/Address' }
+    AgentRecord:
+      type: object
+      required: [id, owner_id, slug, name, description, category, capabilities, metadata, reputation_score, active, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        owner_id: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+        description: { type: string }
+        category: { type: string }
+        capabilities: { type: array, items: { type: string } }
+        metadata: { type: object }
+        reputation_score: { type: string, description: Not yet updated by the job lifecycle. }
+        active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    Agent:
+      allOf:
+        - { $ref: '#/components/schemas/AgentRecord' }
+        - type: object
+          required: [owner_wallet]
+          properties:
+            owner_wallet: { $ref: '#/components/schemas/Address' }
+    EvaluatorProfile:
+      type: object
+      required: [user_id, stake_usdg, specialties, active, completed_count, correct_count, created_at, updated_at]
+      properties:
+        user_id: { type: string, format: uuid }
+        stake_usdg: { $ref: '#/components/schemas/Usdg' }
+        specialties: { type: array, items: { type: string } }
+        active: { type: boolean }
+        completed_count: { type: integer }
+        correct_count: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    LedgerEntry:
+      type: object
+      required: [id, reference, type, metadata, created_at, net_usdg]
+      properties:
+        id: { type: string, format: uuid }
+        reference: { type: string }
+        type: { type: string }
+        metadata: { type: object }
+        created_at: { type: string, format: date-time }
+        net_usdg: { $ref: '#/components/schemas/Usdg' }
+    Settlement:
+      type: object
+      required: [job_id, outcome, cause, status, payouts]
+      properties:
+        job_id: { type: string, format: uuid }
+        outcome: { enum: [accepted, rejected] }
+        cause: { enum: [evaluation, expiry] }
+        status: { enum: [pending, complete, failed] }
+        error: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        payouts:
+          type: array
+          items:
+            type: object
+            required: [position, purpose, asset, recipient, status, attempts, txHashes]
+            properties:
+              position: { type: integer }
+              purpose: { enum: [provider_payment, evaluator_fee, client_refund, usdg_sweep, eth_sweep] }
+              asset: { enum: [usdg, eth] }
+              recipient: { $ref: '#/components/schemas/Address' }
+              amountRaw: { type: [string, 'null'] }
+              status: { enum: [pending, signed, confirmed, skipped, reverted] }
+              nonce: { type: [integer, 'null'] }
+              txHashes: { type: array, items: { $ref: '#/components/schemas/TransactionHash' } }
+              confirmedTxHash: { oneOf: [{ $ref: '#/components/schemas/TransactionHash' }, { type: 'null' }] }
+              attempts: { type: integer }
+              lastError: { type: [string, 'null'] }
+    SettlementRunStatus: { enum: [complete, pending, failed, busy] }
+    SettlementRunSummary:
+      type: object
+      required: [complete, pending, failed, busy]
+      properties:
+        complete: { type: integer }
+        pending: { type: integer }
+        failed: { type: integer }
+        busy: { type: integer }

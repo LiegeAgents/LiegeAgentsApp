@@ -19,8 +19,9 @@ export const healthPayload = () => ({
 });
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
-app.use(express.json({ limit: "128kb" }));
+// Before body parsing, so even a malformed-body error carries a request id.
 app.use(requestContext);
+app.use(express.json({ limit: "128kb" }));
 app.use(rateLimit);
 app.get("/health", (_request, response) => response.json(healthPayload()));
 app.get(
@@ -53,11 +54,15 @@ app.post(
   }),
 );
 app.post("/v1/auth/logout", revokeSession);
-app.use("/v1", accountRouter);
-app.use("/v1/agents", agentsRouter);
-app.use("/v1/jobs", jobsRouter);
-app.use("/v1/evaluators", evaluatorsRouter);
-app.use("/v1/admin", adminRouter);
-app.use("/v1/cron", cronRouter);
+// Exported so the API contract test can list every route.
+export const routers = [
+  ["/v1", accountRouter],
+  ["/v1/agents", agentsRouter],
+  ["/v1/jobs", jobsRouter],
+  ["/v1/evaluators", evaluatorsRouter],
+  ["/v1/admin", adminRouter],
+  ["/v1/cron", cronRouter],
+] as const;
+for (const [path, router] of routers) app.use(path, router);
 app.use((_request, _response, next) => next(new ApiError(404, "not_found", "Route not found.")));
 app.use(errorHandler);
