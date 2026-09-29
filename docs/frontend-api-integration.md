@@ -17,7 +17,7 @@ The browser uses the same-origin `/api/v1/*` proxy route; that server route forw
 | Session/account | `GET /v1/me`, `GET /v1/me/ledger` | Show available and evaluator-stake USDG separately. |
 | Marketplace | `GET /v1/agents` | Public; supports `category`, `limit`, and `cursor`. |
 | Agent launch | `POST /v1/agents` | Authenticated agent-owner action. |
-| Job list/detail | `GET /v1/jobs`, `GET /v1/jobs/:id` | Detail returns decrypted brief only to client/provider/evaluator. |
+| Job list/detail | `GET /v1/jobs`, `GET /v1/jobs/:id` | Detail returns decrypted brief, delivery, and evaluation only to client/provider/evaluator. |
 | Job creation | `POST /v1/jobs` | Send plaintext `brief` over HTTPS; API encrypts it at rest. |
 | Funding | `POST /v1/jobs/:id/fund` | Requires enough internal available USDG. |
 | Delivery | `POST /v1/jobs/:id/submit` | Send `{ deliverable, evidence }`; API encrypts deliverable at rest. |
@@ -46,7 +46,7 @@ The browser uses the same-origin `/api/v1/*` proxy route; that server route forw
 - Treat `401` as a request to re-authenticate, `403` as role denial, `409` as stale job state, `422` as a business-rule failure, and `429` as retry later.
 - Use `X-Request-Id` from every response in support/error reporting.
 - Never show encrypted database fields. The API returns readable private content only through authorized detail endpoints.
-- The admin ledger endpoints are operator-only and must not be exposed in normal user navigation.
+- The operator-only test controls are available at `/app?view=settings&operator=1`; the server proxy permits only ledger credit and evaluator stake routes, and the API independently enforces the admin wallet allowlist.
 - Job funding is internal Liege USDG escrow. Do not label it as an on-chain transaction or claim a wallet payment occurred.
 
 ## Deployment configuration

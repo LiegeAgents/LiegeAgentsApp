@@ -7,7 +7,8 @@ const cookieValue = (request: Request, name: string) => request.headers.get('coo
 
 async function proxy({ request, params }: { request: Request; params: { _splat?: string } }) {
   const path = params._splat || ''
-  if (!path.startsWith('v1/') || path.startsWith('v1/admin/') || path.startsWith('v1/cron/')) {
+  const operatorRoute = path === 'v1/admin/ledger/credit' || path === 'v1/admin/evaluators/stake'
+  if (!path.startsWith('v1/') || (path.startsWith('v1/admin/') && !operatorRoute) || path.startsWith('v1/cron/')) {
     return Response.json({ error: { code: 'not_found', message: 'Route not found.' } }, { status: 404 })
   }
 
@@ -42,5 +43,5 @@ async function proxy({ request, params }: { request: Request; params: { _splat?:
 }
 
 export const Route = createFileRoute('/api/$')({
-  server: { handlers: { GET: proxy, POST: proxy } },
+  server: { handlers: { GET: proxy, POST: proxy, PUT: proxy } },
 })

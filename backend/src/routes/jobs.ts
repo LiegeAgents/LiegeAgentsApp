@@ -34,11 +34,22 @@ jobsRouter.get('/', requireAuth, asyncRoute(async (request, response) => {
 
 jobsRouter.get('/:id', requireAuth, asyncRoute(async (request, response) => {
   const id = z.string().uuid().parse(request.params.id)
-  const result = await db.query(`SELECT j.*, a.owner_id AS provider_id, a.name AS agent_name, a.slug AS agent_slug FROM jobs j JOIN agents a ON a.id = j.agent_id
+  const result = await db.query(`SELECT j.*, a.owner_id AS provider_id, a.name AS agent_name, a.slug AS agent_slug,
+      s.deliverable_ciphertext, s.evidence AS submission_evidence, s.created_at AS delivery_created_at,
+      e.outcome AS evaluation_outcome, e.rationale_ciphertext, e.created_at AS evaluation_created_at
+    FROM jobs j JOIN agents a ON a.id = j.agent_id
+    LEFT JOIN submissions s ON s.job_id = j.id
+    LEFT JOIN evaluations e ON e.job_id = j.id
     WHERE j.id = $1 AND (j.client_id = $2 OR a.owner_id = $2 OR j.evaluator_id = $2)`, [id, request.auth!.userId])
   if (!result.rowCount) throw new ApiError(404, 'job_not_found', 'This job does not exist or is not available to this account.')
   const job = result.rows[0]
-  response.json({ data: { ...job, brief: decryptPayload(job.brief_ciphertext), brief_ciphertext: undefined } })
+  response.json({ data: {
+    ...job,
+    brief: decryptPayload(job.brief_ciphertext), brief_ciphertext: undefined,
+    submission: job.deliverable_ciphertext ? { deliverable: decryptPayload(job.deliverable_ciphertext), evidence: job.submission_evidence ?? [], createdAt: job.delivery_created_at } : null,
+    evaluation: job.rationale_ciphertext ? { outcome: job.evaluation_outcome, rationale: decryptPayload(job.rationale_ciphertext), createdAt: job.evaluation_created_at } : null,
+    deliverable_ciphertext: undefined, rationale_ciphertext: undefined, submission_evidence: undefined, delivery_created_at: undefined, evaluation_outcome: undefined, evaluation_created_at: undefined,
+  } })
 }))
 
 jobsRouter.post('/', requireAuth, asyncRoute(async (request, response) => {

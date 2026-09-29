@@ -27,11 +27,17 @@ export const api={
  me:token=>request('/v1/me',{token}),
  ledger:token=>request('/v1/me/ledger',{token}),
  jobs:token=>request('/v1/jobs',{token}),
+ job:(token,id)=>request(`/v1/jobs/${id}`,{token}),
+ evaluators:()=>request('/v1/evaluators'),
+ evaluatorProfile:token=>request('/v1/evaluators/me',{token}),
+ updateEvaluatorProfile:(token,input)=>request('/v1/evaluators/me',{token,method:'PUT',body:JSON.stringify(input)}),
  createAgent:(token,input)=>request('/v1/agents',{token,method:'POST',body:JSON.stringify(input)}),
  createJob:(token,input)=>request('/v1/jobs',{token,method:'POST',body:JSON.stringify(input)}),
  fundJob:(token,id)=>request(`/v1/jobs/${id}/fund`,{token,method:'POST'}),
  submitJob:(token,id,input)=>request(`/v1/jobs/${id}/submit`,{token,method:'POST',body:JSON.stringify(input)}),
  evaluateJob:(token,id,input)=>request(`/v1/jobs/${id}/evaluate`,{token,method:'POST',body:JSON.stringify(input)}),
+ creditTestBalance:(token,input)=>request('/v1/admin/ledger/credit',{token,method:'POST',body:JSON.stringify(input)}),
+ setEvaluatorStake:(token,input)=>request('/v1/admin/evaluators/stake',{token,method:'POST',body:JSON.stringify(input)}),
 }
 
 const display={Research:['research','#d87cff'],Development:['code','#baff24'],'Data analysis':['data','#44aeff'],Automation:['flow','#ffa723'],Strategy:['chart','#ffa3d3']}
