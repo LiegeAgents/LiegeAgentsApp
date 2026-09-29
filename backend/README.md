@@ -21,6 +21,10 @@ In production, a remote `DATABASE_URL` must set `sslmode=verify-full` (or `verif
 
 Each client IP gets 120 requests a minute, with separate budgets of 20 for sign-in and 20 for the on-chain funding routes. Client IPs come from `X-Forwarded-For` as allowed by `TRUST_PROXY` (default `1`, one proxy hop); set it to the address or CIDR range of the proxy in front of the service, and accept traffic only from that proxy, or clients can pick their own rate limit bucket.
 
+## Deploy
+
+CI builds the image with the commit it was built from, which `GET /health` reports as `commit`. On `main`, the deploy job runs in the `production` GitHub environment (add required reviewers there to gate deploys), triggers the Render deploy hook, and, when the `BACKEND_URL` repository variable is set, fails unless that commit is serving and ready within ten minutes. Releases are tagged only after a successful deploy. On startup, each process takes a lock and applies pending migrations; it refuses to start if an applied migration was edited or removed.
+
 ## Test
 
 ```sh

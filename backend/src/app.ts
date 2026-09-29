@@ -16,6 +16,8 @@ export const healthPayload = () => ({
   status: "ok",
   timestamp: new Date().toISOString(),
   version: process.env.npm_package_version ?? "0.1.0",
+  // Set in the container image; lets a deployment confirm which commit is serving.
+  commit: process.env.GIT_SHA || undefined,
 });
 app.disable("x-powered-by");
 app.set("trust proxy", parseTrustProxy(env.TRUST_PROXY));
