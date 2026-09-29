@@ -6,8 +6,7 @@ export const ROBINHOOD = Object.freeze({
   blockExplorerUrls: ['https://robinhoodchain.blockscout.com'],
 })
 export const WALLETS = {
-  phantom: { name: 'Phantom', install: 'https://phantom.com/download', rdns: 'app.phantom' },
-  metamask: { name: 'MetaMask', install: 'https://metamask.io/download', rdns: 'io.metamask' },
+  walletconnect: { name: 'WalletConnect' },
 }
 export const chainHex = value => { try { return '0x' + BigInt(value).toString(16) } catch { return null } }
 export const firstAccount = accounts => Array.isArray(accounts) ? accounts.find(a => typeof a === 'string' && /^0x[\da-f]{40}$/i.test(a)) || null : null
@@ -18,7 +17,7 @@ export function walletError(error, kind) {
   if (code === 4001) return 'Request cancelled in your wallet. You can try again when you’re ready.'
   if (code === -32002) return 'A request is already waiting in your wallet. Open the extension or app and approve or dismiss it first.'
   if (code === 4900 || code === 4901) return 'Your wallet is offline. Open it, check your connection, and try again.'
-  if (kind === 'phantom' && [4902, 4200, -32601, -32602].includes(code)) return 'Enable Robinhood Chain in Phantom → Settings → Active Networks, then try again. Update Phantom if the network is missing.'
+  if (kind === 'walletconnect' && [4902, 4200, -32601, -32602].includes(code)) return 'Select Robinhood Chain in your wallet, then reconnect through WalletConnect.'
   if (code === 4200 || code === -32601) return 'This wallet version cannot switch networks here. Select Robinhood Chain in your wallet, then reconnect.'
   return error?.userMessage || 'The wallet could not complete this connection. Open your wallet and try again.'
 }
@@ -30,21 +29,21 @@ export function providerKind(provider, rdns) {
   return null
 }
 export function discoverWallets(target, onProvider) {
-  const announced = e => { const d = e.detail; const kind = providerKind(d?.provider, d?.info?.rdns); if (kind) onProvider(kind, d.provider, true) }
-  const fallback = () => {
-    const phantom = target.phantom?.ethereum
-    if (providerKind(phantom) === 'phantom') onProvider('phantom', phantom, false)
-    const ethereum = target.ethereum
-    const providers = Array.isArray(ethereum?.providers) ? ethereum.providers : [ethereum]
-    providers.forEach(p => { const kind = providerKind(p); if (kind) onProvider(kind, p, false) })
-    target.dispatchEvent(new Event('eip6963:requestProvider'))
-  }
-  target.addEventListener('eip6963:announceProvider', announced)
-  target.addEventListener('ethereum#initialized', fallback)
-  target.addEventListener('focus', fallback)
-  fallback()
-  const timers = [300, 1500, 4000].map(ms => setTimeout(fallback, ms))
-  return () => { timers.forEach(clearTimeout); target.removeEventListener('eip6963:announceProvider', announced); target.removeEventListener('ethereum#initialized', fallback); target.removeEventListener('focus', fallback) }
+  // WalletConnect owns provider discovery and mobile deep links. Keeping this no-op
+  // maintains the WalletProvider interface without exposing extension-only choices.
+  return () => {}
+}
+export async function createWalletConnectProvider(projectId) {
+  if (!projectId) throw { userMessage: 'WalletConnect is not configured. Add VITE_WALLETCONNECT_PROJECT_ID and redeploy.' }
+  const { EthereumProvider } = await import('@walletconnect/ethereum-provider')
+  return EthereumProvider.init({
+    projectId,
+    chains: [4663],
+    optionalChains: [4663],
+    rpcMap: { 4663: ROBINHOOD.rpcUrls[0] },
+    showQrModal: true,
+    metadata: { name: 'Liege', description: 'Agent work marketplace on Robinhood Chain', url: location.origin, icons: [`${location.origin}/brand/logo-transparent.png`] },
+  })
 }
 function ensureActive(signal) { if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError') }
 export async function readWallet(provider) {
@@ -74,7 +73,9 @@ export async function switchToRobinhood(provider, kind, signal) {
 }
 export async function connectWallet(provider, kind, signal) {
   ensureActive(signal)
-  const accounts = await provider.request({method:'eth_requestAccounts'})
+  const accounts = kind === 'walletconnect' && typeof provider.enable === 'function'
+    ? await provider.enable()
+    : await provider.request({method:'eth_requestAccounts'})
   ensureActive(signal)
   if (!firstAccount(accounts)) throw {userMessage:'No Ethereum account was shared. Unlock your wallet and connect an account.'}
   return switchToRobinhood(provider, kind, signal)
@@ -92,10 +93,5 @@ export function publicAppUrl(configured, current) {
   } catch { return null }
 }
 export function mobileWalletLink(kind, appUrl) {
-  if (!appUrl || !WALLETS[kind]) return null
-  const url = new URL(appUrl)
-  url.searchParams.set('wallet', kind)
-  return kind === 'phantom'
-    ? `https://phantom.app/ul/browse/${encodeURIComponent(url.href)}?ref=${encodeURIComponent(url.origin)}`
-    : `https://link.metamask.io/dapp/${url.href.replace(/^https:\/\//,'')}`
+  return null
 }
