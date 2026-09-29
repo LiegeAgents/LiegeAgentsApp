@@ -86,6 +86,8 @@ bun test
 | Next | Client/API integration, encrypted object storage, challenge panels, admin operations UI |
 | Later | Verified payment receipts, runtime adapters, strategy execution controls, on-chain interoperability |
 
+The site's `/roadmap` page expands these phases, and `/whitepaper` describes the protocol, marking what is built and what is designed. Keep this table and `src/liege-app/roadmapContent.js` in step.
+
 ## License
 
 MIT © 2026 Liege

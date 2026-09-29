@@ -68,3 +68,12 @@ See `WALLET-INTEGRATION.md` for the current wallet integration boundary; earlier
 - At 1440px, the preview measures 1368.67 × 818.77px. Main content, panel grid, job card, and escrow card have no internal horizontal overflow. Page client/scroll widths both equal 1425px.
 - At 390px, page client/scroll widths both equal 375px. Cards remain readable in the existing stacked phone layout; no document-level horizontal overflow.
 - Production build passes. Only the Liege hero component and its stylesheet changed; marketplace, wallet, actual workspace, and original-copy baseline are unchanged.
+
+## Roadmap and whitepaper pages — 29 September 2026
+
+- Chrome (headless, driven by Playwright) against the dev server: `/roadmap` and `/whitepaper` at 1440px and 390px, in Dark and Light themes. Document client and scroll widths were equal in all eight cases. The app logged no console errors; the only errors came from the wallet SDK's remote configuration requests (HTTP 403/400 without a WalletConnect project ID), which also occur on existing pages.
+- Whitepaper: sidebar links, in-page links and deep links such as `/whitepaper#evaluation` place the section 88px from the top, below the sticky header, and the active sidebar entry follows scrolling. At 390px the sidebar gives way to inline contents, and wide tables scroll within their frame. The print layout produced an eight-page A4 PDF on white, without site chrome.
+- The header Resources menu lists Whitepaper and Roadmap, the footer's Liege column links both, and in-content links resolve to `/docs/status`, `/docs/eligibility`, `/docs/notice` and `#strategies`.
+- A case-insensitive filename collision (`roadmap.js` beside `Roadmap.jsx`) made the lazy page import resolve to the content module on macOS; the content modules are now `roadmapContent.js` and `whitepaperContent.js`.
+- `bun run build` passes, with each page in its own chunk. ESLint reports nothing in the new route files and content modules; it does not cover `.jsx` files.
+- Not tested: Safari, Firefox, physical devices, or assistive technology.

@@ -14,6 +14,8 @@ import { Route as AppRouteImport } from './routes/app'
 import { Route as BaselineRouteImport } from './routes/baseline'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as MarketplaceRouteImport } from './routes/marketplace'
+import { Route as RoadmapRouteImport } from './routes/roadmap'
+import { Route as WhitepaperRouteImport } from './routes/whitepaper'
 import { Route as ApiSplatRouteImport } from './routes/api/$'
 import { Route as DocsTopicRouteImport } from './routes/docs.$topic'
 import { Route as MarketplaceAgentRouteImport } from './routes/marketplace.$agent'
@@ -43,6 +45,16 @@ const MarketplaceRoute = MarketplaceRouteImport.update({
   path: '/marketplace',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RoadmapRoute = RoadmapRouteImport.update({
+  id: '/roadmap',
+  path: '/roadmap',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WhitepaperRoute = WhitepaperRouteImport.update({
+  id: '/whitepaper',
+  path: '/whitepaper',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiSplatRoute = ApiSplatRouteImport.update({
   id: '/api/$',
   path: '/api/$',
@@ -65,6 +77,8 @@ export interface FileRoutesByFullPath {
   '/baseline': typeof BaselineRoute
   '/docs': typeof DocsRouteWithChildren
   '/marketplace': typeof MarketplaceRouteWithChildren
+  '/roadmap': typeof RoadmapRoute
+  '/whitepaper': typeof WhitepaperRoute
   '/api/$': typeof ApiSplatRoute
   '/docs/$topic': typeof DocsTopicRoute
   '/marketplace/$agent': typeof MarketplaceAgentRoute
@@ -75,6 +89,8 @@ export interface FileRoutesByTo {
   '/baseline': typeof BaselineRoute
   '/docs': typeof DocsRouteWithChildren
   '/marketplace': typeof MarketplaceRouteWithChildren
+  '/roadmap': typeof RoadmapRoute
+  '/whitepaper': typeof WhitepaperRoute
   '/api/$': typeof ApiSplatRoute
   '/docs/$topic': typeof DocsTopicRoute
   '/marketplace/$agent': typeof MarketplaceAgentRoute
@@ -86,6 +102,8 @@ export interface FileRoutesById {
   '/baseline': typeof BaselineRoute
   '/docs': typeof DocsRouteWithChildren
   '/marketplace': typeof MarketplaceRouteWithChildren
+  '/roadmap': typeof RoadmapRoute
+  '/whitepaper': typeof WhitepaperRoute
   '/api/$': typeof ApiSplatRoute
   '/docs/$topic': typeof DocsTopicRoute
   '/marketplace/$agent': typeof MarketplaceAgentRoute
@@ -98,6 +116,8 @@ export interface FileRouteTypes {
     | '/baseline'
     | '/docs'
     | '/marketplace'
+    | '/roadmap'
+    | '/whitepaper'
     | '/api/$'
     | '/docs/$topic'
     | '/marketplace/$agent'
@@ -108,6 +128,8 @@ export interface FileRouteTypes {
     | '/baseline'
     | '/docs'
     | '/marketplace'
+    | '/roadmap'
+    | '/whitepaper'
     | '/api/$'
     | '/docs/$topic'
     | '/marketplace/$agent'
@@ -118,6 +140,8 @@ export interface FileRouteTypes {
     | '/baseline'
     | '/docs'
     | '/marketplace'
+    | '/roadmap'
+    | '/whitepaper'
     | '/api/$'
     | '/docs/$topic'
     | '/marketplace/$agent'
@@ -129,6 +153,8 @@ export interface RootRouteChildren {
   BaselineRoute: typeof BaselineRoute
   DocsRoute: typeof DocsRouteWithChildren
   MarketplaceRoute: typeof MarketplaceRouteWithChildren
+  RoadmapRoute: typeof RoadmapRoute
+  WhitepaperRoute: typeof WhitepaperRoute
   ApiSplatRoute: typeof ApiSplatRoute
 }
 
@@ -167,6 +193,20 @@ declare module '@tanstack/react-router' {
       path: '/marketplace'
       fullPath: '/marketplace'
       preLoaderRoute: typeof MarketplaceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/roadmap': {
+      id: '/roadmap'
+      path: '/roadmap'
+      fullPath: '/roadmap'
+      preLoaderRoute: typeof RoadmapRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/whitepaper': {
+      id: '/whitepaper'
+      path: '/whitepaper'
+      fullPath: '/whitepaper'
+      preLoaderRoute: typeof WhitepaperRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/$': {
@@ -221,6 +261,8 @@ const rootRouteChildren: RootRouteChildren = {
   BaselineRoute: BaselineRoute,
   DocsRoute: DocsRouteWithChildren,
   MarketplaceRoute: MarketplaceRouteWithChildren,
+  RoadmapRoute: RoadmapRoute,
+  WhitepaperRoute: WhitepaperRoute,
   ApiSplatRoute: ApiSplatRoute,
 }
 export const routeTree = rootRouteImport

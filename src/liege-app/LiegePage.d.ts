@@ -5,3 +5,5 @@ export const LiegeMarketplace: ComponentType;
 export const LiegeWorkspace: ComponentType;
 export const LiegeDocs: ComponentType;
 export const LiegeBaseline: ComponentType;
+export const LiegeRoadmap: ComponentType;
+export const LiegeWhitepaper: ComponentType;
