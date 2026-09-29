@@ -57,7 +57,7 @@ export async function ensureEscrowWallet(client: Queryable, jobId: string) {
   const account = privateKeyToAccount(privateKey);
   const created = await client.query<EscrowWallet>(
     "INSERT INTO escrow_wallets (job_id, address, encrypted_private_key) VALUES ($1,$2,$3) ON CONFLICT (job_id) DO UPDATE SET job_id = EXCLUDED.job_id RETURNING *",
-    [jobId, account.address.toLowerCase(), encryptEscrowPrivateKey(privateKey)],
+    [jobId, account.address.toLowerCase(), encryptEscrowPrivateKey(privateKey, jobId)],
   );
   return { address: created.rows[0].address };
 }
@@ -250,7 +250,7 @@ export async function escrowSigner(client: Queryable, jobId: string) {
   if (!wallet.rowCount)
     throw new ApiError(409, "escrow_wallet_missing", "This job does not have an escrow wallet.");
   return privateKeyToAccount(
-    decryptEscrowPrivateKey(wallet.rows[0].encrypted_private_key) as `0x${string}`,
+    decryptEscrowPrivateKey(wallet.rows[0].encrypted_private_key, jobId) as `0x${string}`,
   );
 }
 

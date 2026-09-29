@@ -13,7 +13,9 @@ bun run migrate
 bun run dev
 ```
 
-`DATABASE_URL`, `RHC_RPC_URL`, `AUTH_TOKEN_PEPPER`, `CRON_SECRET`, and `ADMIN_WALLET_ADDRESSES` are required for a production deployment. Set a separate 32-byte `DATA_ENCRYPTION_KEY` before production private payloads are created; until then, the service derives its at-rest payload key from `AUTH_TOKEN_PEPPER` for backward-compatible deployment. `CRON_SECRET` protects maintenance endpoints.
+`DATABASE_URL`, `RHC_RPC_URL`, `AUTH_TOKEN_PEPPER`, `DATA_ENCRYPTION_KEY`, `CRON_SECRET`, and `ADMIN_WALLET_ADDRESSES` are required for a production deployment, and `DATA_ENCRYPTION_KEY` must differ from `AUTH_TOKEN_PEPPER`. `CRON_SECRET` protects maintenance endpoints.
+
+Briefs, deliverables, rationales, and escrow wallet keys are encrypted at rest with keys derived from `DATA_ENCRYPTION_KEY`, each bound to its record and purpose. The server holds the key and can read them, so this is not end-to-end encryption. To rotate the key, move the old one to `DATA_ENCRYPTION_KEY_PREVIOUS`, set the new one, deploy, run `bun run reencrypt`, then remove the previous key. The same command upgrades rows written in the older format, which stay readable until then.
 
 In production, a remote `DATABASE_URL` must set `sslmode=verify-full` (or `verify-ca` with `sslrootcert`), or the service refuses to start. Set `DATABASE_ALLOW_INSECURE_TRANSPORT=true` only when the database is reachable solely over a private network.
 
