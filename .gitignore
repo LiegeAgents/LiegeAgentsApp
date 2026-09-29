@@ -16,6 +16,7 @@ dist-ssr
 .tanstack/**
 .nitro
 .vercel/
+/technical-docs/
 *.local
 .env
 .env.*
