@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import type { PoolClient } from "pg";
 import { z } from "zod";
@@ -6,7 +7,7 @@ import { db } from "../db/index.js";
 import { requireAuth } from "../auth.js";
 import { ApiError, asyncRoute } from "../http.js";
 import { escrowAccount, transfer, userBalance } from "../ledger.js";
-import { decryptPayload, encryptPayload, hashPayload } from "../crypto.js";
+import { decryptPayload, encryptPayload, payloadContext, payloadDigest } from "../crypto.js";
 import { audit } from "../audit.js";
 import { env } from "../config.js";
 import { evidenceUrl, isSafeEvidenceUrl } from "../evidence.js";
@@ -115,11 +116,14 @@ jobsRouter.get(
     response.json({
       data: {
         ...job,
-        brief: decryptPayload(job.brief_ciphertext),
+        brief: decryptPayload(job.brief_ciphertext, payloadContext(id, "brief")),
         brief_ciphertext: undefined,
         submission: job.deliverable_ciphertext
           ? {
-              deliverable: decryptPayload(job.deliverable_ciphertext),
+              deliverable: decryptPayload(
+                job.deliverable_ciphertext,
+                payloadContext(id, "deliverable"),
+              ),
               // Rows written before https-only validation may hold other schemes.
               evidence: (job.submission_evidence ?? []).filter(isSafeEvidenceUrl),
               createdAt: job.delivery_created_at,
@@ -128,7 +132,7 @@ jobsRouter.get(
         evaluation: job.rationale_ciphertext
           ? {
               outcome: job.evaluation_outcome,
-              rationale: decryptPayload(job.rationale_ciphertext),
+              rationale: decryptPayload(job.rationale_ciphertext, payloadContext(id, "rationale")),
               createdAt: job.evaluation_created_at,
             }
           : null,
@@ -174,6 +178,8 @@ jobsRouter.post(
         `Jobs of ${SELF_SETTLEMENT_LIMIT_USDG} USDG or more need an independent evaluator.`,
       );
     const privateBrief = input.brief ?? input.briefCiphertext!;
+    // Chosen here so the encrypted brief can be bound to its job.
+    const jobId = randomUUID();
     const client = await db.connect();
     try {
       await client.query("BEGIN");
@@ -198,16 +204,17 @@ jobsRouter.post(
           );
       }
       const result = await client.query(
-        `INSERT INTO jobs (client_id, agent_id, evaluator_id, kind, title, brief_ciphertext, brief_hash, acceptance_criteria, budget_usdg, evaluator_fee_usdg, deadline_at, expires_at, strategy_policy, escrow_mode)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+        `INSERT INTO jobs (id, client_id, agent_id, evaluator_id, kind, title, brief_ciphertext, brief_hash, acceptance_criteria, budget_usdg, evaluator_fee_usdg, deadline_at, expires_at, strategy_policy, escrow_mode)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
         [
+          jobId,
           request.auth!.userId,
           input.agentId,
           input.evaluatorId ?? null,
           input.kind,
           input.title,
-          encryptPayload(privateBrief),
-          hashPayload(privateBrief),
+          encryptPayload(privateBrief, payloadContext(jobId, "brief")),
+          payloadDigest(privateBrief),
           JSON.stringify(input.acceptanceCriteria),
           input.budgetUsdg,
           input.evaluatorFeeUsdg,
@@ -482,8 +489,8 @@ jobsRouter.post(
         [
           job.id,
           request.auth!.userId,
-          encryptPayload(payload),
-          hashPayload(payload),
+          encryptPayload(payload, payloadContext(job.id, "deliverable")),
+          payloadDigest(payload),
           JSON.stringify(input.evidence),
         ],
       );
@@ -598,8 +605,8 @@ jobsRouter.post(
           job.id,
           request.auth!.userId,
           input.outcome,
-          encryptPayload(rationale),
-          hashPayload(rationale),
+          encryptPayload(rationale, payloadContext(job.id, "rationale")),
+          payloadDigest(rationale),
         ],
       );
       const result = await client.query(
