@@ -10,7 +10,7 @@ export default defineConfig({
     tailwindcss(),
     tsconfigPaths({ projects: ['./tsconfig.json'] }),
     tanstackStart({ server: { entry: 'server' } }),
-    nitro({ preset: 'cloudflare-module' }),
+    nitro({ preset: 'vercel' }),
     react(),
   ],
 })

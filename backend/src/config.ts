@@ -19,7 +19,6 @@ const env = z.object({
   DATA_ENCRYPTION_KEY: z.string().min(32).optional(),
   CRON_SECRET: z.string().min(24).optional(),
   ADMIN_WALLET_ADDRESSES: z.string().optional(),
-  CORS_ORIGIN: z.string().default('http://localhost:3000'),
 }).parse(source)
 
 export const adminWallets = new Set((env.ADMIN_WALLET_ADDRESSES ?? '').split(',').map((value) => value.trim().toLowerCase()).filter(Boolean))

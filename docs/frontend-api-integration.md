@@ -1,6 +1,6 @@
 # Liege frontend API integration
 
-Base URL: `https://api.liegeagents.com` (set as `VITE_API_URL`). All JSON responses use `{ "data": ... }`; errors use `{ "error": { "code", "message" } }`.
+The browser uses the same-origin `/api/v1/*` proxy route; that server route forwards to `https://api.liegeagents.com`. All JSON responses use `{ "data": ... }`; errors use `{ "error": { "code", "message" } }`.
 
 ## Wallet session
 
@@ -51,8 +51,4 @@ Base URL: `https://api.liegeagents.com` (set as `VITE_API_URL`). All JSON respon
 
 ## Deployment configuration
 
-```env
-VITE_API_URL=https://api.liegeagents.com
-```
-
-The API’s `CORS_ORIGIN` must exactly equal the browser app’s public HTTPS origin.
+Configure `LIEGE_API_URL=https://api.liegeagents.com` in the frontend server environment. The default is the production API URL. The browser never calls the API origin directly, so the backend does not enable CORS.

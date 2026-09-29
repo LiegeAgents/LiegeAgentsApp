@@ -14,6 +14,7 @@ import { Route as AppRouteImport } from './routes/app'
 import { Route as BaselineRouteImport } from './routes/baseline'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as MarketplaceRouteImport } from './routes/marketplace'
+import { Route as ApiSplatRouteImport } from './routes/api/$'
 import { Route as DocsTopicRouteImport } from './routes/docs.$topic'
 import { Route as MarketplaceAgentRouteImport } from './routes/marketplace.$agent'
 
@@ -42,6 +43,11 @@ const MarketplaceRoute = MarketplaceRouteImport.update({
   path: '/marketplace',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiSplatRoute = ApiSplatRouteImport.update({
+  id: '/api/$',
+  path: '/api/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DocsTopicRoute = DocsTopicRouteImport.update({
   id: '/$topic',
   path: '/$topic',
@@ -59,6 +65,7 @@ export interface FileRoutesByFullPath {
   '/baseline': typeof BaselineRoute
   '/docs': typeof DocsRouteWithChildren
   '/marketplace': typeof MarketplaceRouteWithChildren
+  '/api/$': typeof ApiSplatRoute
   '/docs/$topic': typeof DocsTopicRoute
   '/marketplace/$agent': typeof MarketplaceAgentRoute
 }
@@ -68,6 +75,7 @@ export interface FileRoutesByTo {
   '/baseline': typeof BaselineRoute
   '/docs': typeof DocsRouteWithChildren
   '/marketplace': typeof MarketplaceRouteWithChildren
+  '/api/$': typeof ApiSplatRoute
   '/docs/$topic': typeof DocsTopicRoute
   '/marketplace/$agent': typeof MarketplaceAgentRoute
 }
@@ -78,6 +86,7 @@ export interface FileRoutesById {
   '/baseline': typeof BaselineRoute
   '/docs': typeof DocsRouteWithChildren
   '/marketplace': typeof MarketplaceRouteWithChildren
+  '/api/$': typeof ApiSplatRoute
   '/docs/$topic': typeof DocsTopicRoute
   '/marketplace/$agent': typeof MarketplaceAgentRoute
 }
@@ -89,6 +98,7 @@ export interface FileRouteTypes {
     | '/baseline'
     | '/docs'
     | '/marketplace'
+    | '/api/$'
     | '/docs/$topic'
     | '/marketplace/$agent'
   fileRoutesByTo: FileRoutesByTo
@@ -98,6 +108,7 @@ export interface FileRouteTypes {
     | '/baseline'
     | '/docs'
     | '/marketplace'
+    | '/api/$'
     | '/docs/$topic'
     | '/marketplace/$agent'
   id:
@@ -107,6 +118,7 @@ export interface FileRouteTypes {
     | '/baseline'
     | '/docs'
     | '/marketplace'
+    | '/api/$'
     | '/docs/$topic'
     | '/marketplace/$agent'
   fileRoutesById: FileRoutesById
@@ -117,6 +129,7 @@ export interface RootRouteChildren {
   BaselineRoute: typeof BaselineRoute
   DocsRoute: typeof DocsRouteWithChildren
   MarketplaceRoute: typeof MarketplaceRouteWithChildren
+  ApiSplatRoute: typeof ApiSplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -154,6 +167,13 @@ declare module '@tanstack/react-router' {
       path: '/marketplace'
       fullPath: '/marketplace'
       preLoaderRoute: typeof MarketplaceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/$': {
+      id: '/api/$'
+      path: '/api/$'
+      fullPath: '/api/$'
+      preLoaderRoute: typeof ApiSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/docs/$topic': {
@@ -201,6 +221,7 @@ const rootRouteChildren: RootRouteChildren = {
   BaselineRoute: BaselineRoute,
   DocsRoute: DocsRouteWithChildren,
   MarketplaceRoute: MarketplaceRouteWithChildren,
+  ApiSplatRoute: ApiSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
