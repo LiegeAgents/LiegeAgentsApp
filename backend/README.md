@@ -55,6 +55,10 @@ Liege is the off-chain escrow and stake authority. An allowlisted admin wallet c
 
 An evaluator needs an active profile and at least 5,000 USDG staked, and their stake must be at least five times the combined budgets of all their open, funded, submitted, or challenged jobs, including a new one. Exposure is released when a job completes, is rejected, expires, or is cancelled, and stake cannot be lowered below what open jobs need. A job without an independent evaluator is settled by its client, which is allowed only below 50 USDG. Nothing is slashed yet; that requires the dispute flow.
 
+### Not implemented yet
+
+The schema has a `challenged` job status, `disputes` and `dispute_panel_members` tables, agent `reputation_score`, and evaluator `completed_count`/`correct_count`, but no API opens or resolves disputes and nothing updates those scores; the database comments say so. Until disputes exist there is no challenge path after settlement, no slashing, and evaluator accuracy is always null.
+
 ### On-chain settlement
 
 With `ESCROW_MODE=onchain`, evaluating or expiring a job commits its outcome together with one pending payout per transfer; nothing is sent inside that database transaction. The payouts are sent afterwards, one at a time from the job's escrow wallet: provider and evaluator (or the client refund), then any other USDG left in the wallet, then the unused ETH reserve, all of which return to the client. A job that expires while open has its wallet swept the same way, so a deposit that was sent but never recorded is returned.
