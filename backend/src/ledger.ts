@@ -15,10 +15,22 @@ async function account(
   );
   if (existing.rowCount) return existing.rows[0].id;
   const created = await client.query<{ id: string }>(
-    "INSERT INTO ledger_accounts (kind, user_id, job_id) VALUES ($1, $2, $3) RETURNING id",
+    "INSERT INTO ledger_accounts (kind, user_id, job_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING RETURNING id",
     [kind, options.userId ?? null, options.jobId ?? null],
   );
-  return created.rows[0].id;
+  if (created.rowCount) return created.rows[0].id;
+  // A concurrent request created the same account first.
+  return account(client, kind, options);
+}
+
+async function lockAccount(client: PoolClient, accountId: string) {
+  const result = await client.query<{ kind: AccountKind }>(
+    "SELECT kind FROM ledger_accounts WHERE id = $1 FOR UPDATE",
+    [accountId],
+  );
+  if (!result.rowCount)
+    throw new ApiError(404, "ledger_account_not_found", "The ledger account does not exist.");
+  return result.rows[0].kind;
 }
 
 export async function balance(client: PoolClient, accountId: string) {
@@ -48,10 +60,29 @@ export async function transfer(
     amount: number;
     createdBy?: string;
     metadata?: object;
+    insufficientFunds?: ApiError;
   },
 ) {
   if (!Number.isFinite(input.amount) || input.amount <= 0)
     throw new ApiError(422, "invalid_amount", "A ledger transfer amount must be positive.");
+  // Only the platform clearing account may go negative. The row lock serializes debits per
+  // account until this transaction ends; the balance is read in a separate statement so that,
+  // under READ COMMITTED, it includes any debit committed while this one waited for the lock.
+  if ((await lockAccount(client, input.from)) !== "platform_clearing") {
+    const funded = await client.query<{ covered: boolean }>(
+      "SELECT COALESCE(sum(amount_usdg), 0) >= round($2::numeric, 6) AS covered FROM ledger_postings WHERE account_id = $1",
+      [input.from, input.amount],
+    );
+    if (!funded.rows[0].covered)
+      throw (
+        input.insufficientFunds ??
+        new ApiError(
+          422,
+          "insufficient_balance",
+          "The source account balance cannot cover this transfer.",
+        )
+      );
+  }
   const transaction = await client.query<{ id: string }>(
     "INSERT INTO ledger_transactions (reference, type, created_by, metadata) VALUES ($1,$2,$3,$4) RETURNING id",
     [
@@ -98,15 +129,10 @@ export async function setStake(
 ) {
   const available = await account(client, "available", { userId });
   const stake = await account(client, "stake", { userId });
+  await lockAccount(client, stake);
   const current = await balance(client, stake);
   const difference = targetStake - current;
   if (difference > 0) {
-    if ((await balance(client, available)) < difference)
-      throw new ApiError(
-        422,
-        "insufficient_available_balance",
-        "The evaluator does not have enough available USDG to stake that amount.",
-      );
     await transfer(client, {
       reference,
       type: "stake_lock",
@@ -115,6 +141,11 @@ export async function setStake(
       amount: difference,
       createdBy,
       metadata: { userId, targetStake },
+      insufficientFunds: new ApiError(
+        422,
+        "insufficient_available_balance",
+        "The evaluator does not have enough available USDG to stake that amount.",
+      ),
     });
   } else if (difference < 0)
     await transfer(client, {

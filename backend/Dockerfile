@@ -8,7 +8,10 @@ RUN bun install --frozen-lockfile
 FROM base AS runner
 ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+# Copy only what the service runs; secrets are injected at runtime, never baked into layers.
+COPY package.json tsconfig.json ./
+COPY src ./src
+COPY db ./db
 EXPOSE 3001
 USER bun
 CMD ["bun", "run", "start"]
