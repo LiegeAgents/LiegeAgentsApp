@@ -213,4 +213,58 @@ describe.skipIf(!databaseAvailable)("on-chain escrow settlement", () => {
     ]);
     expect(paid(open.wallet)).toEqual([["eth", client.address, GAS_RESERVE - GAS_COST]]);
   });
+
+  test("the signer refuses transfers that do not match the job's terms", async () => {
+    const attacker = `0x${"9".repeat(40)}`;
+    const tampering = [
+      (jobId: string) =>
+        db.query(
+          "UPDATE escrow_payouts SET recipient = $2 WHERE job_id = $1 AND purpose = 'provider_payment'",
+          [jobId, attacker],
+        ),
+      (jobId: string) =>
+        db.query(
+          "UPDATE escrow_payouts SET amount_raw = amount_raw * 2 WHERE job_id = $1 AND purpose = 'provider_payment'",
+          [jobId],
+        ),
+      (jobId: string) =>
+        db.query(
+          "UPDATE escrow_payouts SET recipient = $2 WHERE job_id = $1 AND purpose = 'eth_sweep'",
+          [jobId, attacker],
+        ),
+    ];
+    for (const [index, tamper] of tampering.entries()) {
+      const { jobId, wallet } = await onchainJob("funded");
+      await planAcceptance(jobId);
+      await tamper(jobId);
+      expect({ index, status: await processSettlement(jobId) }).toEqual({
+        index,
+        status: "failed",
+      });
+      const settlement = await db.query("SELECT error FROM escrow_settlements WHERE job_id = $1", [
+        jobId,
+      ]);
+      expect(settlement.rows[0].error).toContain("Signing policy refused");
+      expect(chain.mined.filter((transaction) => transaction.to === attacker)).toEqual([]);
+      if (index < 2) expect(paid(wallet)).toEqual([]);
+    }
+  });
+
+  test("every signature is logged before its transaction is broadcast", async () => {
+    const { jobId, wallet } = await onchainJob("funded");
+    await planAcceptance(jobId);
+    // The first broadcast fails before sending, so that transfer is signed a second time.
+    chain.failAt(2, "before");
+    expect(await settle(jobId)).toBe("complete");
+    const logged = await db.query(
+      "SELECT metadata->>'txHash' AS hash FROM audit_logs WHERE action = 'escrow.transfer_signed' AND target_id = $1",
+      [jobId],
+    );
+    const loggedHashes = logged.rows.map((row) => row.hash);
+    const minedHashes = chain.mined
+      .filter((transaction) => transaction.from === wallet)
+      .map((transaction) => transaction.hash);
+    for (const hash of minedHashes) expect(loggedHashes).toContain(hash);
+    expect(loggedHashes).toHaveLength(minedHashes.length + 1);
+  });
 });
