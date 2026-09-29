@@ -2,7 +2,7 @@
 
 ## Scope
 
-Liege currently includes a client-side React application and an off-chain Bun/Express/Postgres API. The API manages wallet sessions, internal USDG ledger entries, job state, evaluator profiles, and admin-controlled balance/stake operations.
+Liege includes a client-side React application and a Bun/Express/Postgres API. The API manages wallet sessions, encrypted per-job on-chain escrow keys, job state, evaluator profiles, and legacy internal ledger operations.
 
 ## Report a vulnerability
 

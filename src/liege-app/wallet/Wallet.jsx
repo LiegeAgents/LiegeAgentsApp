@@ -2,7 +2,8 @@ import React,{createContext,useContext,useEffect,useMemo,useRef,useState} from '
 import {ConnectButton,RainbowKitProvider,getDefaultConfig} from '@rainbow-me/rainbowkit'
 import '@rainbow-me/rainbowkit/styles.css'
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query'
-import {WagmiProvider,useAccount,useChainId,useDisconnect,useSignMessage} from 'wagmi'
+import {WagmiProvider,useAccount,useChainId,useDisconnect,useSignMessage,useSendTransaction,useWriteContract} from 'wagmi'
+import {erc20Abi} from 'viem'
 import {Wallet,LoaderCircle} from 'lucide-react'
 import {api,createWalletSession} from '../api'
 import './wallet.css'
@@ -31,7 +32,7 @@ export function WalletProvider({children}){
 }
 
 function LiegeWalletProvider({children}){
- const {address,connector,isConnected}=useAccount(),chainId=useChainId(),{disconnect:disconnectWallet}=useDisconnect(),{signMessageAsync}=useSignMessage()
+ const {address,connector,isConnected}=useAccount(),chainId=useChainId(),{disconnect:disconnectWallet}=useDisconnect(),{signMessageAsync}=useSignMessage(),{sendTransactionAsync}=useSendTransaction(),{writeContractAsync}=useWriteContract()
  const [apiSession,setApiSession]=useState(null),[signingIn,setSigningIn]=useState(false),[error,setError]=useState('')
  const previousAddress=useRef(address)
  useEffect(()=>{if(previousAddress.current!==address){setApiSession(null);setError('');previousAddress.current=address}},[address])
@@ -43,7 +44,8 @@ function LiegeWalletProvider({children}){
   try{const session=await createWalletSession(address,message=>signMessageAsync({message}));const account=await api.me();setApiSession(account.data||session)}catch(e){setError(e?.shortMessage||e?.message||'Wallet sign-in failed.')}finally{setSigningIn(false)}
  }
  const disconnect=()=>{disconnectWallet();setApiSession(null);setError('')}
- const value=useMemo(()=>({session:{kind:connector?.name||null,address:address||null,chain:chainId?`0x${chainId.toString(16)}`:null},ready,apiSession,signingIn,error,signIn,disconnect}),[connector?.name,address,chainId,ready,apiSession,signingIn,error])
+ const fundEscrow=async jobId=>{if(!ready||!apiSession)throw new Error('Connect and sign in before funding.');const quote=await api.fundingQuote('cookie',jobId);const data=quote.data;if(!data?.usdgTokenAddress)throw new Error('On-chain escrow is not configured yet.');const gasHash=await sendTransactionAsync({to:data.escrowAddress,value:BigInt(data.gasReserveWei)});const tokenHash=await writeContractAsync({address:data.usdgTokenAddress,abi:erc20Abi,functionName:'transfer',args:[data.escrowAddress,BigInt(data.usdgAmountRaw)]});return api.fundJob('cookie',jobId,{quoteId:data.quoteId,usdgTxHash:tokenHash,gasTxHash:gasHash})}
+ const value=useMemo(()=>({session:{kind:connector?.name||null,address:address||null,chain:chainId?`0x${chainId.toString(16)}`:null},ready,apiSession,signingIn,error,signIn,disconnect,fundEscrow}),[connector?.name,address,chainId,ready,apiSession,signingIn,error,sendTransactionAsync,writeContractAsync])
  return <Context.Provider value={value}>{children}</Context.Provider>
 }
 

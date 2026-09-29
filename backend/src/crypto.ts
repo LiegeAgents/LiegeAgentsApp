@@ -18,3 +18,10 @@ export function decryptPayload(value: string) {
   decipher.setAuthTag(Buffer.from(tag, 'base64url'))
   return Buffer.concat([decipher.update(Buffer.from(ciphertext, 'base64url')), decipher.final()]).toString('utf8')
 }
+
+export function encryptEscrowPrivateKey(value: string) { return encryptPayload(`escrow-key:v1:${value}`) }
+export function decryptEscrowPrivateKey(value: string) {
+  const payload = decryptPayload(value)
+  if (!payload.startsWith('escrow-key:v1:')) throw new Error('Invalid encrypted escrow key.')
+  return payload.slice('escrow-key:v1:'.length)
+}
