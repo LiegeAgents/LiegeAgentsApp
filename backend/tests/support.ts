@@ -8,7 +8,12 @@ import { migrate } from "../src/db/migrate.js";
 import { creditUser, userBalance } from "../src/ledger.js";
 
 export { db };
-export const api = () => request(app);
+// One server for the whole run: a new ephemeral server per request intermittently answers from
+// the wrong listener under Bun.
+const server = app.listen(0);
+server.unref();
+await new Promise((resolve) => server.once("listening", resolve));
+export const api = () => request(server);
 
 // These tests drop and rebuild the schema, so they only run against a *_test database.
 // Without one they are skipped locally, but CI must provide one.
