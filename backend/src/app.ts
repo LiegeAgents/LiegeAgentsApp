@@ -9,7 +9,7 @@ import { evaluatorsRouter } from "./routes/evaluators.js";
 import { adminRouter } from "./routes/admin.js";
 import { accountRouter } from "./routes/account.js";
 import { ApiError, asyncRoute, errorHandler } from "./http.js";
-import { rateLimit, requestContext } from "./operations.js";
+import { parseTrustProxy, rateLimit, requestContext } from "./operations.js";
 
 export const app = express();
 export const healthPayload = () => ({
@@ -18,7 +18,7 @@ export const healthPayload = () => ({
   version: process.env.npm_package_version ?? "0.1.0",
 });
 app.disable("x-powered-by");
-app.set("trust proxy", 1);
+app.set("trust proxy", parseTrustProxy(env.TRUST_PROXY));
 // Before body parsing, so even a malformed-body error carries a request id.
 app.use(requestContext);
 app.use(express.json({ limit: "128kb" }));

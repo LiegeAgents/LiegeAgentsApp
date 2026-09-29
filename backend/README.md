@@ -19,6 +19,8 @@ Briefs, deliverables, rationales, and escrow wallet keys are encrypted at rest w
 
 In production, a remote `DATABASE_URL` must set `sslmode=verify-full` (or `verify-ca` with `sslrootcert`), or the service refuses to start. Set `DATABASE_ALLOW_INSECURE_TRANSPORT=true` only when the database is reachable solely over a private network.
 
+Each client IP gets 120 requests a minute, with separate budgets of 20 for sign-in and 20 for the on-chain funding routes. Client IPs come from `X-Forwarded-For` as allowed by `TRUST_PROXY` (default `1`, one proxy hop); set it to the address or CIDR range of the proxy in front of the service, and accept traffic only from that proxy, or clients can pick their own rate limit bucket.
+
 ## Test
 
 ```sh
