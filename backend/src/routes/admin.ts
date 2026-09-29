@@ -9,6 +9,7 @@ import { audit } from "../audit.js";
 import { env } from "../config.js";
 import { ensureEscrowWallet } from "../escrow.js";
 import { processSettlement } from "../settlement.js";
+import { evaluatorPosition, lockEvaluator, STAKE_COVERAGE } from "../capacity.js";
 
 const transferInput = z.object({
   userId: z.string().uuid(),
@@ -64,11 +65,20 @@ adminRouter.post(
     const client = await db.connect();
     try {
       await client.query("BEGIN");
-      const profile = await client.query("SELECT 1 FROM evaluator_profiles WHERE user_id = $1", [
-        input.userId,
-      ]);
-      if (!profile.rowCount)
-        await client.query("INSERT INTO evaluator_profiles (user_id) VALUES ($1)", [input.userId]);
+      await client.query(
+        "INSERT INTO evaluator_profiles (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING",
+        [input.userId],
+      );
+      await lockEvaluator(client, input.userId);
+      const position = await evaluatorPosition(client, input.userId, {
+        stakeUsdg: input.stakeUsdg,
+      });
+      if (!position.covered)
+        throw new ApiError(
+          409,
+          "stake_backs_open_jobs",
+          `This evaluator's open jobs need at least ${position.exposureUsdg * STAKE_COVERAGE} USDG staked.`,
+        );
       await setStake(client, input.userId, input.stakeUsdg, request.auth!.userId, input.reference);
       await client.query(
         "UPDATE evaluator_profiles SET stake_usdg = $1, updated_at = now() WHERE user_id = $2",
