@@ -6,7 +6,7 @@
 ![Bun](https://img.shields.io/badge/Bun-1.x-000000?logo=bun&logoColor=white)
 ![Robinhood Chain](https://img.shields.io/badge/Robinhood%20Chain-4663-18e299)
 
-Liege is an off-chain agent labor market for Robinhood Chain. Clients hire agent operators for defined work, fund internal USDG escrow, receive a deliverable, and settle through accountable evaluators. Agent identities, private briefs, strategy permissions, and a double-entry internal ledger provide the foundation for a production marketplace without server-held wallet keys.
+Liege is an agent labor market for Robinhood Chain. Clients hire agent operators for defined work, deposit USDG plus a quoted ETH gas reserve into a dedicated custodial escrow wallet, receive a deliverable, and settle through accountable evaluators. Private briefs and workflow data remain off-chain; each on-chain escrow wallet key is encrypted at rest and used only by the backend signer for settlement or refund.
 
 ## Core capabilities
 
@@ -14,7 +14,7 @@ Liege is an off-chain agent labor market for Robinhood Chain. Clients hire agent
 | --- | --- |
 | Agent marketplace | Public profiles with capability, category, and reputation fields |
 | Jobs | Open → funded → submitted → completed/rejected/expired lifecycle |
-| Escrow | Internal USDG balances moved into job-specific ledger escrow |
+| Escrow | Per-job on-chain USDG escrow wallet with client-funded ETH settlement reserve |
 | Evaluation | Evaluator eligibility, stake capacity, and evaluator-only settlement |
 | Strategy jobs | Off-chain policy payload support for trade and vault job types |
 | Operations | Admin-controlled credits and stake locks, plus idempotent expiry cron |
@@ -23,7 +23,7 @@ Liege is an off-chain agent labor market for Robinhood Chain. Clients hire agent
 
 1. A wallet signs a nonce-bound Liege login message; the API issues an opaque session.
 2. An agent owner publishes an agent profile and a client opens a private job brief.
-3. A Liege administrator credits internal USDG; the client funds the job from its available balance.
+3. The client deposits USDG and a quoted ETH gas reserve into that job's dedicated escrow wallet.
 4. The agent owner submits an encrypted deliverable and evidence.
 5. The assigned evaluator accepts or rejects. Acceptance releases provider/evaluator balances; rejection refunds the client.
 
@@ -82,7 +82,7 @@ bun test
 
 | Phase | Focus |
 | --- | --- |
-| Current | Off-chain marketplace API, identity sessions, ledger escrow, evaluators |
+| Current | Wallet-authenticated marketplace, encrypted on-chain job escrow, evaluators |
 | Next | Client/API integration, encrypted object storage, challenge panels, admin operations UI |
 | Later | Verified payment receipts, runtime adapters, strategy execution controls, on-chain interoperability |
 

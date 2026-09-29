@@ -33,11 +33,13 @@ export const api={
  updateEvaluatorProfile:(token,input)=>request('/v1/evaluators/me',{token,method:'PUT',body:JSON.stringify(input)}),
  createAgent:(token,input)=>request('/v1/agents',{token,method:'POST',body:JSON.stringify(input)}),
  createJob:(token,input)=>request('/v1/jobs',{token,method:'POST',body:JSON.stringify(input)}),
- fundJob:(token,id)=>request(`/v1/jobs/${id}/fund`,{token,method:'POST'}),
+ fundingQuote:(token,id)=>request(`/v1/jobs/${id}/funding-quote`,{token,method:'POST'}),
+ fundJob:(token,id,input)=>request(`/v1/jobs/${id}/fund`,{token,method:'POST',body:input?JSON.stringify(input):undefined}),
  submitJob:(token,id,input)=>request(`/v1/jobs/${id}/submit`,{token,method:'POST',body:JSON.stringify(input)}),
  evaluateJob:(token,id,input)=>request(`/v1/jobs/${id}/evaluate`,{token,method:'POST',body:JSON.stringify(input)}),
  creditTestBalance:(token,input)=>request('/v1/admin/ledger/credit',{token,method:'POST',body:JSON.stringify(input)}),
  setEvaluatorStake:(token,input)=>request('/v1/admin/evaluators/stake',{token,method:'POST',body:JSON.stringify(input)}),
+ backfillEscrows:(token,input={})=>request('/v1/admin/escrows/backfill',{token,method:'POST',body:JSON.stringify(input)}),
 }
 
 const display={Research:['research','#d87cff'],Development:['code','#baff24'],'Data analysis':['data','#44aeff'],Automation:['flow','#ffa723'],Strategy:['chart','#ffa3d3']}

@@ -1,12 +1,15 @@
 import { Router } from 'express'
 import type { PoolClient } from 'pg'
 import { z } from 'zod'
+import { parseUnits } from 'viem'
 import { db } from '../db/index.js'
 import { requireAuth } from '../auth.js'
 import { ApiError, asyncRoute } from '../http.js'
 import { escrowAccount, transfer, userBalance } from '../ledger.js'
 import { decryptPayload, encryptPayload, hashPayload } from '../crypto.js'
 import { audit } from '../audit.js'
+import { env } from '../config.js'
+import { createFundingQuote, ensureEscrowWallet, settleOnchainEscrow, verifyOnchainFunding } from '../escrow.js'
 
 const jobInput = z.object({
   agentId: z.string().uuid(), evaluatorId: z.string().uuid().optional(),
@@ -25,7 +28,7 @@ export const jobsRouter = Router()
 jobsRouter.get('/', requireAuth, asyncRoute(async (request, response) => {
   const query = z.object({ status: z.enum(['open', 'funded', 'submitted', 'completed', 'rejected', 'expired', 'cancelled']).optional(), limit: z.coerce.number().int().min(1).max(100).default(50) }).parse(request.query)
   const result = await db.query(
-    `SELECT j.*, a.name AS agent_name, a.slug AS agent_slug FROM jobs j JOIN agents a ON a.id = j.agent_id
+    `SELECT j.*, a.name AS agent_name, a.slug AS agent_slug, ew.address AS escrow_address FROM jobs j JOIN agents a ON a.id = j.agent_id LEFT JOIN escrow_wallets ew ON ew.job_id = j.id
      WHERE (j.client_id = $1 OR a.owner_id = $1 OR j.evaluator_id = $1) AND ($2::job_status IS NULL OR j.status = $2)
      ORDER BY j.created_at DESC LIMIT $3`, [request.auth!.userId, query.status ?? null, query.limit],
   )
@@ -40,6 +43,7 @@ jobsRouter.get('/:id', requireAuth, asyncRoute(async (request, response) => {
     FROM jobs j JOIN agents a ON a.id = j.agent_id
     LEFT JOIN submissions s ON s.job_id = j.id
     LEFT JOIN evaluations e ON e.job_id = j.id
+    LEFT JOIN escrow_wallets ew ON ew.job_id = j.id
     WHERE j.id = $1 AND (j.client_id = $2 OR a.owner_id = $2 OR j.evaluator_id = $2)`, [id, request.auth!.userId])
   if (!result.rowCount) throw new ApiError(404, 'job_not_found', 'This job does not exist or is not available to this account.')
   const job = result.rows[0]
@@ -68,13 +72,14 @@ jobsRouter.post('/', requireAuth, asyncRoute(async (request, response) => {
   }
   const privateBrief = input.brief ?? input.briefCiphertext!
   const result = await db.query(
-    `INSERT INTO jobs (client_id, agent_id, evaluator_id, kind, title, brief_ciphertext, brief_hash, acceptance_criteria, budget_usdg, evaluator_fee_usdg, deadline_at, expires_at, strategy_policy)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-    [request.auth!.userId, input.agentId, input.evaluatorId ?? null, input.kind, input.title, encryptPayload(privateBrief), hashPayload(privateBrief), JSON.stringify(input.acceptanceCriteria), input.budgetUsdg, input.evaluatorFeeUsdg, input.deadlineAt, input.expiresAt, input.strategyPolicy ? JSON.stringify(input.strategyPolicy) : null],
+    `INSERT INTO jobs (client_id, agent_id, evaluator_id, kind, title, brief_ciphertext, brief_hash, acceptance_criteria, budget_usdg, evaluator_fee_usdg, deadline_at, expires_at, strategy_policy, escrow_mode)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+    [request.auth!.userId, input.agentId, input.evaluatorId ?? null, input.kind, input.title, encryptPayload(privateBrief), hashPayload(privateBrief), JSON.stringify(input.acceptanceCriteria), input.budgetUsdg, input.evaluatorFeeUsdg, input.deadlineAt, input.expiresAt, input.strategyPolicy ? JSON.stringify(input.strategyPolicy) : null, env.ESCROW_MODE],
   )
+  const escrow = env.ESCROW_MODE === 'onchain' ? await ensureEscrowWallet(db, result.rows[0].id) : null
   await event(result.rows[0].id, request.auth!.userId, 'job.opened')
   await audit(db, { actorId: request.auth!.userId, action: 'job.opened', targetType: 'job', targetId: result.rows[0].id, requestId: request.requestId })
-  response.status(201).json({ data: result.rows[0] })
+  response.status(201).json({ data: { ...result.rows[0], escrow } })
 }))
 
 async function transition(client: PoolClient, request: Parameters<typeof asyncRoute>[0] extends (request: infer R, ...args: never[]) => unknown ? R : never, next: 'funded' | 'submitted' | 'completed' | 'rejected') {
@@ -90,8 +95,24 @@ async function transition(client: PoolClient, request: Parameters<typeof asyncRo
   return value
 }
 
+jobsRouter.post('/:id/funding-quote', requireAuth, asyncRoute(async (request, response) => {
+  const id = z.string().uuid().parse(request.params.id)
+  const job = await db.query<{ client_id: string; status: string; escrow_mode: string; address: string; budget_usdg: string; evaluator_fee_usdg: string }>('SELECT j.client_id, j.status, j.escrow_mode, j.budget_usdg, j.evaluator_fee_usdg, ew.address FROM jobs j LEFT JOIN escrow_wallets ew ON ew.job_id = j.id WHERE j.id = $1', [id])
+  if (!job.rowCount || job.rows[0].client_id !== request.auth!.userId) throw new ApiError(404, 'job_not_found', 'This job is not available to this account.')
+  if (job.rows[0].status !== 'open' || job.rows[0].escrow_mode !== 'onchain' || !job.rows[0].address) throw new ApiError(409, 'onchain_funding_unavailable', 'This job is not ready for on-chain funding.')
+  response.json({ data: { escrowAddress: job.rows[0].address, usdgTokenAddress: env.USDG_TOKEN_ADDRESS, usdgDecimals: env.USDG_DECIMALS, usdgAmountRaw: (parseUnits(job.rows[0].budget_usdg, env.USDG_DECIMALS) + parseUnits(job.rows[0].evaluator_fee_usdg, env.USDG_DECIMALS)).toString(), ...(await createFundingQuote(db, id)) } })
+}))
+
 jobsRouter.post('/:id/fund', requireAuth, asyncRoute(async (request, response) => {
-  const client = await db.connect(); try { await client.query('BEGIN'); const job = await transition(client, request, 'funded'); const total = Number(job.budget_usdg) + Number(job.evaluator_fee_usdg); const available = await userBalance(client, request.auth!.userId); if (available.amount < total) throw new ApiError(422, 'insufficient_available_balance', 'Your available USDG balance cannot fund this job.'); await transfer(client, { reference: `job-fund:${job.id}`, type: 'job_fund', from: available.accountId, to: await escrowAccount(client, job.id), amount: total, createdBy: request.auth!.userId, metadata: { jobId: job.id } }); const result = await client.query("UPDATE jobs SET status = 'funded', funded_at = now(), updated_at = now() WHERE id = $1 RETURNING *", [job.id]); await client.query('INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,$3)', [job.id, request.auth!.userId, 'job.funded']); await client.query('COMMIT'); response.json({ data: result.rows[0] }) } catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
+  const onchainInput = z.object({ quoteId: z.string().uuid(), usdgTxHash: z.string(), gasTxHash: z.string() }).safeParse(request.body)
+  const client = await db.connect(); try { await client.query('BEGIN'); const job = await transition(client, request, 'funded');
+    if (job.escrow_mode === 'onchain') {
+      if (!onchainInput.success) throw new ApiError(422, 'onchain_funding_payload_required', 'quoteId, usdgTxHash, and gasTxHash are required for on-chain funding.')
+      const funding = await verifyOnchainFunding(client, onchainInput.data, { jobId: job.id, clientAddress: request.auth!.walletAddress, budgetUsdg: String(job.budget_usdg), evaluatorFeeUsdg: String(job.evaluator_fee_usdg) })
+      await client.query('INSERT INTO escrow_fundings (job_id, usdg_tx_hash, gas_tx_hash, usdg_amount_raw, gas_amount_wei) VALUES ($1,$2,$3,$4,$5)', [job.id, funding.usdgTxHash, funding.gasTxHash, funding.usdgAmountRaw, funding.gasAmountWei])
+    } else { const total = Number(job.budget_usdg) + Number(job.evaluator_fee_usdg); const available = await userBalance(client, request.auth!.userId); if (available.amount < total) throw new ApiError(422, 'insufficient_available_balance', 'Your available USDG balance cannot fund this job.'); await transfer(client, { reference: `job-fund:${job.id}`, type: 'job_fund', from: available.accountId, to: await escrowAccount(client, job.id), amount: total, createdBy: request.auth!.userId, metadata: { jobId: job.id } }) }
+    const result = await client.query("UPDATE jobs SET status = 'funded', funded_at = now(), updated_at = now() WHERE id = $1 RETURNING *", [job.id]); await client.query('INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,$3)', [job.id, request.auth!.userId, 'job.funded']); await client.query('COMMIT'); response.json({ data: result.rows[0] })
+  } catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
 }))
 
 jobsRouter.post('/:id/submit', requireAuth, asyncRoute(async (request, response) => {
@@ -104,5 +125,14 @@ jobsRouter.post('/:id/evaluate', requireAuth, asyncRoute(async (request, respons
   const input = z.object({ outcome: z.enum(['accepted', 'rejected']), rationale: z.string().min(1).max(100_000).optional(), rationaleCiphertext: z.string().min(1).max(100_000).optional() }).refine(value => Boolean(value.rationale || value.rationaleCiphertext), 'rationale is required.').parse(request.body)
   const rationale = input.rationale ?? input.rationaleCiphertext!
   const target = input.outcome === 'accepted' ? 'completed' : 'rejected'
-  const client = await db.connect(); try { await client.query('BEGIN'); const job = await transition(client, request, target); const escrow = await escrowAccount(client, job.id); const total = Number(job.budget_usdg) + Number(job.evaluator_fee_usdg); if (target === 'completed') { const provider = await userBalance(client, job.provider_id); const evaluator = await userBalance(client, request.auth!.userId); await transfer(client, { reference: `job-settle-provider:${job.id}`, type: 'job_settlement', from: escrow, to: provider.accountId, amount: Number(job.budget_usdg), createdBy: request.auth!.userId, metadata: { jobId: job.id } }); if (Number(job.evaluator_fee_usdg) > 0) await transfer(client, { reference: `job-settle-evaluator:${job.id}`, type: 'evaluator_fee', from: escrow, to: evaluator.accountId, amount: Number(job.evaluator_fee_usdg), createdBy: request.auth!.userId, metadata: { jobId: job.id } }) } else { const clientBalance = await userBalance(client, job.client_id); await transfer(client, { reference: `job-refund:${job.id}`, type: 'job_refund', from: escrow, to: clientBalance.accountId, amount: total, createdBy: request.auth!.userId, metadata: { jobId: job.id } }) }; await client.query('INSERT INTO evaluations (job_id, evaluator_id, outcome, rationale_ciphertext, rationale_hash) VALUES ($1,$2,$3,$4,$5)', [job.id, request.auth!.userId, input.outcome, encryptPayload(rationale), hashPayload(rationale)]); const result = await client.query(`UPDATE jobs SET status = '${target}', settled_at = now(), updated_at = now() WHERE id = $1 RETURNING *`, [job.id]); await client.query('INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,$3)', [job.id, request.auth!.userId, `job.${target}`]); await client.query('COMMIT'); response.json({ data: result.rows[0] }) } catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
+  const client = await db.connect(); try { await client.query('BEGIN'); const job = await transition(client, request, target)
+    if (job.escrow_mode === 'onchain') {
+      const addresses = await client.query<{ client_address: string; provider_address: string; evaluator_address: string }>(`SELECT c.wallet_address AS client_address, p.wallet_address AS provider_address, e.wallet_address AS evaluator_address FROM jobs j JOIN users c ON c.id = j.client_id JOIN users p ON p.id = $1 JOIN users e ON e.id = $2 WHERE j.id = $3`, [job.provider_id, request.auth!.userId, job.id])
+      if (!addresses.rowCount) throw new ApiError(409, 'escrow_participants_missing', 'The on-chain escrow participants are incomplete.')
+      const settlement = await settleOnchainEscrow(client, { jobId: job.id, outcome: input.outcome, clientAddress: addresses.rows[0].client_address, providerAddress: addresses.rows[0].provider_address, evaluatorAddress: addresses.rows[0].evaluator_address, budgetUsdg: String(job.budget_usdg), evaluatorFeeUsdg: String(job.evaluator_fee_usdg) })
+      await client.query("INSERT INTO escrow_settlements (job_id, outcome, provider_tx_hash, evaluator_tx_hash, refund_tx_hash, gas_refund_tx_hash, status) VALUES ($1,$2,$3,$4,$5,$6,'complete')", [job.id, input.outcome, settlement.providerTxHash, settlement.evaluatorTxHash, settlement.refundTxHash, settlement.gasRefundTxHash])
+    } else { const escrow = await escrowAccount(client, job.id); const total = Number(job.budget_usdg) + Number(job.evaluator_fee_usdg); if (target === 'completed') { const provider = await userBalance(client, job.provider_id); const evaluator = await userBalance(client, request.auth!.userId); await transfer(client, { reference: `job-settle-provider:${job.id}`, type: 'job_settlement', from: escrow, to: provider.accountId, amount: Number(job.budget_usdg), createdBy: request.auth!.userId, metadata: { jobId: job.id } }); if (Number(job.evaluator_fee_usdg) > 0) await transfer(client, { reference: `job-settle-evaluator:${job.id}`, type: 'evaluator_fee', from: escrow, to: evaluator.accountId, amount: Number(job.evaluator_fee_usdg), createdBy: request.auth!.userId, metadata: { jobId: job.id } }) } else { const clientBalance = await userBalance(client, job.client_id); await transfer(client, { reference: `job-refund:${job.id}`, type: 'job_refund', from: escrow, to: clientBalance.accountId, amount: total, createdBy: request.auth!.userId, metadata: { jobId: job.id } }) }
+    }
+    await client.query('INSERT INTO evaluations (job_id, evaluator_id, outcome, rationale_ciphertext, rationale_hash) VALUES ($1,$2,$3,$4,$5)', [job.id, request.auth!.userId, input.outcome, encryptPayload(rationale), hashPayload(rationale)]); const result = await client.query(`UPDATE jobs SET status = '${target}', settled_at = now(), updated_at = now() WHERE id = $1 RETURNING *`, [job.id]); await client.query('INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,$3)', [job.id, request.auth!.userId, `job.${target}`]); await client.query('COMMIT'); response.json({ data: result.rows[0] })
+  } catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
 }))
