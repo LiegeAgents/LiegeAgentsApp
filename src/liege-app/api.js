@@ -11,11 +11,11 @@ async function request(path,{token,...options}={}){
  return body
 }
 
-export async function createWalletSession(address,provider){
+export async function createWalletSession(address,signMessage){
  const nonce=await request('/v1/auth/nonce',{method:'POST',body:JSON.stringify({address})})
  const message=nonce.data?.message
  if(!message)throw new ApiError('The API did not return a sign-in message.')
- const signature=await provider.request({method:'personal_sign',params:[message,address]})
+ const signature=await signMessage(message)
  const verified=await request('/v1/auth/verify',{method:'POST',body:JSON.stringify({address,nonce:nonce.data.nonce,signature})})
  return verified.data
 }
