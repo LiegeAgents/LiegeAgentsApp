@@ -36,7 +36,8 @@ test("ciphertexts are bound to their purpose, record, and key", () => {
   expect(() => ring.decrypt(sealed, "payload", "job:2:brief")).toThrow();
   expect(() => ring.decrypt(sealed, "escrow-key", "job:1:brief")).toThrow();
   const [version, keyId, iv, ciphertext, tag] = sealed.split(".");
-  const tampered = [version, keyId, iv, `A${ciphertext.slice(1)}`, tag].join(".");
+  const flipped = ciphertext[0] === "A" ? "B" : "A";
+  const tampered = [version, keyId, iv, `${flipped}${ciphertext.slice(1)}`, tag].join(".");
   expect(() => ring.decrypt(tampered, "payload", "job:1:brief")).toThrow();
 });
 

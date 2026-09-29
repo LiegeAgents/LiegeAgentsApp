@@ -10,8 +10,7 @@ import { creditUser, userBalance } from "../src/ledger.js";
 export { db };
 // One server for the whole run: a new ephemeral server per request intermittently answers from
 // the wrong listener under Bun.
-const server = app.listen(0);
-server.unref();
+const server = app.listen(0, "127.0.0.1");
 await new Promise((resolve) => server.once("listening", resolve));
 export const api = () => request(server);
 
