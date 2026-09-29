@@ -29,6 +29,8 @@ The integration tests drop and rebuild the schema of a disposable Postgres datab
 
 ## API surface
 
+[`docs/openapi.yaml`](../docs/openapi.yaml) is the contract for every route, including request and response schemas; `tests/contract.test.ts` fails when a route or response drifts from it. Every error has the shape `{ "error": { "code", "message", "requestId", "fields"? } }`, where `requestId` matches the `X-Request-Id` header.
+
 | Area            | Endpoints                                                                                                                                 |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | Health          | `GET /health`                                                                                                                             |

@@ -59,6 +59,9 @@ const jobInput = z
 
 export const jobsRouter = Router();
 
+// The encrypted brief is only useful to the server; clients receive it decrypted on GET /:id.
+const publicJob = ({ brief_ciphertext: _ciphertext, ...job }: Record<string, unknown>) => job;
+
 jobsRouter.get(
   "/",
   requireAuth,
@@ -77,7 +80,7 @@ jobsRouter.get(
      ORDER BY j.created_at DESC LIMIT $3`,
       [request.auth!.userId, query.status ?? null, query.limit],
     );
-    response.json({ data: result.rows });
+    response.json({ data: result.rows.map(publicJob) });
   }),
 );
 
@@ -239,7 +242,7 @@ jobsRouter.post(
         requestId: request.requestId,
       });
       await client.query("COMMIT");
-      response.status(201).json({ data: { ...job, escrow } });
+      response.status(201).json({ data: { ...publicJob(job), escrow } });
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
@@ -454,7 +457,7 @@ jobsRouter.post(
         [job.id, request.auth!.userId, "job.funded"],
       );
       await client.query("COMMIT");
-      response.json({ data: result.rows[0] });
+      response.json({ data: publicJob(result.rows[0]) });
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
@@ -503,7 +506,7 @@ jobsRouter.post(
         [job.id, request.auth!.userId, "job.submitted"],
       );
       await client.query("COMMIT");
-      response.json({ data: result.rows[0] });
+      response.json({ data: publicJob(result.rows[0]) });
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
@@ -618,7 +621,7 @@ jobsRouter.post(
         [job.id, request.auth!.userId, `job.${target}`],
       );
       await client.query("COMMIT");
-      response.json({ data: result.rows[0] });
+      response.json({ data: publicJob(result.rows[0]) });
       // Failures are recorded on the payout rows; the settle-escrows cron retries them.
       if (job.escrow_mode === "onchain")
         void processSettlement(job.id).catch((error) =>
