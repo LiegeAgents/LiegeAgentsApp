@@ -270,7 +270,7 @@ async function transition(
 ) {
   const id = z.string().uuid().parse(request.params.id);
   const job = await client.query(
-    "SELECT j.*, a.owner_id AS provider_id, j.deadline_at <= now() AS past_deadline, j.expires_at <= now() AS past_expiry FROM jobs j JOIN agents a ON a.id = j.agent_id WHERE j.id = $1 FOR UPDATE",
+    "SELECT j.*, a.owner_id AS provider_id, j.deadline_at <= now() AS past_deadline, j.expires_at <= now() AS past_expiry FROM jobs j JOIN agents a ON a.id = j.agent_id WHERE j.id = $1 FOR UPDATE OF j",
     [id],
   );
   if (!job.rowCount) throw new ApiError(404, "job_not_found", "This job does not exist.");

@@ -63,8 +63,7 @@ describe.skipIf(!databaseAvailable)("ledger debits", () => {
   test("concurrent funding requests cannot overdraw the client", async () => {
     const [client, provider] = await Promise.all([signIn(), signIn()]);
     await credit(client.userId, 60);
-    // One agent per job: transitions lock the agent row too, which would serialize jobs that
-    // share an agent and hide the race.
+    // One agent per job, so nothing but the ledger lock can serialize the two requests.
     const jobs = [
       await createJob(client, await createAgent(provider), 40),
       await createJob(client, await createAgent(provider), 40),
