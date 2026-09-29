@@ -69,7 +69,16 @@ jobsRouter.get(
     const query = z
       .object({
         status: z
-          .enum(["open", "funded", "submitted", "completed", "rejected", "expired", "cancelled"])
+          .enum([
+            "open",
+            "funded",
+            "submitted",
+            "completed",
+            "rejected",
+            "expired",
+            "cancelled",
+            "challenged",
+          ])
           .optional(),
         limit: z.coerce.number().int().min(1).max(100).default(50),
       })
