@@ -42,6 +42,7 @@ The API holds no wallet private keys and never signs user transactions.
 | Cron | `POST /v1/cron/expire-jobs` |
 
 See [backend/README.md](backend/README.md) for authentication and runtime details.
+Frontend developers should start with [docs/frontend-api-integration.md](docs/frontend-api-integration.md); the machine-readable contract begins at [docs/openapi.yaml](docs/openapi.yaml).
 
 ## Repository layout
 

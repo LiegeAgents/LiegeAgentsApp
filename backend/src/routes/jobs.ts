@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { Router } from 'express'
 import type { PoolClient } from 'pg'
 import { z } from 'zod'
@@ -6,19 +5,20 @@ import { db } from '../db/index.js'
 import { requireAuth } from '../auth.js'
 import { ApiError, asyncRoute } from '../http.js'
 import { escrowAccount, transfer, userBalance } from '../ledger.js'
+import { decryptPayload, encryptPayload, hashPayload } from '../crypto.js'
+import { audit } from '../audit.js'
 
 const jobInput = z.object({
   agentId: z.string().uuid(), evaluatorId: z.string().uuid().optional(),
   kind: z.enum(['standard', 'trade_stock_token', 'manage_vault', 'subscription', 'fund_transfer']).default('standard'),
-  title: z.string().min(3).max(160), briefCiphertext: z.string().min(1).max(100_000),
+  title: z.string().min(3).max(160), brief: z.string().min(1).max(100_000).optional(), briefCiphertext: z.string().min(1).max(100_000).optional(),
   acceptanceCriteria: z.array(z.string().min(1).max(500)).min(1).max(20), budgetUsdg: z.coerce.number().positive(),
   evaluatorFeeUsdg: z.coerce.number().min(0).default(0), deadlineAt: z.coerce.date(), expiresAt: z.coerce.date(),
   strategyPolicy: z.record(z.unknown()).optional(),
-}).superRefine((value, ctx) => { if (value.expiresAt < value.deadlineAt) ctx.addIssue({ code: 'custom', message: 'expiresAt cannot precede deadlineAt.' }) })
+}).superRefine((value, ctx) => { if (!value.brief && !value.briefCiphertext) ctx.addIssue({ code: 'custom', message: 'brief is required.' }); if (value.expiresAt < value.deadlineAt) ctx.addIssue({ code: 'custom', message: 'expiresAt cannot precede deadlineAt.' }) })
 
 const event = async (jobId: string, actorId: string | null, eventType: string, payload: object = {}) =>
   db.query('INSERT INTO job_events (job_id, actor_id, event_type, payload) VALUES ($1, $2, $3, $4)', [jobId, actorId, eventType, JSON.stringify(payload)])
-const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 
 export const jobsRouter = Router()
 
@@ -30,6 +30,15 @@ jobsRouter.get('/', requireAuth, asyncRoute(async (request, response) => {
      ORDER BY j.created_at DESC LIMIT $3`, [request.auth!.userId, query.status ?? null, query.limit],
   )
   response.json({ data: result.rows })
+}))
+
+jobsRouter.get('/:id', requireAuth, asyncRoute(async (request, response) => {
+  const id = z.string().uuid().parse(request.params.id)
+  const result = await db.query(`SELECT j.*, a.owner_id AS provider_id, a.name AS agent_name, a.slug AS agent_slug FROM jobs j JOIN agents a ON a.id = j.agent_id
+    WHERE j.id = $1 AND (j.client_id = $2 OR a.owner_id = $2 OR j.evaluator_id = $2)`, [id, request.auth!.userId])
+  if (!result.rowCount) throw new ApiError(404, 'job_not_found', 'This job does not exist or is not available to this account.')
+  const job = result.rows[0]
+  response.json({ data: { ...job, brief: decryptPayload(job.brief_ciphertext), brief_ciphertext: undefined } })
 }))
 
 jobsRouter.post('/', requireAuth, asyncRoute(async (request, response) => {
@@ -46,12 +55,14 @@ jobsRouter.post('/', requireAuth, asyncRoute(async (request, response) => {
     if (input.evaluatorId === request.auth!.userId && input.budgetUsdg >= 50) throw new ApiError(422, 'self_evaluation_limit', 'Client self-evaluation is allowed only for jobs below 50 USDG.')
     if (input.evaluatorId === agent.rows[0].owner_id) throw new ApiError(422, 'provider_cannot_evaluate', 'An agent owner cannot evaluate their own job.')
   }
+  const privateBrief = input.brief ?? input.briefCiphertext!
   const result = await db.query(
     `INSERT INTO jobs (client_id, agent_id, evaluator_id, kind, title, brief_ciphertext, brief_hash, acceptance_criteria, budget_usdg, evaluator_fee_usdg, deadline_at, expires_at, strategy_policy)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-    [request.auth!.userId, input.agentId, input.evaluatorId ?? null, input.kind, input.title, input.briefCiphertext, hash(input.briefCiphertext), JSON.stringify(input.acceptanceCriteria), input.budgetUsdg, input.evaluatorFeeUsdg, input.deadlineAt, input.expiresAt, input.strategyPolicy ? JSON.stringify(input.strategyPolicy) : null],
+    [request.auth!.userId, input.agentId, input.evaluatorId ?? null, input.kind, input.title, encryptPayload(privateBrief), hashPayload(privateBrief), JSON.stringify(input.acceptanceCriteria), input.budgetUsdg, input.evaluatorFeeUsdg, input.deadlineAt, input.expiresAt, input.strategyPolicy ? JSON.stringify(input.strategyPolicy) : null],
   )
   await event(result.rows[0].id, request.auth!.userId, 'job.opened')
+  await audit(db, { actorId: request.auth!.userId, action: 'job.opened', targetType: 'job', targetId: result.rows[0].id, requestId: request.requestId })
   response.status(201).json({ data: result.rows[0] })
 }))
 
@@ -73,12 +84,14 @@ jobsRouter.post('/:id/fund', requireAuth, asyncRoute(async (request, response) =
 }))
 
 jobsRouter.post('/:id/submit', requireAuth, asyncRoute(async (request, response) => {
-  const input = z.object({ deliverableCiphertext: z.string().min(1).max(100_000), evidence: z.array(z.string().url()).max(20).default([]) }).parse(request.body)
-  const client = await db.connect(); try { await client.query('BEGIN'); const job = await transition(client, request, 'submitted'); await client.query('INSERT INTO submissions (job_id, provider_id, deliverable_ciphertext, deliverable_hash, evidence) VALUES ($1,$2,$3,$4,$5)', [job.id, request.auth!.userId, input.deliverableCiphertext, hash(input.deliverableCiphertext), JSON.stringify(input.evidence)]); const result = await client.query("UPDATE jobs SET status = 'submitted', submitted_at = now(), updated_at = now() WHERE id = $1 RETURNING *", [job.id]); await client.query('INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,$3)', [job.id, request.auth!.userId, 'job.submitted']); await client.query('COMMIT'); response.json({ data: result.rows[0] }) } catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
+  const input = z.object({ deliverable: z.string().min(1).max(100_000).optional(), deliverableCiphertext: z.string().min(1).max(100_000).optional(), evidence: z.array(z.string().url()).max(20).default([]) }).refine(value => Boolean(value.deliverable || value.deliverableCiphertext), 'deliverable is required.').parse(request.body)
+  const payload = input.deliverable ?? input.deliverableCiphertext!
+  const client = await db.connect(); try { await client.query('BEGIN'); const job = await transition(client, request, 'submitted'); await client.query('INSERT INTO submissions (job_id, provider_id, deliverable_ciphertext, deliverable_hash, evidence) VALUES ($1,$2,$3,$4,$5)', [job.id, request.auth!.userId, encryptPayload(payload), hashPayload(payload), JSON.stringify(input.evidence)]); const result = await client.query("UPDATE jobs SET status = 'submitted', submitted_at = now(), updated_at = now() WHERE id = $1 RETURNING *", [job.id]); await client.query('INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,$3)', [job.id, request.auth!.userId, 'job.submitted']); await client.query('COMMIT'); response.json({ data: result.rows[0] }) } catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
 }))
 
 jobsRouter.post('/:id/evaluate', requireAuth, asyncRoute(async (request, response) => {
-  const input = z.object({ outcome: z.enum(['accepted', 'rejected']), rationaleCiphertext: z.string().min(1).max(100_000) }).parse(request.body)
+  const input = z.object({ outcome: z.enum(['accepted', 'rejected']), rationale: z.string().min(1).max(100_000).optional(), rationaleCiphertext: z.string().min(1).max(100_000).optional() }).refine(value => Boolean(value.rationale || value.rationaleCiphertext), 'rationale is required.').parse(request.body)
+  const rationale = input.rationale ?? input.rationaleCiphertext!
   const target = input.outcome === 'accepted' ? 'completed' : 'rejected'
-  const client = await db.connect(); try { await client.query('BEGIN'); const job = await transition(client, request, target); const escrow = await escrowAccount(client, job.id); const total = Number(job.budget_usdg) + Number(job.evaluator_fee_usdg); if (target === 'completed') { const provider = await userBalance(client, job.provider_id); const evaluator = await userBalance(client, request.auth!.userId); await transfer(client, { reference: `job-settle-provider:${job.id}`, type: 'job_settlement', from: escrow, to: provider.accountId, amount: Number(job.budget_usdg), createdBy: request.auth!.userId, metadata: { jobId: job.id } }); if (Number(job.evaluator_fee_usdg) > 0) await transfer(client, { reference: `job-settle-evaluator:${job.id}`, type: 'evaluator_fee', from: escrow, to: evaluator.accountId, amount: Number(job.evaluator_fee_usdg), createdBy: request.auth!.userId, metadata: { jobId: job.id } }) } else { const clientBalance = await userBalance(client, job.client_id); await transfer(client, { reference: `job-refund:${job.id}`, type: 'job_refund', from: escrow, to: clientBalance.accountId, amount: total, createdBy: request.auth!.userId, metadata: { jobId: job.id } }) }; await client.query('INSERT INTO evaluations (job_id, evaluator_id, outcome, rationale_ciphertext, rationale_hash) VALUES ($1,$2,$3,$4,$5)', [job.id, request.auth!.userId, input.outcome, input.rationaleCiphertext, hash(input.rationaleCiphertext)]); const result = await client.query(`UPDATE jobs SET status = '${target}', settled_at = now(), updated_at = now() WHERE id = $1 RETURNING *`, [job.id]); await client.query('INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,$3)', [job.id, request.auth!.userId, `job.${target}`]); await client.query('COMMIT'); response.json({ data: result.rows[0] }) } catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
+  const client = await db.connect(); try { await client.query('BEGIN'); const job = await transition(client, request, target); const escrow = await escrowAccount(client, job.id); const total = Number(job.budget_usdg) + Number(job.evaluator_fee_usdg); if (target === 'completed') { const provider = await userBalance(client, job.provider_id); const evaluator = await userBalance(client, request.auth!.userId); await transfer(client, { reference: `job-settle-provider:${job.id}`, type: 'job_settlement', from: escrow, to: provider.accountId, amount: Number(job.budget_usdg), createdBy: request.auth!.userId, metadata: { jobId: job.id } }); if (Number(job.evaluator_fee_usdg) > 0) await transfer(client, { reference: `job-settle-evaluator:${job.id}`, type: 'evaluator_fee', from: escrow, to: evaluator.accountId, amount: Number(job.evaluator_fee_usdg), createdBy: request.auth!.userId, metadata: { jobId: job.id } }) } else { const clientBalance = await userBalance(client, job.client_id); await transfer(client, { reference: `job-refund:${job.id}`, type: 'job_refund', from: escrow, to: clientBalance.accountId, amount: total, createdBy: request.auth!.userId, metadata: { jobId: job.id } }) }; await client.query('INSERT INTO evaluations (job_id, evaluator_id, outcome, rationale_ciphertext, rationale_hash) VALUES ($1,$2,$3,$4,$5)', [job.id, request.auth!.userId, input.outcome, encryptPayload(rationale), hashPayload(rationale)]); const result = await client.query(`UPDATE jobs SET status = '${target}', settled_at = now(), updated_at = now() WHERE id = $1 RETURNING *`, [job.id]); await client.query('INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,$3)', [job.id, request.auth!.userId, `job.${target}`]); await client.query('COMMIT'); response.json({ data: result.rows[0] }) } catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
 }))
