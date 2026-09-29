@@ -6,9 +6,8 @@ import { userBalance } from '../ledger.js'
 import { asyncRoute } from '../http.js'
 
 export const accountRouter = Router()
-accountRouter.use(requireAuth)
 
-accountRouter.get('/me', asyncRoute(async (request, response) => {
+accountRouter.get('/me', requireAuth, asyncRoute(async (request, response) => {
   const user = await db.query('SELECT id, wallet_address, display_name, created_at FROM users WHERE id = $1', [request.auth!.userId])
   const client = await db.connect()
   try {
@@ -17,7 +16,7 @@ accountRouter.get('/me', asyncRoute(async (request, response) => {
   } finally { client.release() }
 }))
 
-accountRouter.get('/me/ledger', asyncRoute(async (request, response) => {
+accountRouter.get('/me/ledger', requireAuth, asyncRoute(async (request, response) => {
   const query = z.object({ limit: z.coerce.number().int().min(1).max(100).default(50) }).parse(request.query)
   const result = await db.query(
     `SELECT lt.id, lt.reference, lt.type, lt.metadata, lt.created_at, sum(lp.amount_usdg) FILTER (WHERE la.user_id = $1) AS net_usdg
