@@ -16,6 +16,7 @@ const env = z.object({
   RHC_ID: z.coerce.number().int().positive().default(4663),
   RHC_RPC_URL: z.string().url(),
   AUTH_TOKEN_PEPPER: z.string().min(32).optional(),
+  DATA_ENCRYPTION_KEY: z.string().min(32).optional(),
   CRON_SECRET: z.string().min(24).optional(),
   ADMIN_WALLET_ADDRESSES: z.string().optional(),
   CORS_ORIGIN: z.string().default('http://localhost:3000'),

@@ -11,7 +11,7 @@ bun run migrate
 bun run dev
 ```
 
-`DATABASE_URL`, `RHC_RPC_URL`, `AUTH_TOKEN_PEPPER`, and `CRON_SECRET` are required for a production deployment. Generate the latter two as independent 32-byte random values. `AUTH_TOKEN_PEPPER` hashes opaque bearer sessions; `CRON_SECRET` protects maintenance endpoints.
+`DATABASE_URL`, `RHC_RPC_URL`, `AUTH_TOKEN_PEPPER`, `CRON_SECRET`, and `ADMIN_WALLET_ADDRESSES` are required for a production deployment. Set a separate 32-byte `DATA_ENCRYPTION_KEY` before production private payloads are created; until then, the service derives its at-rest payload key from `AUTH_TOKEN_PEPPER` for backward-compatible deployment. `CRON_SECRET` protects maintenance endpoints.
 
 ## API surface
 
