@@ -4,7 +4,7 @@ import '@rainbow-me/rainbowkit/styles.css'
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query'
 import {WagmiProvider,useAccount,useChainId,useDisconnect,useSignMessage} from 'wagmi'
 import {Wallet,LoaderCircle} from 'lucide-react'
-import {createWalletSession} from '../api'
+import {api,createWalletSession} from '../api'
 import './wallet.css'
 
 const robinhoodChain={
@@ -36,10 +36,11 @@ function LiegeWalletProvider({children}){
  const previousAddress=useRef(address)
  useEffect(()=>{if(previousAddress.current!==address){setApiSession(null);setError('');previousAddress.current=address}},[address])
  const ready=Boolean(isConnected&&address&&chainId===robinhoodChain.id)
+ useEffect(()=>{let active=true;if(!ready||!address)return;api.me().then(result=>{if(active&&result.data?.wallet_address?.toLowerCase()===address.toLowerCase())setApiSession(result.data)}).catch(()=>{});return()=>{active=false}},[ready,address])
  const signIn=async()=>{
   if(!ready||!address){setError('Connect a wallet on Robinhood Chain before signing in.');return}
   setSigningIn(true);setError('')
-  try{setApiSession(await createWalletSession(address,message=>signMessageAsync({message})))}catch(e){setError(e?.shortMessage||e?.message||'Wallet sign-in failed.')}finally{setSigningIn(false)}
+  try{const session=await createWalletSession(address,message=>signMessageAsync({message}));const account=await api.me();setApiSession(account.data||session)}catch(e){setError(e?.shortMessage||e?.message||'Wallet sign-in failed.')}finally{setSigningIn(false)}
  }
  const disconnect=()=>{disconnectWallet();setApiSession(null);setError('')}
  const value=useMemo(()=>({session:{kind:connector?.name||null,address:address||null,chain:chainId?`0x${chainId.toString(16)}`:null},ready,apiSession,signingIn,error,signIn,disconnect}),[connector?.name,address,chainId,ready,apiSession,signingIn,error])

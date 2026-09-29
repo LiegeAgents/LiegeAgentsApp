@@ -5,7 +5,7 @@ export class ApiError extends Error {
 }
 
 async function request(path,{token,...options}={}){
- const response=await fetch(API_URL+path,{...options,headers:{Accept:'application/json',...(options.body?{'Content-Type':'application/json'}:{}),...(token?{Authorization:`Bearer ${token}`}:{}),...options.headers}})
+ const response=await fetch(API_URL+path,{...options,headers:{Accept:'application/json',...(options.body?{'Content-Type':'application/json'}:{}),...(token&&token!=='cookie'?{Authorization:`Bearer ${token}`} : {}),...options.headers}})
  const body=await response.json().catch(()=>null)
  if(!response.ok)throw new ApiError(body?.error?.message||`Request failed (${response.status}).`,response.status,body?.error?.code)
  return body
