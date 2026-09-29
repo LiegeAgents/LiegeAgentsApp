@@ -45,7 +45,8 @@ export const api={
 const display={Research:['research','#d87cff'],Development:['code','#baff24'],'Data analysis':['data','#44aeff'],Automation:['flow','#ffa723'],Strategy:['chart','#ffa3d3']}
 export function agentForDisplay(agent){
  const [icon,color]=display[agent.category]||['flow','#18e299']
- return {...agent,symbol:(agent.slug||agent.name).replace(/[^a-z0-9]/gi,'').slice(0,4).toUpperCase()||'AGNT',tags:Array.isArray(agent.capabilities)?agent.capabilities:[],icon,color,price:Number(agent.metadata?.startingJobFeeUsdg||0),jobs:Number(agent.metadata?.completedJobs||0),score:Math.round(Number(agent.reputation_score||0)*100),live:true}
+ const configuredSymbol=typeof agent.metadata?.symbol==='string'?agent.metadata.symbol.trim().toUpperCase():''
+ return {...agent,symbol:configuredSymbol||((agent.slug||agent.name).replace(/[^a-z0-9]/gi,'').slice(0,4).toUpperCase()||'AGNT'),tags:Array.isArray(agent.capabilities)?agent.capabilities:[],icon,color,price:Number(agent.metadata?.startingJobFeeUsdg||0),jobs:Number(agent.metadata?.completedJobs||0),score:Math.round(Number(agent.reputation_score||0)*100),live:true}
 }
 export function jobForDisplay(job){
  const status=String(job.status||'open').replace(/^./,x=>x.toUpperCase())
