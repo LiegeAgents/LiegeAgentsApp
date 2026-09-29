@@ -1,8 +1,7 @@
 import React,{createContext,useContext,useEffect,useRef,useState} from 'react'
-import {Wallet,ArrowUpRight,ArrowRight,Check,Copy,LogOut,Smartphone,ShieldCheck,LoaderCircle,ChevronLeft,Globe} from 'lucide-react'
-import {QRCodeSVG} from 'qrcode.react'
+import {Wallet,ArrowUpRight,ArrowRight,Check,Copy,LogOut,ShieldCheck,LoaderCircle,Globe} from 'lucide-react'
 import {Modal,Button,Notice} from '../UI'
-import {ROBINHOOD,WALLETS,chainHex,firstAccount,shortAddress,walletError,discoverWallets,readWallet,connectWallet,switchToRobinhood,publicAppUrl,mobileWalletLink} from './core'
+import {ROBINHOOD,WALLETS,chainHex,firstAccount,shortAddress,walletError,discoverWallets,readWallet,connectWallet,switchToRobinhood,createWalletConnectProvider} from './core'
 import {createWalletSession} from '../api'
 import './wallet.css'
 
@@ -14,7 +13,7 @@ export function useWallet(){return useContext(Context)}
 export function WalletProvider({children,discover=discoverWallets}){
  const [providers,setProviders]=useState({}),[session,setSession]=useState(empty),[open,setOpen]=useState(()=>WALLETS[new URLSearchParams(location.search).get('wallet')]?true:false),[pending,setPending]=useState(null),[error,setError]=useState(''),[apiSession,setApiSession]=useState(null),[signingIn,setSigningIn]=useState(false)
  const registry=useRef({}),active=useRef(null),abort=useRef(null),cleanup=useRef(()=>{}),restored=useRef(false),revision=useRef(0)
- const disconnect=()=>{abort.current?.abort();abort.current=null;revision.current++;cleanup.current();active.current=null;remember(null);setSession(empty);setApiSession(null);setSigningIn(false);setPending(null);setError('')}
+ const disconnect=()=>{const provider=active.current?.provider;abort.current?.abort();abort.current=null;revision.current++;cleanup.current();active.current=null;provider?.disconnect?.().catch?.(()=>{});remember(null);setSession(empty);setApiSession(null);setSigningIn(false);setPending(null);setError('')}
  const bind=(kind,provider)=>{
   cleanup.current();active.current={kind,provider};const identity=active.current
   let refreshCount=0
@@ -38,10 +37,10 @@ export function WalletProvider({children,discover=discoverWallets}){
   })
   return()=>{disposed=true;restored.current=false;stop();cleanup.current();abort.current?.abort()}
  },[])
- const connect=async(kind,networkOnly=false)=>{
+ const connect=async(kind,networkOnly=false,connectedProvider=null)=>{
   if(abort.current)return
-  const provider=registry.current[kind]?.provider
-  if(!provider){setError(`Open Liege in ${WALLETS[kind].name} or install its browser extension.`);return}
+  const provider=connectedProvider||registry.current[kind]?.provider
+  if(!provider){setError(`${WALLETS[kind].name} is unavailable. Try again in a moment.`);return}
   const controller=new AbortController();abort.current=controller;const rev=++revision.current
   setPending(kind);setError('');setSession(empty);bind(kind,provider)
   try{
@@ -61,23 +60,23 @@ export function WalletProvider({children,discover=discoverWallets}){
   setSigningIn(true);setError('')
   try{setApiSession(await createWalletSession(session.address,active.current.provider))}catch(e){setError(e?.message||'Wallet sign-in failed.')}finally{setSigningIn(false)}
  }
- const value={providers,session,pending,error,apiSession,signingIn,connect,disconnect,cancel,signIn,show:()=>{setError('');setOpen(true)},close:()=>setOpen(false),ready:!!session.address&&session.chain===ROBINHOOD.chainId}
+ const connectWalletConnect=async()=>{
+  if(abort.current)return
+  try{const provider=await createWalletConnectProvider(import.meta.env.VITE_WALLETCONNECT_PROJECT_ID);registry.current={...registry.current,walletconnect:{provider,announced:true}};setProviders({...registry.current});await connect('walletconnect',false,provider)}catch(e){setError(walletError(e,'walletconnect'))}
+ }
+ const value={providers,session,pending,error,apiSession,signingIn,connect,connectWalletConnect,disconnect,cancel,signIn,show:()=>{setError('');setOpen(true)},close:()=>setOpen(false),ready:!!session.address&&session.chain===ROBINHOOD.chainId}
  return <Context.Provider value={value}>{children}{open&&<WalletDialog/>}</Context.Provider>
 }
 export function WalletButton(){const w=useWallet();return <button className={'wallet-connect'+(w.session.address?' has-account':'')} onClick={w.show} aria-label={w.session.address?'Manage connected wallet':'Connect wallet'}>{w.pending?<LoaderCircle className="wallet-spin" size={14}/>:w.session.address?<i className={w.ready?'':'wrong-network'}/>:<Wallet size={14}/>}<span>{w.pending?'Connecting…':w.session.address?(w.ready?shortAddress(w.session.address):'Switch network'):'Connect wallet'}</span></button>}
-function WalletGlyph({kind}){return <span className={'wallet-glyph '+kind} aria-hidden="true"><img src={kind==='phantom'?'/brand/wallet-phantom.png':'/brand/wallet-metamask.svg'} alt=""/></span>}
+function WalletGlyph(){return <span className="wallet-glyph walletconnect" aria-hidden="true"><Wallet size={24}/></span>}
 function WalletDialog(){
- const w=useWallet(),[phone,setPhone]=useState(null),[copied,setCopied]=useState(false)
- const mobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&/Macintosh/.test(navigator.userAgent))
- const publicUrl=publicAppUrl(import.meta.env.VITE_PUBLIC_APP_URL,location.href)
+ const w=useWallet(),[copied,setCopied]=useState(false)
  const copy=async()=>{try{await navigator.clipboard.writeText(w.session.address);setCopied(true)}catch{setCopied(false)}}
- const phoneLink=phone?mobileWalletLink(phone,publicUrl):null
- return <Modal title={phone?'Continue on your phone':w.session.address?'Your wallet':'Connect your wallet'} onClose={w.close}><div className="wallet-dialog-body">
+ return <Modal title={w.session.address?'Your wallet':'Connect your wallet'} onClose={w.close}><div className="wallet-dialog-body">
   <div className="wallet-network"><span className="wallet-network-symbol"><Globe size={17}/></span><span>Robinhood Chain<small>Mainnet · ETH for gas</small></span><b>4663</b></div>
-  {phone?<><button className="wallet-back" onClick={()=>setPhone(null)}><ChevronLeft size={14}/>All wallets</button><div className="wallet-phone"><WalletGlyph kind={phone}/><h3>Open Liege in {WALLETS[phone].name}</h3>{phoneLink?<><QRCodeSVG value={phoneLink} size={184} marginSize={4} level="M" title={`Open Liege in ${WALLETS[phone].name}`}/><p>Scan with your phone’s camera. Connect inside the wallet app’s browser.</p><a className="l-button" href={phoneLink}>Open {WALLETS[phone].name}<ArrowUpRight size={14}/></a><small>{new URL(publicUrl).host}</small></>:<><p>This preview is running on your computer. Phone connections become available when Liege is opened at its public HTTPS address.</p><a href={WALLETS[phone].install} target="_blank" rel="noreferrer">Get {WALLETS[phone].name}<ArrowUpRight size={14}/></a></>}</div></>
-  :w.pending?<div className="wallet-pending" role="status"><WalletGlyph kind={w.pending}/><LoaderCircle className="wallet-spin" size={22}/><h3>Continue in {WALLETS[w.pending].name}</h3><p>Unlock your wallet and approve the account connection and Robinhood Chain network request.</p><Button secondary onClick={w.cancel}>Cancel connection</Button></div>
+  {w.pending?<div className="wallet-pending" role="status"><WalletGlyph/><LoaderCircle className="wallet-spin" size={22}/><h3>Continue in your wallet</h3><p>Choose a wallet, scan the WalletConnect code if needed, then approve access on Robinhood Chain.</p><Button secondary onClick={w.cancel}>Cancel connection</Button></div>
   :w.session.address?<><div className="wallet-account"><WalletGlyph kind={w.session.kind}/><span>{WALLETS[w.session.kind].name}<strong>{shortAddress(w.session.address)}</strong></span><span className={'wallet-status '+(!w.ready?'needs-network':'')}>{w.ready?<Check size={12}/>:<Globe size={12}/>} {w.ready?'Connected':'Wrong network'}</span></div><code className="wallet-full-address">{w.session.address}</code>{!w.ready&&<><p className="wallet-intro">Your account is connected. Switch to Robinhood Chain to finish setup.</p><Button onClick={()=>w.connect(w.session.kind,true)}>Switch to Robinhood Chain <ArrowRight size={14}/></Button></>}{w.ready&&!w.apiSession&&<><p className="wallet-intro">Sign a one-time wallet message to create your Liege session. This does not move funds.</p><Button onClick={w.signIn} disabled={w.signingIn}>{w.signingIn?'Waiting for signature…':'Sign in to Liege'} <ShieldCheck size={14}/></Button></>}{w.apiSession&&<Notice>Signed in to Liege. Your session is held only in this tab.</Notice>}<div className="wallet-account-actions"><button onClick={copy}><Copy size={14}/>{copied?'Copied':'Copy address'}</button><a href={`${ROBINHOOD.blockExplorerUrls[0]}/address/${w.session.address}`} target="_blank" rel="noreferrer">Explorer<ArrowUpRight size={14}/></a></div><button className="wallet-disconnect" onClick={w.disconnect}><LogOut size={14}/>Disconnect from Liege</button></>
-  :<><p className="wallet-intro">Choose your wallet to connect an Ethereum account on Robinhood Chain.</p><div className="wallet-choices">{Object.entries(WALLETS).map(([kind,meta])=><div className="wallet-choice" key={kind}>{mobile&&!w.providers[kind]&&publicUrl?<a className="wallet-choice-main" href={mobileWalletLink(kind,publicUrl)}><WalletGlyph kind={kind}/><span><strong>{meta.name}</strong><small>Open mobile app</small></span><ArrowUpRight size={17}/></a>:<button className="wallet-choice-main" onClick={()=>w.providers[kind]?w.connect(kind):setPhone(kind)}><WalletGlyph kind={kind}/><span><strong>{meta.name}</strong><small>{w.providers[kind]?'Detected in this browser':'Extension & mobile app'}</small></span>{w.providers[kind]?<span className="wallet-detected">Connect <ArrowRight size={13}/></span>:<ArrowRight size={17}/>}</button>}<div className="wallet-choice-links"><button onClick={()=>setPhone(kind)}><Smartphone size={12}/>Use phone</button>{!w.providers[kind]&&<a href={meta.install} target="_blank" rel="noreferrer">Install extension<ArrowUpRight size={12}/></a>}</div></div>)}</div></>}
+  :<><p className="wallet-intro">Connect with WalletConnect. Choose MetaMask, Phantom, Rabby, Coinbase Wallet, or any supported wallet; Liege requests Robinhood Chain (4663).</p><Button onClick={w.connectWalletConnect}><WalletGlyph/>Connect with WalletConnect <ArrowRight size={14}/></Button></>}
   {w.error&&<Notice error>{w.error}</Notice>}
   <div className="wallet-privacy"><ShieldCheck size={16}/><p>Connection shares your public address. It does not authorize a payment or give an agent access to your funds.</p></div>
  </div></Modal>
