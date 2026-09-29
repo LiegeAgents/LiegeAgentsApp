@@ -58,16 +58,23 @@ export async function createFundingQuote(client: Queryable, jobId: string) {
 }
 
 export async function verifyOnchainFunding(client: Queryable, input: FundingInput, expected: { jobId: string; clientAddress: string; budgetUsdg: string; evaluatorFeeUsdg: string }) {
-  const quote = await client.query<{ gas_reserve_wei: string }>('SELECT gas_reserve_wei FROM escrow_funding_quotes WHERE id = $1 AND job_id = $2 AND expires_at > now()', [input.quoteId, expected.jobId])
-  if (!quote.rowCount) throw new ApiError(422, 'expired_funding_quote', 'This gas-reserve quote has expired. Request a new quote.')
+  const quote = await client.query<{ gas_reserve_wei: string; expires_at: Date }>('SELECT gas_reserve_wei, expires_at FROM escrow_funding_quotes WHERE id = $1 AND job_id = $2', [input.quoteId, expected.jobId])
+  if (!quote.rowCount) throw new ApiError(422, 'funding_quote_not_found', 'This funding quote does not belong to this job.')
   const wallet = await client.query<EscrowWallet>('SELECT * FROM escrow_wallets WHERE job_id = $1', [expected.jobId])
   if (!wallet.rowCount) throw new ApiError(409, 'escrow_wallet_missing', 'This job does not yet have an escrow wallet.')
-  const [tokenReceipt, gasReceipt, tokenTx, gasTx] = await Promise.all([
-    publicClient.waitForTransactionReceipt({ hash: hash(input.usdgTxHash), confirmations: env.ESCROW_CONFIRMATIONS }),
-    publicClient.waitForTransactionReceipt({ hash: hash(input.gasTxHash), confirmations: env.ESCROW_CONFIRMATIONS }),
-    publicClient.getTransaction({ hash: hash(input.usdgTxHash) }),
-    publicClient.getTransaction({ hash: hash(input.gasTxHash) }),
-  ])
+  const confirmedTransaction = async (transactionHash: Hash) => {
+    const receipt = await publicClient.waitForTransactionReceipt({ hash: transactionHash, confirmations: env.ESCROW_CONFIRMATIONS })
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try { return { receipt, transaction: await publicClient.getTransaction({ hash: transactionHash }) } }
+      catch { await new Promise(resolve => setTimeout(resolve, 500)) }
+    }
+    throw new ApiError(503, 'rpc_transaction_indexing_delayed', 'The chain confirmed your transfer, but the RPC has not indexed it yet. Retry funding with the same transaction hashes.')
+  }
+  const [token, gas] = await Promise.all([confirmedTransaction(hash(input.usdgTxHash)), confirmedTransaction(hash(input.gasTxHash))])
+  const [tokenBlock, gasBlock] = await Promise.all([publicClient.getBlock({ blockNumber: token.receipt.blockNumber }), publicClient.getBlock({ blockNumber: gas.receipt.blockNumber })])
+  if (tokenBlock.timestamp * 1000n > BigInt(quote.rows[0].expires_at.getTime()) || gasBlock.timestamp * 1000n > BigInt(quote.rows[0].expires_at.getTime())) throw new ApiError(422, 'expired_funding_quote', 'The deposits were mined after the gas-reserve quote expired. Contact support before retrying.')
+  const { receipt: tokenReceipt, transaction: tokenTx } = token
+  const { receipt: gasReceipt, transaction: gasTx } = gas
   if (tokenReceipt.status !== 'success' || gasReceipt.status !== 'success') throw new ApiError(422, 'funding_transaction_failed', 'Both USDG and ETH reserve transfers must succeed.')
   const clientAddress = address(expected.clientAddress), escrowAddress = address(wallet.rows[0].address)
   if (tokenTx.from.toLowerCase() !== clientAddress || gasTx.from.toLowerCase() !== clientAddress || gasTx.to?.toLowerCase() !== escrowAddress || gasTx.value !== BigInt(quote.rows[0].gas_reserve_wei)) throw new ApiError(422, 'invalid_funding_sender', 'Funding transfers must come from the client wallet and use the quoted ETH reserve.')
