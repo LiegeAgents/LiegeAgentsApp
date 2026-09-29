@@ -9,6 +9,8 @@ import './liege.css'
 import './workspace-premium.css'
 import './hero-centered.css'
 const ReferencePage = lazy(() => import('./ReferencePage'))
+const Roadmap = lazy(() => import('./Roadmap'))
+const Whitepaper = lazy(() => import('./Whitepaper'))
 
 const BODY_CLASSES =
   'geist_mono_1bf8cbf6-module__FlyLvG__variable inter_83a5a2e-module__LLhbsa__variable papermono_aa9e121d-module__lcvVkq__variable arizonaflare_e3e8b677-module__PbqaBq__variable'
@@ -54,6 +56,22 @@ export function LiegeDocs() {
   return (
     <Shell>
       <Docs />
+    </Shell>
+  )
+}
+
+export function LiegeRoadmap() {
+  return (
+    <Shell>
+      <Roadmap />
+    </Shell>
+  )
+}
+
+export function LiegeWhitepaper() {
+  return (
+    <Shell>
+      <Whitepaper />
     </Shell>
   )
 }

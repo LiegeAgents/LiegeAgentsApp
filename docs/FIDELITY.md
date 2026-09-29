@@ -68,3 +68,11 @@ The user requested a longer, fully visible hero dashboard independent of the sec
 ## Hero proportion correction — 26 September
 
 The user clarified that extending the dashboard meant widening it, not making it taller. This correction supersedes the extra activity/permissions row described above. Removed that row from the hero preview and tightened its vertical spacing while retaining the 1380px maximum width and all primary overview panels. The desktop frame is now approximately 819px high instead of 1381px. There is no fixed-height crop or fade. The actual workspace remains unchanged. The hero ribbon uses a width of at least 100% of its section instead of a fixed 1920px canvas, eliminating the hard side cutoff on wide monitors.
+
+## Roadmap and whitepaper pages — 29 September 2026
+
+The user requested roadmap and whitepaper pages. These are new Liege layouts, not claimed Mintlify pages:
+
+- `/whitepaper` reuses the documentation layout (1088px frame, sidebar, Arizona Flare headings, PaperMono labels, fine borders, mint accents) with a numbered, scroll-tracked table of contents, definition lists, tables, and a print layout. Content comes from the supplied Liege specification and the current codebase. Each mechanism is marked Built (in this codebase) or Designed (specified, not built), and the page states where the current build differs from the design, including that job escrow wallets are held by the Liege service. At the user's direction it names $LIEGE and its utility; supply, distribution, launch details and internal launch tactics are omitted.
+- `/roadmap` presents the README roadmap phases (Current, Next, Later) in the same frame, jobs protocol first and without dates, as the user chose.
+- Both pages are linked from the header Resources menu and the footer's Liege column.
