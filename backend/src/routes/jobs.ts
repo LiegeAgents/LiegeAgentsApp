@@ -37,6 +37,10 @@ jobsRouter.get('/', requireAuth, asyncRoute(async (request, response) => {
 
 jobsRouter.get('/:id', requireAuth, asyncRoute(async (request, response) => {
   const id = z.string().uuid().parse(request.params.id)
+  if (env.ESCROW_MODE === 'onchain') {
+    const migrated = await db.query<{ id: string }>("UPDATE jobs SET escrow_mode = 'onchain', updated_at = now() WHERE id = $1 AND client_id = $2 AND status = 'open' AND escrow_mode = 'ledger' RETURNING id", [id, request.auth!.userId])
+    if (migrated.rowCount) await ensureEscrowWallet(db, id)
+  }
   const result = await db.query(`SELECT j.*, a.owner_id AS provider_id, a.name AS agent_name, a.slug AS agent_slug,
       s.deliverable_ciphertext, s.evidence AS submission_evidence, s.created_at AS delivery_created_at,
       e.outcome AS evaluation_outcome, e.rationale_ciphertext, e.created_at AS evaluation_created_at
@@ -97,6 +101,10 @@ async function transition(client: PoolClient, request: Parameters<typeof asyncRo
 
 jobsRouter.post('/:id/funding-quote', requireAuth, asyncRoute(async (request, response) => {
   const id = z.string().uuid().parse(request.params.id)
+  if (env.ESCROW_MODE === 'onchain') {
+    const migrated = await db.query<{ id: string }>("UPDATE jobs SET escrow_mode = 'onchain', updated_at = now() WHERE id = $1 AND client_id = $2 AND status = 'open' AND escrow_mode = 'ledger' RETURNING id", [id, request.auth!.userId])
+    if (migrated.rowCount) await ensureEscrowWallet(db, id)
+  }
   const job = await db.query<{ client_id: string; status: string; escrow_mode: string; address: string; budget_usdg: string; evaluator_fee_usdg: string }>('SELECT j.client_id, j.status, j.escrow_mode, j.budget_usdg, j.evaluator_fee_usdg, ew.address FROM jobs j LEFT JOIN escrow_wallets ew ON ew.job_id = j.id WHERE j.id = $1', [id])
   if (!job.rowCount || job.rows[0].client_id !== request.auth!.userId) throw new ApiError(404, 'job_not_found', 'This job is not available to this account.')
   if (job.rows[0].status !== 'open' || job.rows[0].escrow_mode !== 'onchain' || !job.rows[0].address) throw new ApiError(409, 'onchain_funding_unavailable', 'This job is not ready for on-chain funding.')
