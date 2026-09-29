@@ -7,12 +7,27 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: liege
+          POSTGRES_PASSWORD: liege
+          POSTGRES_DB: liege_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U liege -d liege_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://liege:liege@localhost:5432/liege_test
     defaults:
       run:
         working-directory: backend
@@ -23,12 +38,16 @@ jobs:
           bun-version: '1.4.2'
       - run: bun install --frozen-lockfile
       - run: bun run check
+      - run: bun run format:check
       - run: bun run test
 
   build-push:
     if: github.event_name == 'push'
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     outputs:
       image: ${{ steps.image.outputs.name }}
     steps:
@@ -48,22 +67,6 @@ jobs:
             ${{ steps.image.outputs.name }}:latest
             ${{ steps.image.outputs.name }}:${{ github.sha }}
 
-  release:
-    if: github.event_name == 'push'
-    needs: build-push
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - id: tag
-        run: echo "name=backend-$(date -u +%Y%m%d%H%M)-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-      - run: git tag "${{ steps.tag.outputs.name }}" && git push origin "${{ steps.tag.outputs.name }}"
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.tag.outputs.name }}
-          generate_release_notes: true
-
   deploy:
     if: github.event_name == 'push'
     needs: build-push
@@ -77,4 +80,22 @@ jobs:
             echo "No deploy hook configured; skipping deployment."
             exit 0
           fi
-          curl --fail --silent --show-error --request POST "$DEPLOY_HOOK" || echo "Deploy hook was unreachable; continuing."
+          curl --fail --silent --show-error --request POST "$DEPLOY_HOOK"
+
+  release:
+    if: github.event_name == 'push'
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: tag
+        run: echo "name=backend-$(date -u +%Y%m%d%H%M)-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - run: git tag "${{ steps.tag.outputs.name }}" && git push origin "${{ steps.tag.outputs.name }}"
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          generate_release_notes: true

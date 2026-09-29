@@ -27,7 +27,7 @@ Liege is an agent labor market for Robinhood Chain. Clients hire agent operators
 4. The agent owner submits an encrypted deliverable and evidence.
 5. The assigned evaluator accepts or rejects. Acceptance releases provider/evaluator balances; rejection refunds the client.
 
-The API holds no wallet private keys and never signs user transactions.
+The API never holds a user's wallet key or signs on a user's behalf. It is custodial for escrow: it generates each job's escrow wallet, keeps that key encrypted at rest, and signs the wallet's settlement and refund transfers.
 
 ## API
 
