@@ -18,7 +18,7 @@ const jobInput = z.object({
   acceptanceCriteria: z.array(z.string().min(1).max(500)).min(1).max(20), budgetUsdg: z.coerce.number().positive(),
   evaluatorFeeUsdg: z.coerce.number().min(0).default(0), deadlineAt: z.coerce.date(), expiresAt: z.coerce.date(),
   strategyPolicy: z.record(z.unknown()).optional(),
-}).superRefine((value, ctx) => { if (!value.brief && !value.briefCiphertext) ctx.addIssue({ code: 'custom', message: 'brief is required.' }); if (value.expiresAt < value.deadlineAt) ctx.addIssue({ code: 'custom', message: 'expiresAt cannot precede deadlineAt.' }) })
+}).superRefine((value, ctx) => { if (!value.brief && !value.briefCiphertext) ctx.addIssue({ code: 'custom', message: 'brief is required.' }); if (value.expiresAt < value.deadlineAt) ctx.addIssue({ code: 'custom', message: 'expiresAt cannot precede deadlineAt.' }); if (!value.evaluatorId && value.evaluatorFeeUsdg > 0) ctx.addIssue({ code: 'custom', path: ['evaluatorFeeUsdg'], message: 'An evaluator is required when an evaluator fee is configured.' }) })
 
 const event = async (jobId: string, actorId: string | null, eventType: string, payload: object = {}) =>
   db.query('INSERT INTO job_events (job_id, actor_id, event_type, payload) VALUES ($1, $2, $3, $4)', [jobId, actorId, eventType, JSON.stringify(payload)])
@@ -95,7 +95,9 @@ async function transition(client: PoolClient, request: Parameters<typeof asyncRo
   if (!allowed[next].includes(value.status)) throw new ApiError(409, 'invalid_job_transition', `A ${value.status} job cannot move to ${next}.`)
   if (next === 'funded' && value.client_id !== request.auth!.userId) throw new ApiError(403, 'not_client', 'Only the client can record funding.')
   if (next === 'submitted' && value.provider_id !== request.auth!.userId) throw new ApiError(403, 'not_provider', 'Only the agent owner can submit work.')
-  if (['completed', 'rejected'].includes(next) && value.evaluator_id !== request.auth!.userId) throw new ApiError(403, 'not_evaluator', 'Only the assigned evaluator can settle this job.')
+  if (['completed', 'rejected'].includes(next)) {
+    if (value.evaluator_id ? value.evaluator_id !== request.auth!.userId : value.client_id !== request.auth!.userId) throw new ApiError(403, value.evaluator_id ? 'not_evaluator' : 'not_client', value.evaluator_id ? 'Only the assigned evaluator can settle this job.' : 'Only the job client can settle a job without an evaluator.')
+  }
   return value
 }
 
@@ -135,7 +137,7 @@ jobsRouter.post('/:id/evaluate', requireAuth, asyncRoute(async (request, respons
   const target = input.outcome === 'accepted' ? 'completed' : 'rejected'
   const client = await db.connect(); try { await client.query('BEGIN'); const job = await transition(client, request, target)
     if (job.escrow_mode === 'onchain') {
-      const addresses = await client.query<{ client_address: string; provider_address: string; evaluator_address: string }>(`SELECT c.wallet_address AS client_address, p.wallet_address AS provider_address, e.wallet_address AS evaluator_address FROM jobs j JOIN users c ON c.id = j.client_id JOIN users p ON p.id = $1 JOIN users e ON e.id = $2 WHERE j.id = $3`, [job.provider_id, request.auth!.userId, job.id])
+      const addresses = await client.query<{ client_address: string; provider_address: string; evaluator_address: string }>(`SELECT c.wallet_address AS client_address, p.wallet_address AS provider_address, COALESCE(e.wallet_address, c.wallet_address) AS evaluator_address FROM jobs j JOIN users c ON c.id = j.client_id JOIN users p ON p.id = $1 LEFT JOIN users e ON e.id = j.evaluator_id WHERE j.id = $2`, [job.provider_id, job.id])
       if (!addresses.rowCount) throw new ApiError(409, 'escrow_participants_missing', 'The on-chain escrow participants are incomplete.')
       const settlement = await settleOnchainEscrow(client, { jobId: job.id, outcome: input.outcome, clientAddress: addresses.rows[0].client_address, providerAddress: addresses.rows[0].provider_address, evaluatorAddress: addresses.rows[0].evaluator_address, budgetUsdg: String(job.budget_usdg), evaluatorFeeUsdg: String(job.evaluator_fee_usdg) })
       await client.query("INSERT INTO escrow_settlements (job_id, outcome, provider_tx_hash, evaluator_tx_hash, refund_tx_hash, gas_refund_tx_hash, status) VALUES ($1,$2,$3,$4,$5,$6,'complete')", [job.id, input.outcome, settlement.providerTxHash, settlement.evaluatorTxHash, settlement.refundTxHash, settlement.gasRefundTxHash])
