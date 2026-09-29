@@ -15,6 +15,7 @@ const env = z
   .object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     PORT: z.coerce.number().int().positive().default(3001),
+    TRUST_PROXY: z.string().min(1).default("1"),
     DATABASE_URL: z.string().url(),
     DATABASE_ALLOW_INSECURE_TRANSPORT: z
       .enum(["true", "false"])
