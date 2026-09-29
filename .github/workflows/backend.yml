@@ -32,8 +32,8 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: '1.4.2'
       - run: bun install --frozen-lockfile
@@ -51,18 +51,19 @@ jobs:
     outputs:
       image: ${{ steps.image.outputs.name }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: image
         run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}-api" >> "$GITHUB_OUTPUT"
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: ./backend
           push: true
+          build-args: GIT_SHA=${{ github.sha }}
           tags: |
             ${{ steps.image.outputs.name }}:latest
             ${{ steps.image.outputs.name }}:${{ github.sha }}
@@ -71,16 +72,33 @@ jobs:
     if: github.event_name == 'push'
     needs: build-push
     runs-on: ubuntu-latest
+    # Approval rules for production are configured on this environment in the repository settings.
+    environment: production
     steps:
-      - name: Trigger deploy hook when configured
+      - name: Deploy and wait for the new commit to serve
         env:
           DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+          BACKEND_URL: ${{ vars.BACKEND_URL }}
         run: |
           if [ -z "$DEPLOY_HOOK" ]; then
             echo "No deploy hook configured; skipping deployment."
             exit 0
           fi
           curl --fail --silent --show-error --request POST "$DEPLOY_HOOK"
+          if [ -z "$BACKEND_URL" ]; then
+            echo "::warning::BACKEND_URL is not set, so the deployment was not verified."
+            exit 0
+          fi
+          for attempt in $(seq 1 60); do
+            commit=$(curl --silent --max-time 5 "$BACKEND_URL/health" | jq -r '.commit // empty' || true)
+            if [ "$commit" = "$GITHUB_SHA" ] && curl --fail --silent --max-time 5 "$BACKEND_URL/health/ready" > /dev/null; then
+              echo "Commit $GITHUB_SHA is serving and ready."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Commit $GITHUB_SHA was not serving and ready at $BACKEND_URL within 10 minutes."
+          exit 1
 
   release:
     if: github.event_name == 'push'
@@ -89,13 +107,13 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
       - id: tag
         run: echo "name=backend-$(date -u +%Y%m%d%H%M)-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
       - run: git tag "${{ steps.tag.outputs.name }}" && git push origin "${{ steps.tag.outputs.name }}"
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ steps.tag.outputs.name }}
           generate_release_notes: true
