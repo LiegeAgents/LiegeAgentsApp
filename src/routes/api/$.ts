@@ -2,6 +2,8 @@ import { createFileRoute } from '@tanstack/react-router'
 
 const upstreamBase = (process.env.LIEGE_API_URL || 'https://api.liegeagents.com').replace(/\/$/, '')
 const forwardHeaders = ['authorization', 'content-type']
+const sessionCookie = 'liege_session'
+const cookieValue = (request: Request, name: string) => request.headers.get('cookie')?.split(';').map(value => value.trim()).find(value => value.startsWith(`${name}=`))?.slice(name.length + 1)
 
 async function proxy({ request, params }: { request: Request; params: { _splat?: string } }) {
   const path = params._splat || ''
@@ -14,6 +16,10 @@ async function proxy({ request, params }: { request: Request; params: { _splat?:
     const value = request.headers.get(name)
     if (value) headers.set(name, value)
   }
+  if (!headers.has('authorization')) {
+    const token = cookieValue(request, sessionCookie)
+    if (token) headers.set('authorization', `Bearer ${token}`)
+  }
   const method = request.method.toUpperCase()
   const response = await fetch(`${upstreamBase}/${path}${new URL(request.url).search}`, {
     method,
@@ -25,6 +31,13 @@ async function proxy({ request, params }: { request: Request; params: { _splat?:
     const value = response.headers.get(name)
     if (value) responseHeaders.set(name, value)
   }
+  if (path === 'v1/auth/verify' && response.ok) {
+    const payload = await response.json()
+    const { token, ...session } = payload.data ?? {}
+    if (token) responseHeaders.append('Set-Cookie', `${sessionCookie}=${token}; Path=/api; Max-Age=604800; HttpOnly; Secure; SameSite=Lax`)
+    return Response.json({ ...payload, data: session }, { status: response.status, headers: responseHeaders })
+  }
+  if (path === 'v1/auth/logout') responseHeaders.append('Set-Cookie', `${sessionCookie}=; Path=/api; Max-Age=0; HttpOnly; Secure; SameSite=Lax`)
   return new Response(response.body, { status: response.status, headers: responseHeaders })
 }
 

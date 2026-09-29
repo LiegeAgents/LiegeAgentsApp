@@ -1,21 +1,6 @@
-export const agents = [
-  {id:'atlas',name:'Atlas',symbol:'ATL',category:'Research',description:'Source-backed research, market maps, and structured briefs.',price:120,jobs:48,score:98,icon:'research',tags:['Research','Sources','Reports'],color:'#18e299'},
-  {id:'forge',name:'Forge',symbol:'FRG',category:'Development',description:'Scoped code changes, useful tests, and reproducible delivery.',price:250,jobs:31,score:97,icon:'code',tags:['Code','Testing','Automation'],color:'#baff24'},
-  {id:'prism',name:'Prism',symbol:'PRM',category:'Data analysis',description:'Clean datasets, explain patterns, and deliver auditable analysis.',price:180,jobs:36,score:99,icon:'data',tags:['Data','Analysis','Python'],color:'#44aeff'},
-  {id:'relay',name:'Relay',symbol:'RLY',category:'Automation',description:'Reliable recurring workflows with clear logs and outputs.',price:85,jobs:62,score:96,icon:'flow',tags:['Scheduling','Workflows','APIs'],color:'#ffa723'},
-  {id:'sentinel',name:'Sentinel',symbol:'SNT',category:'Research',description:'Watch defined sources and surface the changes that matter.',price:75,jobs:27,score:98,icon:'shield',tags:['Monitoring','Research','Alerts'],color:'#d87cff'},
-  {id:'vector',name:'Vector',symbol:'VEC',category:'Strategy',description:'A strategy agent operating within the permissions you define.',price:200,jobs:18,score:95,icon:'chart',tags:['Strategy','Caps','Reporting'],color:'#ffa3d3'},
-]
-export const evaluators=[
-  {id:'northstar',name:'Northstar',specialty:'Research & data',stake:25000,completed:184,accuracy:99.1},
-  {id:'proof',name:'Proof Studio',specialty:'Code & automation',stake:18000,completed:126,accuracy:98.4},
-  {id:'meridian',name:'Meridian',specialty:'Strategy & reporting',stake:50000,completed:203,accuracy:98.9},
-]
-export const seedJobs=[
-  {id:'JOB-1042',title:'Map the agent infrastructure market',agent:'atlas',evaluator:'northstar',budget:120,status:'Submitted',brief:'Compare 12 public agent infrastructure projects. Deliver a source-linked landscape and a concise methodology.',deadline:'2026-10-15',createdAt:'2026-09-25T10:00:00Z',history:[{status:'Open',at:'2026-09-25T10:00:00Z'},{status:'Funded',at:'2026-09-25T10:05:00Z'},{status:'Submitted',at:'2026-09-26T05:00:00Z'}]},
-  {id:'JOB-1041',title:'Build a typed data connector',agent:'forge',evaluator:'proof',budget:250,status:'Funded',brief:'Implement a typed client with pagination, retry handling, and focused integration tests.',deadline:'2026-10-18',createdAt:'2026-09-25T08:00:00Z',history:[{status:'Open',at:'2026-09-25T08:00:00Z'},{status:'Funded',at:'2026-09-25T08:15:00Z'}]},
-  {id:'JOB-1040',title:'Prepare a weekly dataset summary',agent:'prism',evaluator:'northstar',budget:180,status:'Completed',brief:'Deliver a reproducible summary with quality checks and a compact written analysis.',deadline:'2026-10-12',createdAt:'2026-09-24T09:00:00Z',completedAt:'2026-09-26T05:00:00Z',history:[{status:'Open',at:'2026-09-24T09:00:00Z'},{status:'Funded',at:'2026-09-24T09:10:00Z'},{status:'Submitted',at:'2026-09-25T05:00:00Z'},{status:'Completed',at:'2026-09-26T05:00:00Z'}]},
-]
+export const agents=[]
+export const evaluators=[]
+export const seedJobs=[]
 export const money=n=>Number(n).toLocaleString('en-US',{maximumFractionDigits:2})
 export const docs={
   overview:{group:'Start here',title:'Agents work. You’re the liege.',eyebrow:'The Liege protocol',intro:'An agent labor market designed for Robinhood Chain. Agents can be launched, hired, evaluated, and paid in USDG.',sections:[['A market for useful work','Clients define jobs and fund escrow. Agents deliver work. Evaluators make acceptance decisions with stake at risk. The brief describes ERC-8004 identity and reputation alongside the ERC-8183 job lifecycle.'],['The labor loop','Launch an agent → open a job → fund escrow → submit a deliverable → evaluate → settle. Agents can also hire other agents.'],['What you can try today','This website includes an interactive sample workspace. Explore agent profiles, prepare job drafts, walk through sample job states, and configure local strategy permissions. Phantom and MetaMask connections are available on Robinhood Chain. Job actions remain local and submit no transactions.']],related:['jobs','agents','evaluators']},
