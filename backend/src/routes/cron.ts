@@ -3,8 +3,8 @@ import { z } from "zod";
 import { env } from "../config.js";
 import { db } from "../db/index.js";
 import { ApiError, asyncRoute } from "../http.js";
-import { settleOnchainEscrow } from "../escrow.js";
 import { escrowAccount, transfer, userBalance } from "../ledger.js";
+import { planSettlement, processPendingSettlements } from "../settlement.js";
 
 export const cronRouter = Router();
 
@@ -31,31 +31,44 @@ cronRouter.post(
         await client.query("COMMIT");
         return response.json({ data: prior.rows[0].result, replayed: true });
       }
-      // Expiry semantics, in both escrow modes: an open job holds no funds and simply expires;
-      // a funded or submitted job returns its whole escrow (budget and evaluator fee) to the client.
-      const funded = await client.query<{
+      // Expiry semantics for every escrow mode and status:
+      // - ledger, open: expires; it holds no funds.
+      // - ledger, funded/submitted: the whole escrow (budget and evaluator fee) returns to the client.
+      // - on-chain, funded/submitted: the same, as a settlement sent after commit.
+      // - on-chain, open: expires, and whatever reached its wallet (a deposit that was sent but
+      //   never recorded, or the gas reserve) is swept back to the client after commit.
+      const due = await client.query<{
         id: string;
+        status: "open" | "funded" | "submitted";
         escrow_mode: "ledger" | "onchain";
+        has_wallet: boolean;
         client_id: string;
         client_address: string;
         provider_address: string;
         budget_usdg: string;
         evaluator_fee_usdg: string;
-      }>(`SELECT j.id, j.escrow_mode, j.client_id, c.wallet_address AS client_address, p.wallet_address AS provider_address, j.budget_usdg, j.evaluator_fee_usdg
+      }>(`SELECT j.id, j.status, j.escrow_mode, ew.job_id IS NOT NULL AS has_wallet, j.client_id, c.wallet_address AS client_address, p.wallet_address AS provider_address, j.budget_usdg, j.evaluator_fee_usdg
       FROM jobs j JOIN users c ON c.id = j.client_id JOIN agents a ON a.id = j.agent_id JOIN users p ON p.id = a.owner_id
-      WHERE j.status IN ('funded', 'submitted') AND j.expires_at <= now() FOR UPDATE OF j`);
-      for (const job of funded.rows) {
-        if (job.escrow_mode === "onchain") {
-          await settleOnchainEscrow(client, {
+      LEFT JOIN escrow_wallets ew ON ew.job_id = j.id
+      WHERE j.status IN ('open', 'funded', 'submitted') AND j.expires_at <= now() FOR UPDATE OF j`);
+      let refunded = 0;
+      let settlements = 0;
+      for (const job of due.rows) {
+        const funded = job.status !== "open";
+        if (job.escrow_mode === "onchain" && (funded || job.has_wallet)) {
+          await planSettlement(client, {
             jobId: job.id,
             outcome: "rejected",
+            cause: "expiry",
+            funded,
             clientAddress: job.client_address,
             providerAddress: job.provider_address,
             evaluatorAddress: job.client_address,
             budgetUsdg: job.budget_usdg,
             evaluatorFeeUsdg: job.evaluator_fee_usdg,
           });
-        } else {
+          settlements++;
+        } else if (funded) {
           await transfer(client, {
             reference: `job-expiry-refund:${job.id}`,
             type: "job_expiry_refund",
@@ -65,30 +78,44 @@ cronRouter.post(
             metadata: { jobId: job.id },
           });
         }
+        if (funded) refunded++;
       }
-      // Funded jobs are expired by id: only the rows locked and refunded above. A job funded
-      // concurrently after that SELECT stays funded until the next run refunds it.
+      // Only the rows locked above are expired. A job funded concurrently after that SELECT
+      // stays funded until the next run refunds it.
       const expired = await client.query(
-        "UPDATE jobs SET status = 'expired', settled_at = now(), updated_at = now() WHERE (id = ANY($1::uuid[]) OR status = 'open') AND expires_at <= now() RETURNING id",
-        [funded.rows.map((job) => job.id)],
+        "UPDATE jobs SET status = 'expired', settled_at = now(), updated_at = now() WHERE id = ANY($1::uuid[]) RETURNING id",
+        [due.rows.map((job) => job.id)],
       );
       if (expired.rowCount)
         await client.query(
           "INSERT INTO job_events (job_id, event_type) SELECT id, 'job.expired' FROM jobs WHERE id = ANY($1::uuid[])",
           [expired.rows.map((row) => row.id)],
         );
-      const result = { expired: expired.rowCount ?? 0, refunded: funded.rowCount ?? 0 };
+      const result = { expired: expired.rowCount ?? 0, refunded, settlements };
       await client.query(
         "INSERT INTO cron_runs (name, idempotency_key, result) VALUES ($1,$2,$3)",
         ["expire-jobs", idempotencyKey, JSON.stringify(result)],
       );
       await client.query("COMMIT");
-      response.json({ data: result, replayed: false });
+      // Send the settlements just planned, along with any earlier ones still pending.
+      response.json({
+        data: result,
+        settlements: await processPendingSettlements(),
+        replayed: false,
+      });
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
     } finally {
       client.release();
     }
+  }),
+);
+
+// Retries on-chain settlements that are still pending. Safe to call at any frequency.
+cronRouter.post(
+  "/settle-escrows",
+  asyncRoute(async (_request, response) => {
+    response.json({ data: await processPendingSettlements() });
   }),
 );

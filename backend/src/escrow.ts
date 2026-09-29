@@ -3,12 +3,19 @@ import {
   createPublicClient,
   createWalletClient,
   decodeEventLog,
+  encodeFunctionData,
   erc20Abi,
   http,
+  keccak256,
   parseUnits,
+  TransactionReceiptNotFoundError,
+  WaitForTransactionReceiptTimeoutError,
   type Address,
   type Chain,
   type Hash,
+  type Hex,
+  type LocalAccount,
+  type TransactionReceipt,
 } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { env } from "./config.js";
@@ -235,7 +242,7 @@ export async function verifyOnchainFunding(
   };
 }
 
-async function escrowAccount(client: Queryable, jobId: string) {
+export async function escrowSigner(client: Queryable, jobId: string) {
   const wallet = await client.query<EscrowWallet>(
     "SELECT * FROM escrow_wallets WHERE job_id = $1",
     [jobId],
@@ -246,40 +253,62 @@ async function escrowAccount(client: Queryable, jobId: string) {
     decryptEscrowPrivateKey(wallet.rows[0].encrypted_private_key) as `0x${string}`,
   );
 }
-async function transferUsdg(
-  client: Queryable,
-  jobId: string,
-  recipient: string,
-  amountRaw: bigint,
-) {
-  const account = await escrowAccount(client, jobId);
-  const wallet = createWalletClient({
-    account,
-    chain: robinhoodChain,
-    transport: http(env.RHC_RPC_URL),
-  });
-  const txHash = await wallet.writeContract({
-    address: usdg(),
-    abi: erc20Abi,
-    functionName: "transfer",
-    args: [address(recipient), amountRaw],
-  });
-  const receipt = await publicClient.waitForTransactionReceipt({
-    hash: txHash,
-    confirmations: env.ESCROW_CONFIRMATIONS,
-  });
-  if (receipt.status !== "success")
-    throw new ApiError(502, "escrow_payout_failed", "The escrow USDG transfer failed.");
-  return txHash.toLowerCase();
+
+export type EscrowAsset = "usdg" | "eth";
+// "pending" means mined but short of ESCROW_CONFIRMATIONS; null means no receipt is known.
+export type ReceiptStatus = "success" | "reverted" | "pending" | null;
+
+// The chain operations settlement needs, so tests can substitute an in-memory chain.
+export interface EscrowChain {
+  transactionCount(address: Address, blockTag: "latest" | "pending"): Promise<number>;
+  // Signs without broadcasting. An amount of "all" sweeps the wallet's balance of that asset
+  // (for ETH, net of gas); returns null when there is nothing to send.
+  sign(
+    account: LocalAccount,
+    payout: { asset: EscrowAsset; to: Address; amount: bigint | "all"; nonce: number },
+  ): Promise<{ raw: Hex; hash: Hash; amount: bigint } | null>;
+  broadcast(raw: Hex): Promise<void>;
+  receipt(hash: Hash): Promise<ReceiptStatus>;
+  waitForReceipt(hash: Hash): Promise<ReceiptStatus>;
 }
-async function sweepEth(client: Queryable, jobId: string, recipient: string) {
-  const account = await escrowAccount(client, jobId);
-  const balance = await publicClient.getBalance({ address: account.address });
-  const gas = await publicClient.estimateGas({
-    account: account.address,
-    to: address(recipient),
-    value: 0n,
+
+const walletClient = (account: LocalAccount) =>
+  createWalletClient({ account, chain: robinhoodChain, transport: http(env.RHC_RPC_URL) });
+
+async function signUsdgTransfer(
+  account: LocalAccount,
+  to: Address,
+  amount: bigint | "all",
+  nonce: number,
+) {
+  const value =
+    amount === "all"
+      ? await publicClient.readContract({
+          address: usdg(),
+          abi: erc20Abi,
+          functionName: "balanceOf",
+          args: [account.address],
+        })
+      : amount;
+  if (value <= 0n) return null;
+  const wallet = walletClient(account);
+  const request = await wallet.prepareTransactionRequest({
+    to: usdg(),
+    data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [to, value] }),
+    nonce,
   });
+  const raw = await wallet.signTransaction(request);
+  return { raw, hash: keccak256(raw), amount: value };
+}
+
+async function signEthTransfer(
+  account: LocalAccount,
+  to: Address,
+  amount: bigint | "all",
+  nonce: number,
+) {
+  const balance = await publicClient.getBalance({ address: account.address });
+  const gas = await publicClient.estimateGas({ account: account.address, to, value: 0n });
   const block = await publicClient.getBlock();
   const quotedGasPrice = await publicClient.getGasPrice();
   const gasPrice = block.baseFeePerGas
@@ -287,58 +316,45 @@ async function sweepEth(client: Queryable, jobId: string, recipient: string) {
       ? quotedGasPrice
       : block.baseFeePerGas + block.baseFeePerGas / 10n
     : quotedGasPrice;
-  const cost = gas * gasPrice;
-  if (balance <= cost) return null;
-  const wallet = createWalletClient({
-    account,
-    chain: robinhoodChain,
-    transport: http(env.RHC_RPC_URL),
-  });
-  const txHash = await wallet.sendTransaction({
-    to: address(recipient),
-    value: balance - cost,
-    gas,
-    gasPrice,
-  });
-  const receipt = await publicClient.waitForTransactionReceipt({
-    hash: txHash,
-    confirmations: env.ESCROW_CONFIRMATIONS,
-  });
-  if (receipt.status !== "success")
-    throw new ApiError(
-      502,
-      "gas_reserve_refund_failed",
-      "The remaining ETH reserve could not be returned.",
-    );
-  return txHash.toLowerCase();
+  const value = amount === "all" ? balance - gas * gasPrice : amount;
+  if (value <= 0n) return null;
+  const raw = await walletClient(account).signTransaction({ to, value, gas, gasPrice, nonce });
+  return { raw, hash: keccak256(raw), amount: value };
 }
 
-export async function settleOnchainEscrow(
-  client: Queryable,
-  input: {
-    jobId: string;
-    outcome: "accepted" | "rejected";
-    clientAddress: string;
-    providerAddress: string;
-    evaluatorAddress: string;
-    budgetUsdg: string;
-    evaluatorFeeUsdg: string;
-  },
-) {
-  const budget = parseUnits(input.budgetUsdg, env.USDG_DECIMALS),
-    evaluatorFee = parseUnits(input.evaluatorFeeUsdg, env.USDG_DECIMALS);
-  const providerTxHash =
-    input.outcome === "accepted"
-      ? await transferUsdg(client, input.jobId, input.providerAddress, budget)
-      : null;
-  const evaluatorTxHash =
-    input.outcome === "accepted" && evaluatorFee > 0n
-      ? await transferUsdg(client, input.jobId, input.evaluatorAddress, evaluatorFee)
-      : null;
-  const refundTxHash =
-    input.outcome === "rejected"
-      ? await transferUsdg(client, input.jobId, input.clientAddress, budget + evaluatorFee)
-      : null;
-  const gasRefundTxHash = await sweepEth(client, input.jobId, input.clientAddress);
-  return { providerTxHash, evaluatorTxHash, refundTxHash, gasRefundTxHash };
+async function confirmedStatus(receipt: TransactionReceipt): Promise<ReceiptStatus> {
+  const depth = (await publicClient.getBlockNumber()) - receipt.blockNumber + 1n;
+  return depth < BigInt(env.ESCROW_CONFIRMATIONS) ? "pending" : receipt.status;
 }
+
+export const viemEscrowChain: EscrowChain = {
+  transactionCount: (address, blockTag) => publicClient.getTransactionCount({ address, blockTag }),
+  sign: (account, payout) =>
+    payout.asset === "usdg"
+      ? signUsdgTransfer(account, payout.to, payout.amount, payout.nonce)
+      : signEthTransfer(account, payout.to, payout.amount, payout.nonce),
+  async broadcast(raw) {
+    await publicClient.sendRawTransaction({ serializedTransaction: raw });
+  },
+  async receipt(hash) {
+    try {
+      return await confirmedStatus(await publicClient.getTransactionReceipt({ hash }));
+    } catch (error) {
+      if (error instanceof TransactionReceiptNotFoundError) return null;
+      throw error;
+    }
+  },
+  async waitForReceipt(hash) {
+    try {
+      const receipt = await publicClient.waitForTransactionReceipt({
+        hash,
+        confirmations: env.ESCROW_CONFIRMATIONS,
+        timeout: 60_000,
+      });
+      return receipt.status;
+    } catch (error) {
+      if (error instanceof WaitForTransactionReceiptTimeoutError) return null;
+      throw error;
+    }
+  },
+};
