@@ -13,6 +13,9 @@ describe.skipIf(!databaseAvailable)("rate limiting", () => {
   beforeEach(clearData);
 
   test("sign-in has its own budget, separate from the rest of the API", async () => {
+    // Buckets are per clock minute; start in a fresh one so all 21 requests share it.
+    const seconds = new Date().getSeconds();
+    if (seconds > 45) await Bun.sleep((61 - seconds) * 1000);
     const address = `0x${"1".repeat(40)}`;
     for (let request = 0; request < 20; request++)
       await api().post("/v1/auth/nonce").send({ address }).expect(201);
@@ -20,7 +23,7 @@ describe.skipIf(!databaseAvailable)("rate limiting", () => {
     expect(limited.body.error.code).toBe("rate_limited");
     expect(Number(limited.headers["retry-after"])).toBeGreaterThan(0);
     await api().get("/v1/agents").expect(200);
-  });
+  }, 30_000);
 
   test("expired buckets are pruned", async () => {
     await db.query(
