@@ -6,6 +6,8 @@
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
     "check": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test": "NODE_ENV=test bun test",
     "migrate": "bun src/db/migrate.ts"
   },
@@ -21,6 +23,7 @@
     "@types/pg": "^8.15.5",
     "@types/supertest": "^6.0.3",
     "bun-types": "^1.4.2",
+    "prettier": "3.9.6",
     "supertest": "^7.1.4",
     "typescript": "^5.8.3"
   }
