@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { parseUnits, type Address, type Hash, type Hex, type LocalAccount } from "viem";
 import { env } from "./config.js";
+import { audit } from "./audit.js";
 import { db } from "./db/index.js";
 import {
   escrowSigner,
@@ -27,6 +28,7 @@ export function useEscrowChain(replacement: EscrowChain) {
 type Purpose = "provider_payment" | "evaluator_fee" | "client_refund" | "usdg_sweep" | "eth_sweep";
 type Payout = {
   id: string;
+  job_id: string;
   purpose: Purpose;
   asset: EscrowAsset;
   recipient: Address;
@@ -113,6 +115,9 @@ export async function processSettlement(jobId: string): Promise<SettlementStatus
         "UPDATE escrow_settlements SET lease_until = now() + interval '2 minutes' WHERE job_id = $1",
         [jobId],
       );
+      const violation = await signingPolicyViolation(payout);
+      if (violation)
+        return fail(jobId, `Signing policy refused the ${payout.purpose} transfer: ${violation}`);
       const step = await advance(account, payout).catch((error: unknown): Step => ({
         unresolved: error instanceof Error ? error.message : String(error),
       }));
@@ -163,6 +168,59 @@ async function fail(jobId: string, error: string): Promise<SettlementStatus> {
   return "failed";
 }
 
+// Defense in depth for the custodial signer: whatever the payout rows say, a job's escrow only
+// pays that job's participants, and fixed transfers only in the amounts its terms set.
+async function signingPolicyViolation(payout: Payout) {
+  const job = await db.query<{
+    client: string;
+    provider: string;
+    evaluator: string | null;
+    budget_usdg: string;
+    evaluator_fee_usdg: string;
+  }>(
+    `SELECT c.wallet_address AS client, p.wallet_address AS provider, e.wallet_address AS evaluator,
+       j.budget_usdg, j.evaluator_fee_usdg
+     FROM jobs j JOIN users c ON c.id = j.client_id JOIN agents a ON a.id = j.agent_id
+     JOIN users p ON p.id = a.owner_id LEFT JOIN users e ON e.id = j.evaluator_id
+     WHERE j.id = $1`,
+    [payout.job_id],
+  );
+  if (!job.rowCount) return "the job no longer exists";
+  const terms = job.rows[0];
+  const budget = parseUnits(terms.budget_usdg, env.USDG_DECIMALS);
+  const fee = parseUnits(terms.evaluator_fee_usdg, env.USDG_DECIMALS);
+  const rules: Record<Purpose, { recipient: string; asset: EscrowAsset; amount?: bigint }> = {
+    provider_payment: { recipient: terms.provider, asset: "usdg", amount: budget },
+    evaluator_fee: { recipient: terms.evaluator ?? terms.client, asset: "usdg", amount: fee },
+    client_refund: { recipient: terms.client, asset: "usdg", amount: budget + fee },
+    usdg_sweep: { recipient: terms.client, asset: "usdg" },
+    eth_sweep: { recipient: terms.client, asset: "eth" },
+  };
+  const rule = rules[payout.purpose];
+  if (payout.recipient !== rule.recipient)
+    return `${payout.recipient} is not the recipient the job's terms allow`;
+  if (payout.asset !== rule.asset) return `${payout.asset} is not the asset the job's terms allow`;
+  if (rule.amount !== undefined && payout.amount_raw !== rule.amount.toString())
+    return `${payout.amount_raw} is not the amount the job's terms set`;
+  return null;
+}
+
+// Every signature is logged before its transaction is broadcast.
+const logSignature = (payout: Payout, nonce: number, signed: { hash: Hash; amount: bigint }) =>
+  audit(db, {
+    action: "escrow.transfer_signed",
+    targetType: "job",
+    targetId: payout.job_id,
+    metadata: {
+      purpose: payout.purpose,
+      asset: payout.asset,
+      recipient: payout.recipient,
+      amountRaw: signed.amount.toString(),
+      nonce,
+      txHash: signed.hash,
+    },
+  });
+
 const isSweep = (payout: Payout) =>
   payout.purpose === "usdg_sweep" || payout.purpose === "eth_sweep";
 
@@ -188,6 +246,7 @@ async function advance(account: LocalAccount, payout: Payout): Promise<Step> {
       [payout.id, nonce, signed.raw, signed.hash, signed.amount.toString()],
     );
     if (!saved.rowCount) return { unresolved: "Another worker signed this transfer first." };
+    await logSignature(payout, nonce, signed);
     return broadcastAndWait(payout.id, signed.raw, signed.hash);
   }
 
@@ -215,6 +274,7 @@ async function advance(account: LocalAccount, payout: Payout): Promise<Step> {
     [payout.id, resigned.raw, resigned.hash, resigned.amount.toString(), payout.signed_tx],
   );
   if (!saved.rowCount) return { unresolved: "Another worker re-signed this transfer first." };
+  await logSignature(payout, payout.nonce!, resigned);
   return broadcastAndWait(payout.id, resigned.raw, resigned.hash);
 }
 
