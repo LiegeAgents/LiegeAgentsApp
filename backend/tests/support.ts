@@ -55,8 +55,8 @@ export async function inTransaction<T>(work: (client: PoolClient) => Promise<T>)
 
 export type User = { token: string; userId: string; address: string };
 
-export async function signIn(): Promise<User> {
-  const account = privateKeyToAccount(generatePrivateKey());
+export async function signIn(privateKey = generatePrivateKey()): Promise<User> {
+  const account = privateKeyToAccount(privateKey);
   const nonce = await api().post("/v1/auth/nonce").send({ address: account.address }).expect(201);
   const signature = await account.signMessage({ message: nonce.body.data.message });
   const session = await api()

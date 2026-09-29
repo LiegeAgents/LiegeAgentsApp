@@ -64,13 +64,14 @@ describe.skipIf(!databaseAvailable)("job lifecycle", () => {
       await setClock(jobId, { deadlinePassed: true, expired: true });
 
       const first = await runExpiry("expiry-run-1").expect(200);
-      expect(first.body).toEqual({ data: { expired: 1, refunded: 1 }, replayed: false });
+      expect(first.body.data).toEqual({ expired: 1, refunded: 1, settlements: 0 });
+      expect(first.body.replayed).toBe(false);
       expect(await jobStatus(jobId)).toBe("expired");
       expect(await availableBalance(client.userId)).toBe(100);
       expect(await escrowBalance(jobId)).toBe(0);
 
       const second = await runExpiry("expiry-run-2").expect(200);
-      expect(second.body.data).toEqual({ expired: 0, refunded: 0 });
+      expect(second.body.data).toEqual({ expired: 0, refunded: 0, settlements: 0 });
       const replay = await runExpiry("expiry-run-1").expect(200);
       expect(replay.body.replayed).toBe(true);
       expect(await availableBalance(client.userId)).toBe(100);
@@ -93,7 +94,7 @@ describe.skipIf(!databaseAvailable)("job lifecycle", () => {
       await setClock(jobId, { deadlinePassed: true, expired: true });
 
       const run = await runExpiry().expect(200);
-      expect(run.body.data).toEqual({ expired: 1, refunded: 0 });
+      expect(run.body.data).toEqual({ expired: 1, refunded: 0, settlements: 0 });
       expect(await jobStatus(jobId)).toBe("expired");
       expect(await availableBalance(client.userId)).toBe(100);
     });
@@ -126,7 +127,7 @@ describe.skipIf(!databaseAvailable)("job lifecycle", () => {
       ]);
       expect(liveSettlement.status).toBe(200);
       expect(lapsedSettlement.status).toBe(409);
-      expect(expiry.body.data).toEqual({ expired: 1, refunded: 1 });
+      expect(expiry.body.data).toEqual({ expired: 1, refunded: 1, settlements: 0 });
       expect(await jobStatus(live)).toBe("completed");
       expect(await jobStatus(lapsed)).toBe("expired");
       expect(await availableBalance(provider.userId)).toBe(30);
