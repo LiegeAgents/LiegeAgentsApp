@@ -4,10 +4,11 @@ import { requireAuth } from "../auth.js";
 import { requireAdmin } from "../admin.js";
 import { db } from "../db/index.js";
 import { creditUser, setStake, userBalance } from "../ledger.js";
-import { asyncRoute } from "../http.js";
+import { ApiError, asyncRoute } from "../http.js";
 import { audit } from "../audit.js";
 import { env } from "../config.js";
 import { ensureEscrowWallet } from "../escrow.js";
+import { processSettlement } from "../settlement.js";
 
 const transferInput = z.object({
   userId: z.string().uuid(),
@@ -118,5 +119,81 @@ adminRouter.post(
     } finally {
       client.release();
     }
+  }),
+);
+
+adminRouter.get(
+  "/settlements",
+  asyncRoute(async (request, response) => {
+    const query = z
+      .object({
+        status: z.enum(["pending", "failed", "complete"]).default("failed"),
+        limit: z.coerce.number().int().min(1).max(100).default(50),
+      })
+      .parse(request.query);
+    const result = await db.query(
+      `SELECT es.job_id, es.outcome, es.cause, es.status, es.error, es.created_at, es.updated_at,
+         COALESCE(json_agg(json_build_object('position', p.position, 'purpose', p.purpose, 'asset', p.asset,
+           'recipient', p.recipient, 'amountRaw', p.amount_raw::text, 'status', p.status, 'nonce', p.nonce,
+           'txHashes', p.tx_hashes, 'confirmedTxHash', p.confirmed_tx_hash, 'attempts', p.attempts,
+           'lastError', p.last_error) ORDER BY p.position) FILTER (WHERE p.id IS NOT NULL), '[]') AS payouts
+       FROM escrow_settlements es LEFT JOIN escrow_payouts p ON p.job_id = es.job_id
+       WHERE es.status = $1 GROUP BY es.job_id ORDER BY es.updated_at LIMIT $2`,
+      [query.status, query.limit],
+    );
+    response.json({ data: result.rows });
+  }),
+);
+
+// Resumes a failed settlement once its cause is fixed (for example, a wallet short of gas).
+// A reverted transfer moved nothing and spent its nonce, so it is signed again from scratch;
+// any other unfinished transfer keeps its nonce, so resuming it cannot pay twice.
+adminRouter.post(
+  "/settlements/:jobId/retry",
+  asyncRoute(async (request, response) => {
+    const jobId = z.string().uuid().parse(request.params.jobId);
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const settlement = await client.query<{ status: string; error: string | null }>(
+        "SELECT status, error FROM escrow_settlements WHERE job_id = $1 FOR UPDATE",
+        [jobId],
+      );
+      if (!settlement.rowCount)
+        throw new ApiError(404, "settlement_not_found", "This job has no on-chain settlement.");
+      if (settlement.rows[0].status !== "failed")
+        throw new ApiError(
+          409,
+          "settlement_not_failed",
+          "Only a failed settlement can be retried.",
+        );
+      const reverted = await client.query<{ purpose: string; tx_hashes: string[] }>(
+        "UPDATE escrow_payouts SET status = 'pending', nonce = NULL, signed_tx = NULL, tx_hashes = '{}', attempts = 0, updated_at = now() FROM escrow_payouts previous WHERE escrow_payouts.id = previous.id AND escrow_payouts.job_id = $1 AND escrow_payouts.status = 'reverted' RETURNING previous.purpose, previous.tx_hashes",
+        [jobId],
+      );
+      await client.query(
+        "UPDATE escrow_payouts SET attempts = 0, updated_at = now() WHERE job_id = $1 AND status IN ('pending', 'signed')",
+        [jobId],
+      );
+      await client.query(
+        "UPDATE escrow_settlements SET status = 'pending', error = NULL, lease_until = NULL, updated_at = now() WHERE job_id = $1",
+        [jobId],
+      );
+      await audit(client, {
+        actorId: request.auth!.userId,
+        action: "escrow_settlement.retried",
+        targetType: "job",
+        targetId: jobId,
+        requestId: request.requestId,
+        metadata: { previousError: settlement.rows[0].error, resetRevertedPayouts: reverted.rows },
+      });
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+    response.json({ data: { jobId, status: await processSettlement(jobId) } });
   }),
 );

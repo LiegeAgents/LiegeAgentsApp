@@ -10,12 +10,8 @@ import { decryptPayload, encryptPayload, hashPayload } from "../crypto.js";
 import { audit } from "../audit.js";
 import { env } from "../config.js";
 import { evidenceUrl, isSafeEvidenceUrl } from "../evidence.js";
-import {
-  createFundingQuote,
-  ensureEscrowWallet,
-  settleOnchainEscrow,
-  verifyOnchainFunding,
-} from "../escrow.js";
+import { createFundingQuote, ensureEscrowWallet, verifyOnchainFunding } from "../escrow.js";
+import { planSettlement, processSettlement } from "../settlement.js";
 
 const jobInput = z
   .object({
@@ -103,11 +99,13 @@ jobsRouter.get(
     const result = await db.query(
       `SELECT j.*, a.owner_id AS provider_id, a.name AS agent_name, a.slug AS agent_slug,
       s.deliverable_ciphertext, s.evidence AS submission_evidence, s.created_at AS delivery_created_at,
-      e.outcome AS evaluation_outcome, e.rationale_ciphertext, e.created_at AS evaluation_created_at
+      e.outcome AS evaluation_outcome, e.rationale_ciphertext, e.created_at AS evaluation_created_at,
+      es.status AS settlement_status
     FROM jobs j JOIN agents a ON a.id = j.agent_id
     LEFT JOIN submissions s ON s.job_id = j.id
     LEFT JOIN evaluations e ON e.job_id = j.id
     LEFT JOIN escrow_wallets ew ON ew.job_id = j.id
+    LEFT JOIN escrow_settlements es ON es.job_id = j.id
     WHERE j.id = $1 AND (j.client_id = $2 OR a.owner_id = $2 OR j.evaluator_id = $2)`,
       [id, request.auth!.userId],
     );
@@ -362,23 +360,49 @@ jobsRouter.post(
     const onchainInput = z
       .object({ quoteId: z.string().uuid(), usdgTxHash: z.string(), gasTxHash: z.string() })
       .safeParse(request.body);
+    const id = z.string().uuid().parse(request.params.id);
+    // On-chain deposits are verified before the transaction opens, so waiting for confirmations
+    // holds neither the job lock nor a pooled connection. The transaction re-checks the job.
+    const current = await db.query<{
+      client_id: string;
+      status: string;
+      escrow_mode: string;
+      budget_usdg: string;
+      evaluator_fee_usdg: string;
+    }>(
+      "SELECT client_id, status, escrow_mode, budget_usdg, evaluator_fee_usdg FROM jobs WHERE id = $1",
+      [id],
+    );
+    const verifying =
+      current.rows[0]?.escrow_mode === "onchain" &&
+      current.rows[0].status === "open" &&
+      current.rows[0].client_id === request.auth!.userId;
+    if (verifying && !onchainInput.success)
+      throw new ApiError(
+        422,
+        "onchain_funding_payload_required",
+        "quoteId, usdgTxHash, and gasTxHash are required for on-chain funding.",
+      );
+    const funding =
+      verifying && onchainInput.success
+        ? await verifyOnchainFunding(db, onchainInput.data, {
+            jobId: id,
+            clientAddress: request.auth!.walletAddress,
+            budgetUsdg: current.rows[0].budget_usdg,
+            evaluatorFeeUsdg: current.rows[0].evaluator_fee_usdg,
+          })
+        : null;
     const client = await db.connect();
     try {
       await client.query("BEGIN");
       const job = await transition(client, request, "funded");
       if (job.escrow_mode === "onchain") {
-        if (!onchainInput.success)
+        if (!funding)
           throw new ApiError(
-            422,
-            "onchain_funding_payload_required",
-            "quoteId, usdgTxHash, and gasTxHash are required for on-chain funding.",
+            409,
+            "funding_retry_required",
+            "This job's escrow mode changed while funding was verified. Retry funding.",
           );
-        const funding = await verifyOnchainFunding(client, onchainInput.data, {
-          jobId: job.id,
-          clientAddress: request.auth!.walletAddress,
-          budgetUsdg: String(job.budget_usdg),
-          evaluatorFeeUsdg: String(job.evaluator_fee_usdg),
-        });
         await client.query(
           "INSERT INTO escrow_fundings (job_id, usdg_tx_hash, gas_tx_hash, usdg_amount_raw, gas_amount_wei) VALUES ($1,$2,$3,$4,$5)",
           [
@@ -511,26 +535,18 @@ jobsRouter.post(
             "escrow_participants_missing",
             "The on-chain escrow participants are incomplete.",
           );
-        const settlement = await settleOnchainEscrow(client, {
+        // Only the plan is committed here; the transfers are sent after commit.
+        await planSettlement(client, {
           jobId: job.id,
           outcome: input.outcome,
+          cause: "evaluation",
+          funded: true,
           clientAddress: addresses.rows[0].client_address,
           providerAddress: addresses.rows[0].provider_address,
           evaluatorAddress: addresses.rows[0].evaluator_address,
           budgetUsdg: String(job.budget_usdg),
           evaluatorFeeUsdg: String(job.evaluator_fee_usdg),
         });
-        await client.query(
-          "INSERT INTO escrow_settlements (job_id, outcome, provider_tx_hash, evaluator_tx_hash, refund_tx_hash, gas_refund_tx_hash, status) VALUES ($1,$2,$3,$4,$5,$6,'complete')",
-          [
-            job.id,
-            input.outcome,
-            settlement.providerTxHash,
-            settlement.evaluatorTxHash,
-            settlement.refundTxHash,
-            settlement.gasRefundTxHash,
-          ],
-        );
       } else {
         const escrow = await escrowAccount(client, job.id);
         const total = Number(job.budget_usdg) + Number(job.evaluator_fee_usdg);
@@ -589,6 +605,11 @@ jobsRouter.post(
       );
       await client.query("COMMIT");
       response.json({ data: result.rows[0] });
+      // Failures are recorded on the payout rows; the settle-escrows cron retries them.
+      if (job.escrow_mode === "onchain")
+        void processSettlement(job.id).catch((error) =>
+          console.error(`Escrow settlement for job ${job.id} could not start:`, error),
+        );
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
