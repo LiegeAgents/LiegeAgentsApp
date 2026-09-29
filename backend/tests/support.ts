@@ -112,8 +112,8 @@ export async function createAgent(owner: User) {
 
 const hoursFromNow = (hours: number) => new Date(Date.now() + hours * 3_600_000).toISOString();
 
-export async function createJob(client: User, agentId: string, budgetUsdg: number) {
-  const response = await api()
+export const openJob = (client: User, agentId: string, budgetUsdg: number, extra: object = {}) =>
+  api()
     .post("/v1/jobs")
     .set(bearer(client))
     .send({
@@ -124,7 +124,15 @@ export async function createJob(client: User, agentId: string, budgetUsdg: numbe
       budgetUsdg,
       deadlineAt: hoursFromNow(24),
       expiresAt: hoursFromNow(48),
-    })
-    .expect(201);
+      ...extra,
+    });
+
+export async function createJob(
+  client: User,
+  agentId: string,
+  budgetUsdg: number,
+  extra: object = {},
+) {
+  const response = await openJob(client, agentId, budgetUsdg, extra).expect(201);
   return response.body.data.id as string;
 }
