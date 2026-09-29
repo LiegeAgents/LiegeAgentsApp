@@ -1,0 +1,6 @@
+# Keep local secrets and development artifacts out of the build context.
+.env
+.env.*
+node_modules
+tests
+*.md

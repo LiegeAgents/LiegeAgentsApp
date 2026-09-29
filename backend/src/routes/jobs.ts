@@ -9,6 +9,7 @@ import { escrowAccount, transfer, userBalance } from "../ledger.js";
 import { decryptPayload, encryptPayload, hashPayload } from "../crypto.js";
 import { audit } from "../audit.js";
 import { env } from "../config.js";
+import { evidenceUrl, isSafeEvidenceUrl } from "../evidence.js";
 import {
   createFundingQuote,
   ensureEscrowWallet,
@@ -36,6 +37,12 @@ const jobInput = z
   .superRefine((value, ctx) => {
     if (!value.brief && !value.briefCiphertext)
       ctx.addIssue({ code: "custom", message: "brief is required." });
+    if (value.deadlineAt.getTime() <= Date.now())
+      ctx.addIssue({
+        code: "custom",
+        path: ["deadlineAt"],
+        message: "deadlineAt must be in the future.",
+      });
     if (value.expiresAt < value.deadlineAt)
       ctx.addIssue({ code: "custom", message: "expiresAt cannot precede deadlineAt." });
     if (!value.evaluatorId && value.evaluatorFeeUsdg > 0)
@@ -119,7 +126,8 @@ jobsRouter.get(
         submission: job.deliverable_ciphertext
           ? {
               deliverable: decryptPayload(job.deliverable_ciphertext),
-              evidence: job.submission_evidence ?? [],
+              // Rows written before https-only validation may hold other schemes.
+              evidence: (job.submission_evidence ?? []).filter(isSafeEvidenceUrl),
               createdAt: job.delivery_created_at,
             }
           : null,
@@ -238,7 +246,7 @@ async function transition(
 ) {
   const id = z.string().uuid().parse(request.params.id);
   const job = await client.query(
-    "SELECT j.*, a.owner_id AS provider_id FROM jobs j JOIN agents a ON a.id = j.agent_id WHERE j.id = $1 FOR UPDATE",
+    "SELECT j.*, a.owner_id AS provider_id, j.deadline_at <= now() AS past_deadline, j.expires_at <= now() AS past_expiry FROM jobs j JOIN agents a ON a.id = j.agent_id WHERE j.id = $1 FOR UPDATE",
     [id],
   );
   if (!job.rowCount) throw new ApiError(404, "job_not_found", "This job does not exist.");
@@ -273,6 +281,27 @@ async function transition(
           : "Only the job client can settle a job without an evaluator.",
       );
   }
+  // Time limits are enforced here rather than left to the expiry job, so the outcome does not
+  // depend on when that job last ran. On-chain deposits are still recorded after the deadline:
+  // the funds have already moved, and recording them lets expiry refund them.
+  if (next === "funded" && value.escrow_mode === "ledger" && value.past_deadline)
+    throw new ApiError(
+      409,
+      "job_deadline_passed",
+      "This job's delivery deadline has passed, so it can no longer be funded.",
+    );
+  if (next === "submitted" && value.past_deadline)
+    throw new ApiError(
+      409,
+      "job_deadline_passed",
+      "The delivery deadline for this job has passed.",
+    );
+  if ((next === "completed" || next === "rejected") && value.past_expiry)
+    throw new ApiError(
+      409,
+      "job_expired",
+      "This job has expired and can no longer be settled; its escrow is refunded to the client.",
+    );
   return value;
 }
 
@@ -363,12 +392,6 @@ jobsRouter.post(
       } else {
         const total = Number(job.budget_usdg) + Number(job.evaluator_fee_usdg);
         const available = await userBalance(client, request.auth!.userId);
-        if (available.amount < total)
-          throw new ApiError(
-            422,
-            "insufficient_available_balance",
-            "Your available USDG balance cannot fund this job.",
-          );
         await transfer(client, {
           reference: `job-fund:${job.id}`,
           type: "job_fund",
@@ -377,6 +400,11 @@ jobsRouter.post(
           amount: total,
           createdBy: request.auth!.userId,
           metadata: { jobId: job.id },
+          insufficientFunds: new ApiError(
+            422,
+            "insufficient_available_balance",
+            "Your available USDG balance cannot fund this job.",
+          ),
         });
       }
       const result = await client.query(
@@ -406,7 +434,7 @@ jobsRouter.post(
       .object({
         deliverable: z.string().min(1).max(100_000).optional(),
         deliverableCiphertext: z.string().min(1).max(100_000).optional(),
-        evidence: z.array(z.string().url()).max(20).default([]),
+        evidence: z.array(evidenceUrl).max(20).default([]),
       })
       .refine(
         (value) => Boolean(value.deliverable || value.deliverableCiphertext),

@@ -16,6 +16,10 @@ const env = z
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     PORT: z.coerce.number().int().positive().default(3001),
     DATABASE_URL: z.string().url(),
+    DATABASE_ALLOW_INSECURE_TRANSPORT: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((value) => value === "true"),
     RHC_ID: z.coerce.number().int().positive().default(4663),
     RHC_RPC_URL: z.string().url(),
     ESCROW_MODE: z
@@ -36,6 +40,19 @@ const env = z
   })
   .parse(source);
 
+const localDatabaseHosts = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+// Returns why a production DATABASE_URL is unsafe, or null. Remote databases must verify the
+// server certificate; local hosts and Unix sockets never leave the machine.
+export function databaseTransportProblem(databaseUrl: string) {
+  const url = new URL(databaseUrl);
+  const host = url.searchParams.get("host") ?? url.hostname;
+  if (!host || host.startsWith("/") || localDatabaseHosts.has(host)) return null;
+  const sslmode = url.searchParams.get("sslmode");
+  if (sslmode === "verify-full" || sslmode === "verify-ca") return null;
+  return "DATABASE_URL must set sslmode=verify-full (or verify-ca with sslrootcert) for a remote database in production. Set DATABASE_ALLOW_INSECURE_TRANSPORT=true only when the database is reachable solely over a private network.";
+}
+
 export const adminWallets = new Set(
   (env.ADMIN_WALLET_ADDRESSES ?? "")
     .split(",")
@@ -50,6 +67,10 @@ if (
   throw new Error(
     "AUTH_TOKEN_PEPPER, CRON_SECRET, and ADMIN_WALLET_ADDRESSES are required in production.",
   );
+}
+if (env.NODE_ENV === "production" && !env.DATABASE_ALLOW_INSECURE_TRANSPORT) {
+  const problem = databaseTransportProblem(env.DATABASE_URL);
+  if (problem) throw new Error(problem);
 }
 if (env.ESCROW_MODE === "onchain" && (!env.USDG_TOKEN_ADDRESS || !env.DATA_ENCRYPTION_KEY)) {
   throw new Error(
