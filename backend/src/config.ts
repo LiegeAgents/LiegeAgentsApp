@@ -35,6 +35,7 @@ const env = z
     ESCROW_CONFIRMATIONS: z.coerce.number().int().min(1).max(100).default(1),
     AUTH_TOKEN_PEPPER: z.string().min(32).optional(),
     DATA_ENCRYPTION_KEY: z.string().min(32).optional(),
+    DATA_ENCRYPTION_KEY_PREVIOUS: z.string().min(32).optional(),
     CRON_SECRET: z.string().min(24).optional(),
     ADMIN_WALLET_ADDRESSES: z.string().optional(),
   })
@@ -66,6 +67,14 @@ if (
 ) {
   throw new Error(
     "AUTH_TOKEN_PEPPER, CRON_SECRET, and ADMIN_WALLET_ADDRESSES are required in production.",
+  );
+}
+if (
+  env.NODE_ENV === "production" &&
+  (!env.DATA_ENCRYPTION_KEY || env.DATA_ENCRYPTION_KEY === env.AUTH_TOKEN_PEPPER)
+) {
+  throw new Error(
+    "A DATA_ENCRYPTION_KEY separate from AUTH_TOKEN_PEPPER is required in production.",
   );
 }
 if (env.NODE_ENV === "production" && !env.DATABASE_ALLOW_INSECURE_TRANSPORT) {

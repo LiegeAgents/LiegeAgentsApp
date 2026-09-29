@@ -9,7 +9,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "NODE_ENV=test bun test",
-    "migrate": "bun src/db/migrate.ts"
+    "migrate": "bun src/db/migrate.ts",
+    "reencrypt": "bun src/db/reencrypt.ts"
   },
   "dependencies": {
     "dotenv": "^16.6.1",
