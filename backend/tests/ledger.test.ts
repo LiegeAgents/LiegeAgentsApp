@@ -62,12 +62,12 @@ describe.skipIf(!databaseAvailable)("ledger debits", () => {
 
   test("concurrent funding requests cannot overdraw the client", async () => {
     const [client, provider] = await Promise.all([signIn(), signIn()]);
-    await credit(client.userId, 100);
+    await credit(client.userId, 60);
     // One agent per job: transitions lock the agent row too, which would serialize jobs that
     // share an agent and hide the race.
     const jobs = [
-      await createJob(client, await createAgent(provider), 60),
-      await createJob(client, await createAgent(provider), 60),
+      await createJob(client, await createAgent(provider), 40),
+      await createJob(client, await createAgent(provider), 40),
     ];
     const responses = await Promise.all(
       jobs.map((id) => api().post(`/v1/jobs/${id}/fund`).set(bearer(client)).send({})),
@@ -75,8 +75,8 @@ describe.skipIf(!databaseAvailable)("ledger debits", () => {
     expect(responses.map((response) => response.status).sort()).toEqual([200, 422]);
     const refused = responses.find((response) => response.status === 422)!;
     expect(refused.body.error.code).toBe("insufficient_available_balance");
-    expect(await availableBalance(client.userId)).toBe(40);
-    expect((await escrowBalance(jobs[0])) + (await escrowBalance(jobs[1]))).toBe(60);
+    expect(await availableBalance(client.userId)).toBe(20);
+    expect((await escrowBalance(jobs[0])) + (await escrowBalance(jobs[1]))).toBe(40);
   });
 
   test("user accounts cannot go below zero, compared at six-decimal precision", async () => {

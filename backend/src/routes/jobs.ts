@@ -12,6 +12,13 @@ import { env } from "../config.js";
 import { evidenceUrl, isSafeEvidenceUrl } from "../evidence.js";
 import { createFundingQuote, ensureEscrowWallet, verifyOnchainFunding } from "../escrow.js";
 import { planSettlement, processSettlement } from "../settlement.js";
+import {
+  evaluatorPosition,
+  lockEvaluator,
+  MINIMUM_EVALUATOR_STAKE_USDG,
+  SELF_SETTLEMENT_LIMIT_USDG,
+  STAKE_COVERAGE,
+} from "../capacity.js";
 
 const jobInput = z
   .object({
@@ -48,17 +55,6 @@ const jobInput = z
         message: "An evaluator is required when an evaluator fee is configured.",
       });
   });
-
-const event = async (
-  jobId: string,
-  actorId: string | null,
-  eventType: string,
-  payload: object = {},
-) =>
-  db.query(
-    "INSERT INTO job_events (job_id, actor_id, event_type, payload) VALUES ($1, $2, $3, $4)",
-    [jobId, actorId, eventType, JSON.stringify(payload)],
-  );
 
 export const jobsRouter = Router();
 
@@ -164,74 +160,85 @@ jobsRouter.post(
         "self_hire_not_allowed",
         "An owner cannot open a job for their own agent.",
       );
-    if (input.evaluatorId) {
-      const evaluator = await db.query<{ stake_usdg: string; active: boolean }>(
-        `SELECT ep.active, COALESCE(sum(lp.amount_usdg), 0) AS stake_usdg FROM evaluator_profiles ep
-      LEFT JOIN ledger_accounts la ON la.user_id = ep.user_id AND la.kind = 'stake' LEFT JOIN ledger_postings lp ON lp.account_id = la.id
-      WHERE ep.user_id = $1 GROUP BY ep.active`,
-        [input.evaluatorId],
+    if (input.evaluatorId === agent.rows[0].owner_id)
+      throw new ApiError(
+        422,
+        "provider_cannot_evaluate",
+        "An agent owner cannot evaluate their own job.",
       );
-      if (
-        !evaluator.rowCount ||
-        !evaluator.rows[0].active ||
-        Number(evaluator.rows[0].stake_usdg) < 5000
-      )
-        throw new ApiError(
-          422,
-          "evaluator_ineligible",
-          "The selected evaluator must have an active profile with at least 5,000 USDG staked.",
-        );
-      if (input.budgetUsdg > Number(evaluator.rows[0].stake_usdg) / 5)
-        throw new ApiError(
-          422,
-          "evaluator_capacity_exceeded",
-          "A job cannot exceed one fifth of its evaluator’s stake.",
-        );
-      if (input.evaluatorId === request.auth!.userId && input.budgetUsdg >= 50)
-        throw new ApiError(
-          422,
-          "self_evaluation_limit",
-          "Client self-evaluation is allowed only for jobs below 50 USDG.",
-        );
-      if (input.evaluatorId === agent.rows[0].owner_id)
-        throw new ApiError(
-          422,
-          "provider_cannot_evaluate",
-          "An agent owner cannot evaluate their own job.",
-        );
-    }
+    const selfSettled = !input.evaluatorId || input.evaluatorId === request.auth!.userId;
+    if (selfSettled && input.budgetUsdg >= SELF_SETTLEMENT_LIMIT_USDG)
+      throw new ApiError(
+        422,
+        "self_evaluation_limit",
+        `Jobs of ${SELF_SETTLEMENT_LIMIT_USDG} USDG or more need an independent evaluator.`,
+      );
     const privateBrief = input.brief ?? input.briefCiphertext!;
-    const result = await db.query(
-      `INSERT INTO jobs (client_id, agent_id, evaluator_id, kind, title, brief_ciphertext, brief_hash, acceptance_criteria, budget_usdg, evaluator_fee_usdg, deadline_at, expires_at, strategy_policy, escrow_mode)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
-      [
-        request.auth!.userId,
-        input.agentId,
-        input.evaluatorId ?? null,
-        input.kind,
-        input.title,
-        encryptPayload(privateBrief),
-        hashPayload(privateBrief),
-        JSON.stringify(input.acceptanceCriteria),
-        input.budgetUsdg,
-        input.evaluatorFeeUsdg,
-        input.deadlineAt,
-        input.expiresAt,
-        input.strategyPolicy ? JSON.stringify(input.strategyPolicy) : null,
-        env.ESCROW_MODE,
-      ],
-    );
-    const escrow =
-      env.ESCROW_MODE === "onchain" ? await ensureEscrowWallet(db, result.rows[0].id) : null;
-    await event(result.rows[0].id, request.auth!.userId, "job.opened");
-    await audit(db, {
-      actorId: request.auth!.userId,
-      action: "job.opened",
-      targetType: "job",
-      targetId: result.rows[0].id,
-      requestId: request.requestId,
-    });
-    response.status(201).json({ data: { ...result.rows[0], escrow } });
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      if (input.evaluatorId) {
+        const evaluator = await lockEvaluator(client, input.evaluatorId);
+        const position = evaluator
+          ? await evaluatorPosition(client, input.evaluatorId, {
+              addedExposureUsdg: input.budgetUsdg,
+            })
+          : null;
+        if (!evaluator?.active || position!.stakeUsdg < MINIMUM_EVALUATOR_STAKE_USDG)
+          throw new ApiError(
+            422,
+            "evaluator_ineligible",
+            `The selected evaluator must have an active profile with at least ${MINIMUM_EVALUATOR_STAKE_USDG.toLocaleString("en-US")} USDG staked.`,
+          );
+        if (!position!.covered)
+          throw new ApiError(
+            422,
+            "evaluator_capacity_exceeded",
+            `The evaluator's stake must cover ${STAKE_COVERAGE} times the budgets of all their open jobs, including this one.`,
+          );
+      }
+      const result = await client.query(
+        `INSERT INTO jobs (client_id, agent_id, evaluator_id, kind, title, brief_ciphertext, brief_hash, acceptance_criteria, budget_usdg, evaluator_fee_usdg, deadline_at, expires_at, strategy_policy, escrow_mode)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+        [
+          request.auth!.userId,
+          input.agentId,
+          input.evaluatorId ?? null,
+          input.kind,
+          input.title,
+          encryptPayload(privateBrief),
+          hashPayload(privateBrief),
+          JSON.stringify(input.acceptanceCriteria),
+          input.budgetUsdg,
+          input.evaluatorFeeUsdg,
+          input.deadlineAt,
+          input.expiresAt,
+          input.strategyPolicy ? JSON.stringify(input.strategyPolicy) : null,
+          env.ESCROW_MODE,
+        ],
+      );
+      const job = result.rows[0];
+      const escrow =
+        env.ESCROW_MODE === "onchain" ? await ensureEscrowWallet(client, job.id) : null;
+      await client.query(
+        "INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1, $2, $3)",
+        [job.id, request.auth!.userId, "job.opened"],
+      );
+      await audit(client, {
+        actorId: request.auth!.userId,
+        action: "job.opened",
+        targetType: "job",
+        targetId: job.id,
+        requestId: request.requestId,
+      });
+      await client.query("COMMIT");
+      response.status(201).json({ data: { ...job, escrow } });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }),
 );
 
