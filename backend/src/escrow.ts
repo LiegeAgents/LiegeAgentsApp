@@ -100,11 +100,14 @@ async function transferUsdg(client: Queryable, jobId: string, recipient: string,
 async function sweepEth(client: Queryable, jobId: string, recipient: string) {
   const account = await escrowAccount(client, jobId)
   const balance = await publicClient.getBalance({ address: account.address })
-  const gasPrice = await publicClient.getGasPrice()
-  const cost = 21_000n * gasPrice
+  const gas = await publicClient.estimateGas({ account: account.address, to: address(recipient), value: 0n })
+  const block = await publicClient.getBlock()
+  const quotedGasPrice = await publicClient.getGasPrice()
+  const gasPrice = block.baseFeePerGas ? (quotedGasPrice > block.baseFeePerGas ? quotedGasPrice : block.baseFeePerGas + block.baseFeePerGas / 10n) : quotedGasPrice
+  const cost = gas * gasPrice
   if (balance <= cost) return null
   const wallet = createWalletClient({ account, chain: robinhoodChain, transport: http(env.RHC_RPC_URL) })
-  const txHash = await wallet.sendTransaction({ to: address(recipient), value: balance - cost, gas: 21_000n, gasPrice })
+  const txHash = await wallet.sendTransaction({ to: address(recipient), value: balance - cost, gas, gasPrice })
   const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash, confirmations: env.ESCROW_CONFIRMATIONS })
   if (receipt.status !== 'success') throw new ApiError(502, 'gas_reserve_refund_failed', 'The remaining ETH reserve could not be returned.')
   return txHash.toLowerCase()
