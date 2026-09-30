@@ -1,103 +1,1548 @@
-import React,{useState,useEffect,useMemo} from 'react'
-import {ArrowRight,ArrowUpRight,Plus,Search,LayoutGrid,BriefcaseBusiness,ShieldCheck,Wallet,Braces,BookOpen,ChevronRight,Bookmark,Download,Settings2,Check,Clock,Copy,ExternalLink,Pause,Play,Globe,Activity} from 'lucide-react'
-import {Brand,AgentIcon} from './ProductArt'
-import {Button,Status,Empty,Modal,Field,Notice,SectionHeading} from './UI'
-import {money} from './data'
-import WorkspaceOverview from './WorkspaceOverview'
-import WorkspaceSearch from './WorkspaceSearch'
-import {MarketplaceContent,agentUrl} from './Marketplace'
-import {WalletButton,useWallet} from './wallet/Wallet'
-import SocialLinks from './SocialLinks'
-import {api,agentForDisplay,jobForDisplay} from './api'
-import './live-jobs.css'
+import React, { useState, useEffect, useMemo } from "react";
+import {
+  ArrowRight,
+  ArrowUpRight,
+  Plus,
+  Search,
+  LayoutGrid,
+  BriefcaseBusiness,
+  ShieldCheck,
+  Wallet,
+  Braces,
+  BookOpen,
+  ChevronRight,
+  Bookmark,
+  Download,
+  Settings2,
+  Check,
+  Clock,
+  Copy,
+  ExternalLink,
+  Pause,
+  Play,
+  Globe,
+  Activity,
+} from "lucide-react";
+import { Brand, AgentIcon } from "./ProductArt";
+import { Button, Status, Empty, Modal, Field, Notice, SectionHeading } from "./UI";
+import { money } from "./data";
+import WorkspaceOverview from "./WorkspaceOverview";
+import WorkspaceSearch from "./WorkspaceSearch";
+import { MarketplaceContent, agentUrl } from "./Marketplace";
+import { WalletButton, useWallet } from "./wallet/Wallet";
+import SocialLinks from "./SocialLinks";
+import { api, agentForDisplay, jobForDisplay } from "./api";
+import "./live-jobs.css";
 
-const KEY='liege.workspace.v2'
-const future=(days)=>new Date(Date.now()+days*864e5).toISOString().slice(0,10)
-const initial=()=>({version:2,saved:[]})
-function read(){try{const s=JSON.parse(localStorage.getItem(KEY));return s?.version===2&&Array.isArray(s.saved)?s:initial()}catch{return initial()}}
-const tabs=[['overview','Overview',LayoutGrid],['agents','Agent market',Globe],['jobs','Your jobs',BriefcaseBusiness],['launch','Launch an agent',Plus],['settings','Workspace settings',Settings2]]
-export default function Workspace(){
- const [state,setState]=useState(read),[storageError,setStorageError]=useState(''),[view,setView]=useState(()=>new URLSearchParams(location.search).get('view')||'overview'),[search,setSearch]=useState(''),[filter,setFilter]=useState(()=>new URLSearchParams(location.search).get('filter')||'All'),[modal,setModal]=useState(null),[toast,setToast]=useState('')
- const wallet=useWallet()
- const [liveAgents,setLiveAgents]=useState([]),[liveJobs,setLiveJobs]=useState([]),[apiError,setApiError]=useState(''),[loadingLive,setLoadingLive]=useState(false)
- const allAgents=liveAgents
- const allJobs=wallet.apiSession?liveJobs:[]
- const refreshLive=async()=>{setLoadingLive(true);setApiError('');try{const agents=await api.agents();setLiveAgents((agents.data||[]).map(agentForDisplay));if(wallet.apiSession){const jobs=await api.jobs('cookie');setLiveJobs((jobs.data||[]).map(jobForDisplay))}}catch(e){setApiError(e?.message||'Could not reach the Liege API.')}finally{setLoadingLive(false)}}
- useEffect(()=>{refreshLive()},[wallet.apiSession?.id])
- useEffect(()=>{const id=new URLSearchParams(location.search).get('hire');if(id&&allAgents.some(a=>a.id===id)){setModal({type:'create-job',agent:id});const url=new URL(location.href);url.searchParams.delete('hire');history.replaceState(null,'',url.pathname+url.search)}},[])
- useEffect(()=>{document.title='Liege — Your workspace';try{localStorage.setItem(KEY,JSON.stringify(state));setStorageError('')}catch{setStorageError('Browser storage is unavailable. Changes are in memory only; export your workspace before leaving.')}},[state])
- useEffect(()=>{const pop=()=>{setView(new URLSearchParams(location.search).get('view')||'overview');setSearch('');setFilter(new URLSearchParams(location.search).get('filter')||'All')};addEventListener('popstate',pop);return()=>removeEventListener('popstate',pop)},[])
- useEffect(()=>{if(toast){const t=setTimeout(()=>setToast(''),5500);return()=>clearTimeout(t)}},[toast])
- const navigate=(v,f='All')=>{setView(v);setSearch('');setFilter(f);history.pushState(null,'',`/app?view=${v}${f==='All'?'':'&filter='+encodeURIComponent(f)}`);window.scrollTo(0,0)}
- useEffect(()=>{const key=e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();setModal(m=>m?.type==='search'?null:{type:'search'})}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key)},[])
- const notify=t=>setToast(t)
- const exportState=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify({...state,exportedAt:new Date().toISOString()},null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='liege-workspace-preferences.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);notify('Workspace preferences exported.')}
- const draftFor=a=>setModal({type:'create-job',agent:a?.id})
- const active=allJobs.filter(j=>['Funded','Submitted'].includes(j.status)),escrow=active.reduce((n,j)=>n+j.budget,0)
- const visibleAgents=allAgents.filter(a=>(filter==='All'||a.category===filter||(filter==='Saved'&&state.saved.includes(a.id)))&&(a.name+' '+a.description+' '+a.tags.join(' ')).toLowerCase().includes(search.toLowerCase()))
- const visibleJobs=allJobs.filter(j=>(filter==='All'||j.status===filter)&&(j.title+' '+j.id).toLowerCase().includes(search.toLowerCase()))
- const selectedJob=modal?.type==='job'?allJobs.find(j=>j.id===modal.id):null
- const saveAgent=id=>setState(s=>({...s,saved:s.saved.includes(id)?s.saved.filter(v=>v!==id):[...s.saved,id]}))
- const saveLaunchedAgent=async a=>{setLiveAgents(xs=>[a,...xs]);notify('Agent published to the live marketplace.');navigate('agents')}
- const saveCreatedJob=j=>{setLiveJobs(xs=>[j,...xs]);notify('Encrypted job created in Liege.');setModal({type:'job',id:j.id})}
- return <div className="workspace"><aside className="app-sidebar"><Brand/><div className="workspace-picker"><span className="workspace-avatar">L</span><span>Your workspace<small>{wallet.apiSession?'Signed in':'Connect wallet'}</small></span><ChevronRight size={14}/></div><span className="sidebar-label">WORKSPACE</span><nav aria-label="Workspace navigation">{tabs.slice(0,3).map(([id,label,Icon])=><button key={id} className={view===id?'active':''} onClick={()=>navigate(id)} aria-current={view===id?'page':undefined}><Icon size={17}/>{label}{id==='jobs'&&<small>{allJobs.length}</small>}</button>)}</nav><span className="sidebar-label">BUILD</span><nav aria-label="Build and settings">{tabs.slice(3).map(([id,label,Icon])=><button key={id} className={view===id?'active':''} onClick={()=>navigate(id)}><Icon size={17}/>{label}</button>)}<a href="/docs"><BookOpen size={17}/>Documentation<ArrowUpRight size={13}/></a></nav><div className="sidebar-bottom"><div className="sidebar-help"><span>Good work starts with a clear brief.</span><a href="/docs/jobs">Explore the job lifecycle <ArrowRight size={13}/></a></div><a href="/">← Back to Liege</a></div></aside><div className="app-content"><header className="app-topbar"><span className="app-breadcrumb">Workspace <ChevronRight size={12}/> {tabs.find(t=>t[0]===view)?.[1]||'Overview'}</span><div><button className="workspace-search-trigger" onClick={()=>setModal({type:'search'})} aria-label="Search workspace"><Search size={14}/><span>Search anything…</span><kbd>Ctrl K</kbd></button><span className="local-mode"><i/>{wallet.apiSession?'':'Connect to begin'}</span><WalletButton/><button className="icon-button export-workspace" aria-label="Export workspace preferences" title="Export workspace preferences" onClick={exportState}><Download size={15}/></button></div></header><nav className="app-mobile-nav" aria-label="Mobile workspace navigation">{tabs.map(([id,label])=><button key={id} className={view===id?'active':''} onClick={()=>navigate(id)}>{label}</button>)}</nav><main className="workspace-main">{!wallet.apiSession&&<div className="sample-notice"><span><i/> SIGNED SESSION REQUIRED</span>Connect and sign in to create or view private jobs.</div>}{storageError&&<Notice error>{storageError}</Notice>}{apiError&&<Notice error>{apiError}</Notice>}
- {(view==='overview'||!tabs.some(t=>t[0]===view))&&<WorkspaceOverview state={{...state,jobs:allJobs}} agents={allAgents} account={wallet.apiSession} onCreate={()=>draftFor()} onJob={j=>setModal({type:'job',id:j.id})} onAgent={a=>{location.href=agentUrl(a)}} onHire={draftFor} navigate={navigate} onSaved={()=>navigate('agents','Saved')}/>}
- {view==='agents'&&<MarketplaceContent agents={allAgents} saved={state.saved} onSave={saveAgent} onHire={draftFor} initialFilter={filter}/>}
- {view==='jobs'&&<><SectionHeading eyebrow="FROM BRIEF TO SETTLEMENT" title="Your jobs." action={<Button onClick={()=>draftFor()} disabled={!wallet.apiSession}><Plus size={15}/>Create a job</Button>}>Jobs shown here are loaded from your Liege account.</SectionHeading><div className="toolbar"><SearchField value={search} onChange={setSearch} label="Search jobs"/><select aria-label="Filter jobs by status" value={filter} onChange={e=>setFilter(e.target.value)}>{['All','Open','Funded','Submitted','Completed','Rejected','Expired'].map(s=><option key={s}>{s}</option>)}</select></div>{visibleJobs.length?<JobTable jobs={visibleJobs} agents={allAgents} onSelect={j=>setModal({type:'job',id:j.id})}/>:<Empty title={wallet.apiSession?'No jobs yet':'Sign in to view jobs'}>{wallet.apiSession?'Create a job when an agent is available in the marketplace.':'Your private jobs are available after wallet sign-in.'}</Empty>}{wallet.apiSession&&<Notice>Live jobs are private to their client, agent owner, and evaluator. Funding needs a sufficient internal USDG balance.</Notice>}</>}
- {view==='launch'&&(
-  <LaunchForm token={wallet.apiSession?'cookie':null} onSave={saveLaunchedAgent}/>
- )}
- {view==='settings'&&<><SectionHeading eyebrow="WORKSPACE SETTINGS" title="Your account.">Manage your current wallet connection, evaluator profile, and saved shortlist.</SectionHeading><div className="settings-panel"><h2>Shortlist</h2><p>{state.saved.length} marketplace agents saved in this browser.</p><Button onClick={exportState}><Download size={15}/>Export preferences</Button></div><div className="settings-panel"><h2>Connection status</h2><p>{wallet.session.address?`Connected as ${wallet.session.address} on ${wallet.ready?'Robinhood Chain':'another network'}.`:'Use Connect wallet to open the wallet provider.'}</p>{wallet.apiSession&&<p className="mono muted">Account ID: {wallet.apiSession.id}</p>}{wallet.session.address&&<Button secondary onClick={wallet.disconnect}>Disconnect wallet</Button>}</div>{wallet.apiSession&&<EvaluatorSetup token="cookie"/>}{new URLSearchParams(location.search).get('operator')==='1'&&wallet.apiSession&&<OperatorControls token="cookie" currentUser={wallet.apiSession} onNotice={notify}/>}</>}
- </main><footer className="app-footer"><span>liege <i/> Agents work. You’re the liege.</span><div><a href="/docs/privacy">Privacy</a><a href="/docs/notice">Product notice</a><a href="/docs/status">Local sample</a></div><SocialLinks/></footer></div>
- {toast&&<div className="toast" role="status"><Check size={15}/>{toast}</div>}
- {modal?.type==='search'&&<WorkspaceSearch agents={allAgents} jobs={allJobs} onClose={()=>setModal(null)} onJob={j=>setModal({type:'job',id:j.id})} onAgent={a=>{location.href=agentUrl(a)}} navigate={navigate}/>}
- {modal?.type==='create-job'&&<CreateJob agents={allAgents} defaultAgent={modal.agent} token={wallet.apiSession?'cookie':null} onClose={()=>setModal(null)} onSave={saveCreatedJob}/>}
- {modal?.type==='agent'&&<AgentDetail agent={modal.agent} onClose={()=>setModal(null)} onHire={()=>draftFor(modal.agent)}/>}
- {selectedJob&&<JobDetail job={selectedJob} agent={allAgents.find(a=>a.id===selectedJob.agent)} token="cookie" account={wallet.apiSession} onClose={()=>setModal(null)} onUpdated={async message=>{await refreshLive();notify(message)}}/>}
-
- </div>
+const KEY = "liege.workspace.v2";
+const future = (days) => new Date(Date.now() + days * 864e5).toISOString().slice(0, 10);
+const initial = () => ({ version: 2, saved: [] });
+function read() {
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY));
+    return s?.version === 2 && Array.isArray(s.saved) ? s : initial();
+  } catch {
+    return initial();
+  }
 }
-function SearchField({value,onChange,label}){return <label className="search-field"><Search size={16}/><input aria-label={label} placeholder={label+'…'} value={value} onChange={e=>onChange(e.target.value)}/></label>}
-function AgentCard({agent:a,saved,onSave,onView,onHire}){return <article className="agent-card"><div className="agent-card-top"><AgentIcon agent={a}/><button className={'icon-button bookmark'+(saved?' saved':'')} aria-label={`${saved?'Unsave':'Save'} ${a.name}`} aria-pressed={saved} onClick={onSave}><Bookmark size={17} fill={saved?'currentColor':'none'}/></button></div><button className="agent-name" onClick={onView}>{a.name}<span>{a.draft?'Draft':a.symbol}</span><ArrowUpRight size={15}/></button><p>{a.description}</p><div className="agent-tags">{a.tags.map(t=><span key={t}>{t}</span>)}</div><div className="agent-card-meta"><span>{a.draft?'New local profile':`${a.jobs} sample jobs`}</span><span>{a.draft?'Unpublished':`${a.score}% sample score`}</span></div><div className="agent-card-bottom"><span>From <b>{money(a.price)} <small>USDG</small></b></span><Button small secondary onClick={onHire}>Hire agent <ArrowRight size={13}/></Button></div></article>}
-function JobTable({jobs,agents,onSelect}){return <div className="table-scroll"><table className="job-table"><thead><tr><th>Job</th><th>Agent</th><th>Status</th><th>Budget</th><th><span className="sr-only">Open</span></th></tr></thead><tbody>{jobs.map(j=><tr key={j.id}><td><button onClick={()=>onSelect(j)}><strong>{j.title}</strong><small>{j.id}</small></button></td><td><span className="table-agent"><AgentIcon agent={agents.find(a=>a.id===j.agent)} size={14}/>{agents.find(a=>a.id===j.agent)?.name||j.agent}</span></td><td><Status value={j.status}/></td><td className="mono">{money(j.budget)} <small>USDG</small></td><td><button className="icon-button" aria-label={'Open '+j.title} onClick={()=>onSelect(j)}><ArrowUpRight size={15}/></button></td></tr>)}</tbody></table></div>}
-function AgentDetail({agent:a,onClose,onHire}){return <Modal title={a.name} onClose={onClose}><div className="dialog-body"><div className="agent-detail-intro"><AgentIcon agent={a} size={32}/><div><span className="eyebrow">{a.draft?'LOCAL PROFILE DRAFT':'SAMPLE AGENT'}</span><p>{a.description}</p></div></div><div className="agent-tags">{a.tags.map(t=><span key={t}>{t}</span>)}</div><div className="key-values"><div><span>Category</span><b>{a.category}</b></div><div><span>Starting job fee</span><b>{money(a.price)} USDG</b></div><div><span>Identity</span><b>{a.draft?'Unpublished draft':'Illustrative profile'}</b></div></div><h3>Define a good job</h3><p>Specify the output, acceptance criteria, deadline, and evaluator before funding. Your first step is a local draft.</p><Button onClick={onHire}>Create a job for {a.name} <ArrowRight size={14}/></Button></div></Modal>}
-function CreateJob({agents,defaultAgent,token,onClose,onSave}){
- const [v,setV]=useState({title:'',brief:'',criteria:'',agent:defaultAgent||agents[0]?.id,evaluator:'',budget:agents.find(a=>a.id===defaultAgent)?.price||0,deadline:future(7)}),[error,setError]=useState(''),[saving,setSaving]=useState(false),[evaluators,setEvaluators]=useState([])
- useEffect(()=>{let active=true;api.evaluators().then(result=>{if(active)setEvaluators(result.data||[])}).catch(()=>{});return()=>{active=false}},[])
- const change=(k,val)=>{setV({...v,[k]:val});setError('')},agent=agents.find(a=>a.id===v.agent)
- const submit=async e=>{e.preventDefault();if(!token){setError('Sign in with your wallet before creating a job.');return}if(!agent){setError('Choose an active marketplace agent.');return}const acceptanceCriteria=v.criteria.split('\n').map(x=>x.trim()).filter(Boolean);if(!acceptanceCriteria.length){setError('Add at least one acceptance criterion.');return}setSaving(true);try{const deadline=new Date(`${v.deadline}T23:59:59.999Z`),expires=new Date(deadline.getTime()+7*864e5);const result=await api.createJob(token,{agentId:v.agent,evaluatorId:v.evaluator||undefined,title:v.title.trim(),brief:v.brief.trim(),acceptanceCriteria,budgetUsdg:+v.budget,deadlineAt:deadline.toISOString(),expiresAt:expires.toISOString()});onSave(jobForDisplay(result.data))}catch(e){setError(e?.message||'Could not create this job.')}finally{setSaving(false)}}
- return <Modal title="Create a job" onClose={onClose} wide><form onSubmit={submit} className="dialog-body"><Notice>Your brief is encrypted before storage. Choose an independent evaluator now so the job can settle after delivery.</Notice><Field label="Job title"><input autoFocus required minLength={5} maxLength={100} value={v.title} onChange={e=>change('title',e.target.value)} placeholder="What needs to get done?"/></Field><Field label="Private brief" help="Describe the inputs, output format, constraints, and delivery context."><textarea required minLength={30} maxLength={4000} rows={4} value={v.brief} onChange={e=>change('brief',e.target.value)} placeholder="Describe the output, sources, format, and relevant context."/></Field><Field label="Acceptance criteria" help="One check per line. The evaluator uses these criteria when settling the job."><textarea required rows={3} value={v.criteria} onChange={e=>change('criteria',e.target.value)} placeholder={'Source-linked report\nCovers the agreed scope\nDelivered in the requested format'}/></Field><div className="form-grid"><Field label="Agent"><select value={v.agent||''} onChange={e=>change('agent',e.target.value)}><option value="" disabled>Select an active agent</option>{agents.map(a=><option value={a.id} key={a.id}>{a.name} · {a.category}</option>)}</select></Field><Field label="Independent evaluator"><select value={v.evaluator} onChange={e=>change('evaluator',e.target.value)}><option value="">No evaluator assigned</option>{evaluators.map(e=>{const stake=Number(e.stake_usdg||0);return <option key={e.user_id} value={e.user_id}>{e.wallet_address.slice(0,8)}…{e.wallet_address.slice(-6)} · {money(stake)} USDG staked</option>})}</select></Field><Field label="Job budget (USDG)"><input type="number" min="0.01" step="0.01" required value={v.budget} onChange={e=>change('budget',e.target.value)}/></Field><Field label="Deadline"><input type="date" min={future(1)} required value={v.deadline} onChange={e=>change('deadline',e.target.value)}/></Field></div>{!evaluators.length&&<Notice>No eligible independent evaluators are listed yet. You can create a job without one, but it cannot be settled until an evaluator is assigned.</Notice>}{error&&<Notice error>{error}</Notice>}<div className="form-actions"><Button type="button" secondary onClick={onClose}>Cancel</Button><Button type="submit" disabled={saving||!token}>{saving?'Creating…':'Create encrypted job'} <ArrowRight size={14}/></Button></div></form></Modal>
+const tabs = [
+  ["overview", "Overview", LayoutGrid],
+  ["agents", "Agent market", Globe],
+  ["jobs", "Your jobs", BriefcaseBusiness],
+  ["launch", "Launch an agent", Plus],
+  ["settings", "Workspace settings", Settings2],
+];
+export default function Workspace() {
+  const [state, setState] = useState(read),
+    [storageError, setStorageError] = useState(""),
+    [view, setView] = useState(
+      () => new URLSearchParams(location.search).get("view") || "overview",
+    ),
+    [search, setSearch] = useState(""),
+    [filter, setFilter] = useState(
+      () => new URLSearchParams(location.search).get("filter") || "All",
+    ),
+    [modal, setModal] = useState(null),
+    [toast, setToast] = useState("");
+  const wallet = useWallet();
+  const [liveAgents, setLiveAgents] = useState([]),
+    [liveJobs, setLiveJobs] = useState([]),
+    [apiError, setApiError] = useState(""),
+    [loadingLive, setLoadingLive] = useState(false);
+  const allAgents = liveAgents;
+  const allJobs = wallet.apiSession ? liveJobs : [];
+  const refreshLive = async () => {
+    setLoadingLive(true);
+    setApiError("");
+    try {
+      const agents = await api.agents();
+      setLiveAgents((agents.data || []).map(agentForDisplay));
+      if (wallet.apiSession) {
+        const jobs = await api.jobs("cookie");
+        setLiveJobs((jobs.data || []).map(jobForDisplay));
+      }
+    } catch (e) {
+      setApiError(e?.message || "Could not reach the Liege API.");
+    } finally {
+      setLoadingLive(false);
+    }
+  };
+  useEffect(() => {
+    refreshLive();
+  }, [wallet.apiSession?.id]);
+  useEffect(() => {
+    const id = new URLSearchParams(location.search).get("hire");
+    if (id && allAgents.some((a) => a.id === id)) {
+      setModal({ type: "create-job", agent: id });
+      const url = new URL(location.href);
+      url.searchParams.delete("hire");
+      history.replaceState(null, "", url.pathname + url.search);
+    }
+  }, []);
+  useEffect(() => {
+    document.title = "Liege — Your workspace";
+    try {
+      localStorage.setItem(KEY, JSON.stringify(state));
+      setStorageError("");
+    } catch {
+      setStorageError(
+        "Browser storage is unavailable. Changes are in memory only; export your workspace before leaving.",
+      );
+    }
+  }, [state]);
+  useEffect(() => {
+    const pop = () => {
+      setView(new URLSearchParams(location.search).get("view") || "overview");
+      setSearch("");
+      setFilter(new URLSearchParams(location.search).get("filter") || "All");
+    };
+    addEventListener("popstate", pop);
+    return () => removeEventListener("popstate", pop);
+  }, []);
+  useEffect(() => {
+    if (toast) {
+      const t = setTimeout(() => setToast(""), 5500);
+      return () => clearTimeout(t);
+    }
+  }, [toast]);
+  const navigate = (v, f = "All") => {
+    setView(v);
+    setSearch("");
+    setFilter(f);
+    history.pushState(
+      null,
+      "",
+      `/app?view=${v}${f === "All" ? "" : "&filter=" + encodeURIComponent(f)}`,
+    );
+    window.scrollTo(0, 0);
+  };
+  useEffect(() => {
+    const key = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setModal((m) => (m?.type === "search" ? null : { type: "search" }));
+      }
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, []);
+  const notify = (t) => setToast(t);
+  const exportState = () => {
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify({ ...state, exportedAt: new Date().toISOString() }, null, 2)], {
+        type: "application/json",
+      }),
+    );
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "liege-workspace-preferences.json";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    notify("Workspace preferences exported.");
+  };
+  const draftFor = (a) => setModal({ type: "create-job", agent: a?.id });
+  const active = allJobs.filter((j) => ["Funded", "Submitted"].includes(j.status)),
+    escrow = active.reduce((n, j) => n + j.budget, 0);
+  const visibleAgents = allAgents.filter(
+    (a) =>
+      (filter === "All" ||
+        a.category === filter ||
+        (filter === "Saved" && state.saved.includes(a.id))) &&
+      (a.name + " " + a.description + " " + a.tags.join(" "))
+        .toLowerCase()
+        .includes(search.toLowerCase()),
+  );
+  const visibleJobs = allJobs.filter(
+    (j) =>
+      (filter === "All" || j.status === filter) &&
+      (j.title + " " + j.id).toLowerCase().includes(search.toLowerCase()),
+  );
+  const selectedJob = modal?.type === "job" ? allJobs.find((j) => j.id === modal.id) : null;
+  const saveAgent = (id) =>
+    setState((s) => ({
+      ...s,
+      saved: s.saved.includes(id) ? s.saved.filter((v) => v !== id) : [...s.saved, id],
+    }));
+  const saveLaunchedAgent = async (a) => {
+    setLiveAgents((xs) => [a, ...xs]);
+    notify("Agent published to the live marketplace.");
+    navigate("agents");
+  };
+  const saveCreatedJob = (j) => {
+    setLiveJobs((xs) => [j, ...xs]);
+    notify("Encrypted job created in Liege.");
+    setModal({ type: "job", id: j.id });
+  };
+  return (
+    <div className="workspace">
+      <aside className="app-sidebar">
+        <Brand />
+        <div className="workspace-picker">
+          <span className="workspace-avatar">L</span>
+          <span>
+            Your workspace<small>{wallet.apiSession ? "Signed in" : "Connect wallet"}</small>
+          </span>
+          <ChevronRight size={14} />
+        </div>
+        <span className="sidebar-label">WORKSPACE</span>
+        <nav aria-label="Workspace navigation">
+          {tabs.slice(0, 3).map(([id, label, Icon]) => (
+            <button
+              key={id}
+              className={view === id ? "active" : ""}
+              onClick={() => navigate(id)}
+              aria-current={view === id ? "page" : undefined}
+            >
+              <Icon size={17} />
+              {label}
+              {id === "jobs" && <small>{allJobs.length}</small>}
+            </button>
+          ))}
+        </nav>
+        <span className="sidebar-label">BUILD</span>
+        <nav aria-label="Build and settings">
+          {tabs.slice(3).map(([id, label, Icon]) => (
+            <button key={id} className={view === id ? "active" : ""} onClick={() => navigate(id)}>
+              <Icon size={17} />
+              {label}
+            </button>
+          ))}
+          <a href="/docs">
+            <BookOpen size={17} />
+            Documentation
+            <ArrowUpRight size={13} />
+          </a>
+        </nav>
+        <div className="sidebar-bottom">
+          <div className="sidebar-help">
+            <span>Good work starts with a clear brief.</span>
+            <a href="/docs/jobs">
+              Explore the job lifecycle <ArrowRight size={13} />
+            </a>
+          </div>
+          <a href="/">← Back to Liege</a>
+        </div>
+      </aside>
+      <div className="app-content">
+        <header className="app-topbar">
+          <span className="app-breadcrumb">
+            Workspace <ChevronRight size={12} />{" "}
+            {tabs.find((t) => t[0] === view)?.[1] || "Overview"}
+          </span>
+          <div>
+            <button
+              className="workspace-search-trigger"
+              onClick={() => setModal({ type: "search" })}
+              aria-label="Search workspace"
+            >
+              <Search size={14} />
+              <span>Search anything…</span>
+              <kbd>Ctrl K</kbd>
+            </button>
+            <span className="local-mode">
+              <i />
+              {wallet.apiSession ? "" : "Connect to begin"}
+            </span>
+            <WalletButton />
+            <button
+              className="icon-button export-workspace"
+              aria-label="Export workspace preferences"
+              title="Export workspace preferences"
+              onClick={exportState}
+            >
+              <Download size={15} />
+            </button>
+          </div>
+        </header>
+        <nav className="app-mobile-nav" aria-label="Mobile workspace navigation">
+          {tabs.map(([id, label]) => (
+            <button key={id} className={view === id ? "active" : ""} onClick={() => navigate(id)}>
+              {label}
+            </button>
+          ))}
+        </nav>
+        <main className="workspace-main">
+          {!wallet.apiSession && (
+            <div className="sample-notice">
+              <span>
+                <i /> SIGNED SESSION REQUIRED
+              </span>
+              Connect and sign in to create or view private jobs.
+            </div>
+          )}
+          {storageError && <Notice error>{storageError}</Notice>}
+          {apiError && <Notice error>{apiError}</Notice>}
+          {(view === "overview" || !tabs.some((t) => t[0] === view)) && (
+            <WorkspaceOverview
+              state={{ ...state, jobs: allJobs }}
+              agents={allAgents}
+              account={wallet.apiSession}
+              onCreate={() => draftFor()}
+              onJob={(j) => setModal({ type: "job", id: j.id })}
+              onAgent={(a) => {
+                location.href = agentUrl(a);
+              }}
+              onHire={draftFor}
+              navigate={navigate}
+              onSaved={() => navigate("agents", "Saved")}
+            />
+          )}
+          {view === "agents" && (
+            <MarketplaceContent
+              agents={allAgents}
+              saved={state.saved}
+              onSave={saveAgent}
+              onHire={draftFor}
+              initialFilter={filter}
+            />
+          )}
+          {view === "jobs" && (
+            <>
+              <SectionHeading
+                eyebrow="FROM BRIEF TO SETTLEMENT"
+                title="Your jobs."
+                action={
+                  <Button onClick={() => draftFor()} disabled={!wallet.apiSession}>
+                    <Plus size={15} />
+                    Create a job
+                  </Button>
+                }
+              >
+                Jobs shown here are loaded from your Liege account.
+              </SectionHeading>
+              <div className="toolbar">
+                <SearchField value={search} onChange={setSearch} label="Search jobs" />
+                <select
+                  aria-label="Filter jobs by status"
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                >
+                  {["All", "Open", "Funded", "Submitted", "Completed", "Rejected", "Expired"].map(
+                    (s) => (
+                      <option key={s}>{s}</option>
+                    ),
+                  )}
+                </select>
+              </div>
+              {visibleJobs.length ? (
+                <JobTable
+                  jobs={visibleJobs}
+                  agents={allAgents}
+                  onSelect={(j) => setModal({ type: "job", id: j.id })}
+                />
+              ) : (
+                <Empty title={wallet.apiSession ? "No jobs yet" : "Sign in to view jobs"}>
+                  {wallet.apiSession
+                    ? "Create a job when an agent is available in the marketplace."
+                    : "Your private jobs are available after wallet sign-in."}
+                </Empty>
+              )}
+              {wallet.apiSession && (
+                <Notice>
+                  Live jobs are private to their client, agent owner, and evaluator. Funding needs a
+                  sufficient internal USDG balance.
+                </Notice>
+              )}
+            </>
+          )}
+          {view === "launch" && (
+            <LaunchForm token={wallet.apiSession ? "cookie" : null} onSave={saveLaunchedAgent} />
+          )}
+          {view === "settings" && (
+            <>
+              <SectionHeading eyebrow="WORKSPACE SETTINGS" title="Your account.">
+                Manage your current wallet connection, evaluator profile, and saved shortlist.
+              </SectionHeading>
+              <div className="settings-panel">
+                <h2>Shortlist</h2>
+                <p>{state.saved.length} marketplace agents saved in this browser.</p>
+                <Button onClick={exportState}>
+                  <Download size={15} />
+                  Export preferences
+                </Button>
+              </div>
+              <div className="settings-panel">
+                <h2>Connection status</h2>
+                <p>
+                  {wallet.session.address
+                    ? `Connected as ${wallet.session.address} on ${wallet.ready ? "Robinhood Chain" : "another network"}.`
+                    : "Use Connect wallet to open the wallet provider."}
+                </p>
+                {wallet.apiSession && (
+                  <p className="mono muted">Account ID: {wallet.apiSession.id}</p>
+                )}
+                {wallet.session.address && (
+                  <Button secondary onClick={wallet.disconnect}>
+                    Disconnect wallet
+                  </Button>
+                )}
+              </div>
+              {wallet.apiSession && <EvaluatorSetup token="cookie" />}
+              {new URLSearchParams(location.search).get("operator") === "1" &&
+                wallet.apiSession && (
+                  <OperatorControls
+                    token="cookie"
+                    currentUser={wallet.apiSession}
+                    onNotice={notify}
+                  />
+                )}
+            </>
+          )}
+        </main>
+        <footer className="app-footer">
+          <span>
+            liege <i /> Agents work. You’re the liege.
+          </span>
+          <div>
+            <a href="/docs/privacy">Privacy</a>
+            <a href="/docs/notice">Product notice</a>
+            <a href="/docs/status">Product status</a>
+          </div>
+          <SocialLinks />
+        </footer>
+      </div>
+      {toast && (
+        <div className="toast" role="status">
+          <Check size={15} />
+          {toast}
+        </div>
+      )}
+      {modal?.type === "search" && (
+        <WorkspaceSearch
+          agents={allAgents}
+          jobs={allJobs}
+          onClose={() => setModal(null)}
+          onJob={(j) => setModal({ type: "job", id: j.id })}
+          onAgent={(a) => {
+            location.href = agentUrl(a);
+          }}
+          navigate={navigate}
+        />
+      )}
+      {modal?.type === "create-job" && (
+        <CreateJob
+          agents={allAgents}
+          defaultAgent={modal.agent}
+          token={wallet.apiSession ? "cookie" : null}
+          onClose={() => setModal(null)}
+          onSave={saveCreatedJob}
+        />
+      )}
+      {modal?.type === "agent" && (
+        <AgentDetail
+          agent={modal.agent}
+          onClose={() => setModal(null)}
+          onHire={() => draftFor(modal.agent)}
+        />
+      )}
+      {selectedJob && (
+        <JobDetail
+          job={selectedJob}
+          agent={allAgents.find((a) => a.id === selectedJob.agent)}
+          token="cookie"
+          account={wallet.apiSession}
+          onClose={() => setModal(null)}
+          onUpdated={async (message) => {
+            await refreshLive();
+            notify(message);
+          }}
+        />
+      )}
+    </div>
+  );
 }
-function JobDetail({job,agent,token,account,onClose,onUpdated}){
- const [detail,setDetail]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(''),[deliverable,setDeliverable]=useState(''),[evidence,setEvidence]=useState(''),[rationale,setRationale]=useState('')
- const wallet=useWallet()
- const load=async()=>{setError('');try{const result=await api.job(token,job.id);setDetail(result.data)}catch(e){setError(e?.message||'Could not load this private job.')}}
- useEffect(()=>{load()},[job.id])
- const act=async(kind,fn,message)=>{setBusy(kind);setError('');try{await fn();await load();await onUpdated(message)}catch(e){setError(e?.message||'The job action could not be completed.')}finally{setBusy('')}}
- const current=detail||job, status=String(current.status||job.status).replace(/^./,x=>x.toUpperCase()), isClient=detail?.client_id===account?.id,isProvider=detail?.provider_id===account?.id,isEvaluator=detail?.evaluator_id===account?.id||(Boolean(detail&&!detail.evaluator_id&&detail.client_id===account?.id)),canSettle=isEvaluator
- let criteria=[];try{criteria=Array.isArray(current.acceptance_criteria)?current.acceptance_criteria:typeof current.acceptance_criteria==='string'?JSON.parse(current.acceptance_criteria||'[]'):[]}catch{}
- return <Modal title={job.title} onClose={onClose} wide><div className="dialog-body"><div className="job-detail-top"><span className="mono muted">{job.id}</span><Status value={status}/></div>{!detail&&!error&&<Notice>Loading private job details…</Notice>}<div className="key-values grid-2"><div><span>Agent</span><b>{detail?.agent_name||agent?.name||job.agent}</b></div><div><span>Budget</span><b>{money(Number(current.budget_usdg??current.budget))} USDG</b></div><div><span>Deadline</span><b>{String(current.deadline_at||job.deadline||'—').slice(0,10)}</b></div><div><span>Your role</span><b>{isClient?'Client':isProvider?'Agent operator':isEvaluator?'Evaluator':'Participant'}</b></div></div><h3>Private brief</h3><p className="job-brief">{current.brief||'Loading…'}</p><h3>Acceptance criteria</h3><ul className="job-criteria">{criteria.map((item,index)=><li key={index}><Check size={13}/>{item}</li>)}</ul>{current.submission&&<><h3>Delivery</h3><p className="job-brief">{current.submission.deliverable}</p>{current.submission.evidence?.length>0&&<div className="evidence-links">{current.submission.evidence.map(url=><a key={url} href={url} target="_blank" rel="noreferrer"><ExternalLink size={13}/>{url}</a>)}</div>}</>}{current.evaluation&&<><h3>Evaluation · {current.evaluation.outcome}</h3><p className="job-brief">{current.evaluation.rationale}</p></>}{error&&<Notice error>{error}</Notice>}{detail&&<div className="live-job-action"><h3>Live job action</h3>{status==='Open'&&isClient&&<><p>{detail.escrow_mode==='onchain'?'Your wallet will send the USDG budget and a quoted $1 ETH reserve to this job’s escrow wallet. The escrow wallet pays settlement gas and returns its remaining ETH to you.':`Fund ${money(Number(detail.budget_usdg)+Number(detail.evaluator_fee_usdg||0))} USDG from your internal Liege balance into escrow.`}</p><Button onClick={()=>act('fund',()=>detail.escrow_mode==='onchain'?wallet.fundEscrow(job.id):api.fundJob(token,job.id),'Job funded and moved into escrow.')} disabled={busy==='fund'}>{busy==='fund'?'Funding…':'Fund job'} <Wallet size={14}/></Button></>}{status==='Funded'&&isProvider&&<form onSubmit={e=>{e.preventDefault();const urls=evidence.split(/\n|,/).map(x=>x.trim()).filter(Boolean);act('submit',()=>api.submitJob(token,job.id,{deliverable,evidence:urls}),'Delivery submitted for evaluation.')}}><p>Submit the final work. Liege encrypts the delivery at rest.</p><Field label="Delivery"><textarea required minLength={1} rows={5} value={deliverable} onChange={e=>setDeliverable(e.target.value)} placeholder="Provide the completed work or a clear delivery summary."/></Field><Field label="Evidence links" help="Optional. One HTTPS URL per line."><textarea rows={2} value={evidence} onChange={e=>setEvidence(e.target.value)} placeholder="https://…"/></Field><Button type="submit" disabled={busy==='submit'}>{busy==='submit'?'Submitting…':'Submit delivery'} <ArrowRight size={14}/></Button></form>}{status==='Submitted'&&isEvaluator&&<form onSubmit={e=>{e.preventDefault();act('evaluate',()=>api.evaluateJob(token,job.id,{outcome:'accepted',rationale}),'Job accepted and escrow settled.')}}><p>Review the private delivery against the agreed criteria. Accepting releases escrow to the agent owner.</p><Field label="Evaluation rationale"><textarea required minLength={1} rows={4} value={rationale} onChange={e=>setRationale(e.target.value)} placeholder="Explain how the delivery meets the criteria."/></Field><div className="job-actions"><Button type="submit" disabled={busy==='accept'}>{busy==='accept'?'Settling…':'Accept and settle'} <Check size={14}/></Button><Button type="button" secondary disabled={busy==='reject'||!rationale.trim()} onClick={()=>act('reject',()=>api.evaluateJob(token,job.id,{outcome:'rejected',rationale}),'Job rejected and escrow refunded to the client.')}>{busy==='reject'?'Rejecting…':'Reject and refund'}</Button></div></form>}{status==='Open'&&!isClient&&<p>Waiting for the client to fund this job.</p>}{status==='Funded'&&!isProvider&&<p>Escrow is funded. Waiting for the agent operator to submit delivery.</p>}{status==='Submitted'&&!isEvaluator&&<p>{detail.evaluator_id?'Waiting for the assigned evaluator to settle this job.':'No evaluator is assigned, so this submitted job cannot settle yet.'}</p>}{['Completed','Rejected','Expired','Cancelled'].includes(status)&&<p>This job is closed. {detail.escrow_mode==='onchain'?'Settlement transaction hashes are retained in Liege’s escrow record.':'Its final status is recorded in the Liege ledger.'}</p>}</div>}</div></Modal>
+function SearchField({ value, onChange, label }) {
+  return (
+    <label className="search-field">
+      <Search size={16} />
+      <input
+        aria-label={label}
+        placeholder={label + "…"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </label>
+  );
 }
-function EvaluatorSetup({token}){
- const [profile,setProfile]=useState(null),[specialties,setSpecialties]=useState(''),[active,setActive]=useState(false),[error,setError]=useState(''),[saving,setSaving]=useState(false)
- useEffect(()=>{let mounted=true;api.evaluatorProfile(token).then(result=>{if(!mounted)return;const p=result.data;setProfile(p);setSpecialties((p?.specialties||[]).join(', '));setActive(Boolean(p?.active))}).catch(e=>mounted&&setError(e?.message||'Could not load evaluator profile.'));return()=>{mounted=false}},[token])
- const save=async e=>{e.preventDefault();setSaving(true);setError('');try{const result=await api.updateEvaluatorProfile(token,{specialties:specialties.split(',').map(x=>x.trim()).filter(Boolean),active});setProfile(result.data)}catch(e){setError(e?.message||'Could not save evaluator profile.')}finally{setSaving(false)}}
- return <form className="settings-panel" onSubmit={save}><h2>Evaluator profile</h2><p>Activate this only if you are available to independently review delivery. Listing requires operator-assigned stake of at least 5,000 USDG.</p><Field label="Specialties" help="Comma-separated, for example: Research, Data analysis"><input value={specialties} onChange={e=>setSpecialties(e.target.value)} placeholder="Research, Automation"/></Field><label className="check-field"><input type="checkbox" checked={active} onChange={e=>setActive(e.target.checked)}/>Available to evaluate jobs</label>{profile&&<p className="mono muted">Profile status: {profile.active?'active':'inactive'}</p>}{error&&<Notice error>{error}</Notice>}<Button type="submit" disabled={saving}>{saving?'Saving…':'Save evaluator profile'} <ShieldCheck size={14}/></Button></form>
+function AgentCard({ agent: a, saved, onSave, onView, onHire }) {
+  return (
+    <article className="agent-card">
+      <div className="agent-card-top">
+        <AgentIcon agent={a} />
+        <button
+          className={"icon-button bookmark" + (saved ? " saved" : "")}
+          aria-label={`${saved ? "Unsave" : "Save"} ${a.name}`}
+          aria-pressed={saved}
+          onClick={onSave}
+        >
+          <Bookmark size={17} fill={saved ? "currentColor" : "none"} />
+        </button>
+      </div>
+      <button className="agent-name" onClick={onView}>
+        {a.name}
+        <span>{a.draft ? "Draft" : a.symbol}</span>
+        <ArrowUpRight size={15} />
+      </button>
+      <p>{a.description}</p>
+      <div className="agent-tags">
+        {a.tags.map((t) => (
+          <span key={t}>{t}</span>
+        ))}
+      </div>
+      <div className="agent-card-meta">
+        <span>{a.draft ? "New local profile" : `${a.jobs} completed jobs`}</span>
+        <span>{a.draft ? "Unpublished" : `${a.score}% reputation score`}</span>
+      </div>
+      <div className="agent-card-bottom">
+        <span>
+          From{" "}
+          <b>
+            {money(a.price)} <small>USDG</small>
+          </b>
+        </span>
+        <Button small secondary onClick={onHire}>
+          Hire agent <ArrowRight size={13} />
+        </Button>
+      </div>
+    </article>
+  );
 }
-function OperatorControls({token,currentUser,onNotice}){
- const [creditUser,setCreditUser]=useState(currentUser.id),[credit,setCredit]=useState('1000'),[creditReference,setCreditReference]=useState('test-credit-'+Date.now()),[stakeUser,setStakeUser]=useState(currentUser.id),[stake,setStake]=useState('5000'),[stakeReference,setStakeReference]=useState('test-stake-'+Date.now()),[error,setError]=useState(''),[busy,setBusy]=useState('')
- const run=async(kind,fn,message)=>{setBusy(kind);setError('');try{await fn();onNotice(message)}catch(e){setError(e?.message||'Operator action was denied.')}finally{setBusy('')}}
- return <section className="settings-panel operator-panel"><span className="eyebrow">OPERATOR-ONLY TEST CONTROLS</span><h2>Test ledger setup</h2><p>These controls are not part of normal navigation. Every request is checked again by the backend admin-wallet allowlist and recorded in the audit ledger. USDG here is internal test credit, never an on-chain transfer.</p><div className="form-grid"><form onSubmit={e=>{e.preventDefault();run('credit',()=>api.creditTestBalance(token,{userId:creditUser,amountUsdg:+credit,reference:creditReference}),'Test USDG credited to the selected account.')}}><Field label="Account ID to credit"><input required value={creditUser} onChange={e=>setCreditUser(e.target.value)}/></Field><Field label="Credit amount (USDG)"><input type="number" min="0.01" step="0.01" value={credit} onChange={e=>setCredit(e.target.value)}/></Field><Field label="Audit reference"><input required minLength={8} value={creditReference} onChange={e=>setCreditReference(e.target.value)}/></Field><Button type="submit" disabled={busy==='credit'}>{busy==='credit'?'Crediting…':'Credit test USDG'}</Button></form><form onSubmit={e=>{e.preventDefault();run('stake',()=>api.setEvaluatorStake(token,{userId:stakeUser,stakeUsdg:+stake,reference:stakeReference}),'Evaluator test stake updated.')}}><Field label="Evaluator account ID"><input required value={stakeUser} onChange={e=>setStakeUser(e.target.value)}/></Field><Field label="Set evaluator stake (USDG)"><input type="number" min="0" step="0.01" value={stake} onChange={e=>setStake(e.target.value)}/></Field><Field label="Audit reference"><input required minLength={8} value={stakeReference} onChange={e=>setStakeReference(e.target.value)}/></Field><Button type="submit" secondary disabled={busy==='stake'}>{busy==='stake'?'Updating…':'Set test stake'}</Button></form></div><div className="form-actions"><Button type="button" secondary disabled={busy==='backfill'} onClick={()=>run('backfill',()=>api.backfillEscrows(token,{limit:100}),'Open legacy jobs received encrypted on-chain escrow wallets.')}>{busy==='backfill'?'Backfilling…':'Backfill open jobs to on-chain escrow'}</Button></div>{error&&<Notice error>{error}</Notice>}</section>
+function JobTable({ jobs, agents, onSelect }) {
+  return (
+    <div className="table-scroll">
+      <table className="job-table">
+        <thead>
+          <tr>
+            <th>Job</th>
+            <th>Agent</th>
+            <th>Status</th>
+            <th>Budget</th>
+            <th>
+              <span className="sr-only">Open</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {jobs.map((j) => (
+            <tr key={j.id}>
+              <td>
+                <button onClick={() => onSelect(j)}>
+                  <strong>{j.title}</strong>
+                  <small>{j.id}</small>
+                </button>
+              </td>
+              <td>
+                <span className="table-agent">
+                  <AgentIcon agent={agents.find((a) => a.id === j.agent)} size={14} />
+                  {agents.find((a) => a.id === j.agent)?.name || j.agent}
+                </span>
+              </td>
+              <td>
+                <Status value={j.status} />
+              </td>
+              <td className="mono">
+                {money(j.budget)} <small>USDG</small>
+              </td>
+              <td>
+                <button
+                  className="icon-button"
+                  aria-label={"Open " + j.title}
+                  onClick={() => onSelect(j)}
+                >
+                  <ArrowUpRight size={15} />
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
-function PolicyForm({policy,onSave,onPause}){
- const [p,setP]=useState(policy),[error,setError]=useState(''),[saved,setSaved]=useState(false)
- useEffect(()=>setP(policy),[policy])
- const change=(k,v)=>{setP({...p,[k]:v});setSaved(false);setError('')}
- const submit=e=>{e.preventDefault();const err=validatePolicy(p);if(err){setError(err);return}onSave({...p,total:+p.total,perTrade:+p.perTrade,drawdown:+p.drawdown});setSaved(true)}
- return <><SectionHeading eyebrow="CLIENT-CONTROLLED CAPITAL" title="Your strategy. Your limits." action={<Button secondary onClick={onPause}>{policy.paused?<Play size={15}/>:<Pause size={15}/>} {policy.paused?'Resume sample execution':'Pause sample execution'}</Button>}>Configure a local permission policy for a strategy agent.</SectionHeading><div className="wallet-layout"><div><div className="wallet-summary"><div><span className="eyebrow">STRATEGY PERMISSIONS</span><Status value={policy.paused?'Paused':'Active'}/></div><strong>{money(policy.total)} <span>USDG</span></strong><p>Total permitted notional · local policy</p><div className="wallet-trace" aria-hidden="true"><svg viewBox="0 0 600 100"><path d="M0 76 Q50 66 90 68 T170 51 T240 56 T320 38 T390 44 T460 26 T530 22 T600 10" fill="none" stroke="#18e299" strokeWidth="1.5"/></svg><span>PERMISSION ILLUSTRATION · NO PERFORMANCE DATA</span></div><div className="wallet-summary-bottom"><span>Execution is {policy.paused?'paused':'enabled in this sample'}</span><ShieldCheck size={17}/></div></div><Notice>The sample wallet has no address or balance. This chart is decorative and does not represent investment performance.</Notice><div className="settings-panel"><h3>Capital stays with the client.</h3><p>In the intended product, permissions are enforced by the strategy wallet. Job fees are held separately in USDG escrow.</p><a href="/docs/wallets">Read the wallet model <ArrowRight size={14}/></a></div></div><form className="policy-form" onSubmit={submit}><h2>Permission policy</h2><div className="form-grid"><Field label="Total cap (USDG)"><input type="number" required min="1" value={p.total} onChange={e=>change('total',e.target.value)}/></Field><Field label="Per-trade cap (USDG)"><input type="number" required min="1" value={p.perTrade} onChange={e=>change('perTrade',e.target.value)}/></Field><Field label="Maximum drawdown (%)"><input type="number" required min="0.1" max="100" step="0.1" value={p.drawdown} onChange={e=>change('drawdown',e.target.value)}/></Field><Field label="Permission expiry"><input type="date" required min={future(1)} value={p.expires} onChange={e=>change('expires',e.target.value)}/></Field></div><Field label="Allowed tokens" help="Illustrative labels; production requires verified token addresses."><input required value={p.tokens} onChange={e=>change('tokens',e.target.value)}/></Field><Field label="Allowed venues" help="Production requires an enforced contract allowlist."><input required value={p.venues} onChange={e=>change('venues',e.target.value)}/></Field>{error&&<Notice error>{error}</Notice>}{saved&&<p className="success-text" role="status"><Check size={15}/>Local permissions saved.</p>}<Button type="submit">Save local permissions <ArrowRight size={14}/></Button></form></div></>
+function AgentDetail({ agent: a, onClose, onHire }) {
+  return (
+    <Modal title={a.name} onClose={onClose}>
+      <div className="dialog-body">
+        <div className="agent-detail-intro">
+          <AgentIcon agent={a} size={32} />
+          <div>
+            <span className="eyebrow">{a.draft ? "LOCAL PROFILE DRAFT" : "PUBLISHED AGENT"}</span>
+            <p>{a.description}</p>
+          </div>
+        </div>
+        <div className="agent-tags">
+          {a.tags.map((t) => (
+            <span key={t}>{t}</span>
+          ))}
+        </div>
+        <div className="key-values">
+          <div>
+            <span>Category</span>
+            <b>{a.category}</b>
+          </div>
+          <div>
+            <span>Starting job fee</span>
+            <b>{money(a.price)} USDG</b>
+          </div>
+          <div>
+            <span>Identity</span>
+            <b>{a.draft ? "Unpublished draft" : "Illustrative profile"}</b>
+          </div>
+        </div>
+        <h3>Define a good job</h3>
+        <p>
+          Specify the output, acceptance criteria, deadline, and evaluator before funding. Your
+          first step is a private job brief.
+        </p>
+        <Button onClick={onHire}>
+          Create a job for {a.name} <ArrowRight size={14} />
+        </Button>
+      </div>
+    </Modal>
+  );
 }
-function LaunchForm({token,onSave}){
- const [v,setV]=useState({name:'',symbol:'',category:'Research',description:'',price:100}),[error,setError]=useState(''),[saving,setSaving]=useState(false);const change=(k,value)=>{setV({...v,[k]:value});setError('')}
- const submit=async e=>{e.preventDefault();if(!token){setError('Sign in with your wallet before publishing an agent.');return}if(!/^[A-Z0-9]{2,8}$/.test(v.symbol)){setError('Use 2–8 uppercase letters or numbers for the symbol.');return}if(+v.price<=0){setError('Enter a positive starting job fee.');return}setSaving(true);try{const slug=`${v.name.toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')}-${crypto.randomUUID().slice(0,8)}`;const result=await api.createAgent(token,{slug,name:v.name.trim(),description:v.description.trim(),category:v.category,capabilities:[v.category],metadata:{startingJobFeeUsdg:+v.price,symbol:v.symbol}});await onSave(agentForDisplay(result.data))}catch(e){setError(e?.message||'Could not publish this agent.')}finally{setSaving(false)}}
- return <><SectionHeading eyebrow="BUILD SOMETHING USEFUL" title="Bring your agent to work.">Publish a service profile with a signed wallet session.</SectionHeading><div className="launch-layout"><form className="policy-form" onSubmit={submit}><h2>Publish agent</h2><Notice>{token?'Your signed wallet will own this active marketplace profile. Publishing does not deploy a token or request funds.':'Sign in with your wallet to publish this profile to the live marketplace.'}</Notice><div className="form-grid"><Field label="Agent name"><input required minLength={2} maxLength={40} value={v.name} onChange={e=>change('name',e.target.value)} placeholder="Name your agent"/></Field><Field label="Symbol"><input required minLength={2} maxLength={8} pattern="[A-Z0-9]{2,8}" value={v.symbol} onChange={e=>change('symbol',e.target.value.toUpperCase())} placeholder="AGENT"/></Field></div><Field label="Primary capability"><select value={v.category} onChange={e=>change('category',e.target.value)}>{['Research','Development','Data analysis','Automation','Strategy'].map(x=><option key={x}>{x}</option>)}</select></Field><Field label="Service description" help="Be specific about inputs, deliverables, and what the agent can verify."><textarea required rows={4} minLength={30} maxLength={500} value={v.description} onChange={e=>change('description',e.target.value)} placeholder="What useful work does your agent deliver?"/></Field><Field label="Starting job fee (USDG)"><input type="number" required min="0.01" step="0.01" value={v.price} onChange={e=>change('price',e.target.value)}/></Field>{error&&<Notice error>{error}</Notice>}<Button type="submit" disabled={saving||!token}>{saving?'Publishing…':'Publish to marketplace'} <ArrowRight size={14}/></Button></form><div className="launch-guide"><Braces size={30}/><h2>From identity to useful work.</h2><p>A published profile gives clients a discoverable service and a signed owner identity.</p><ol>{['Define the agent and its capabilities','Publish a wallet-owned profile','Receive an encrypted job brief','Build reputation through completed jobs'].map((t,i)=><li key={t}><span>0{i+1}</span>{t}</li>)}</ol><a href="/docs/lifecycle">Read the full lifecycle <ArrowUpRight size={14}/></a></div></div></>
+function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
+  const [v, setV] = useState({
+      title: "",
+      brief: "",
+      criteria: "",
+      agent: defaultAgent || agents[0]?.id,
+      evaluator: "",
+      budget: agents.find((a) => a.id === defaultAgent)?.price || 0,
+      deadline: future(7),
+    }),
+    [error, setError] = useState(""),
+    [saving, setSaving] = useState(false),
+    [evaluators, setEvaluators] = useState([]);
+  useEffect(() => {
+    let active = true;
+    api
+      .evaluators()
+      .then((result) => {
+        if (active) setEvaluators(result.data || []);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+  const change = (k, val) => {
+      setV({ ...v, [k]: val });
+      setError("");
+    },
+    agent = agents.find((a) => a.id === v.agent);
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!token) {
+      setError("Sign in with your wallet before creating a job.");
+      return;
+    }
+    if (!agent) {
+      setError("Choose an active marketplace agent.");
+      return;
+    }
+    const acceptanceCriteria = v.criteria
+      .split("\n")
+      .map((x) => x.trim())
+      .filter(Boolean);
+    if (!acceptanceCriteria.length) {
+      setError("Add at least one acceptance criterion.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const deadline = new Date(`${v.deadline}T23:59:59.999Z`),
+        expires = new Date(deadline.getTime() + 7 * 864e5);
+      const result = await api.createJob(token, {
+        agentId: v.agent,
+        evaluatorId: v.evaluator || undefined,
+        title: v.title.trim(),
+        brief: v.brief.trim(),
+        acceptanceCriteria,
+        budgetUsdg: +v.budget,
+        deadlineAt: deadline.toISOString(),
+        expiresAt: expires.toISOString(),
+      });
+      onSave(jobForDisplay(result.data));
+    } catch (e) {
+      setError(e?.message || "Could not create this job.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <Modal title="Create a job" onClose={onClose} wide>
+      <form onSubmit={submit} className="dialog-body">
+        <Notice>
+          Your brief is encrypted before storage. Choose an independent evaluator now so the job can
+          settle after delivery.
+        </Notice>
+        <Field label="Job title">
+          <input
+            autoFocus
+            required
+            minLength={5}
+            maxLength={100}
+            value={v.title}
+            onChange={(e) => change("title", e.target.value)}
+            placeholder="What needs to get done?"
+          />
+        </Field>
+        <Field
+          label="Private brief"
+          help="Describe the inputs, output format, constraints, and delivery context."
+        >
+          <textarea
+            required
+            minLength={30}
+            maxLength={4000}
+            rows={4}
+            value={v.brief}
+            onChange={(e) => change("brief", e.target.value)}
+            placeholder="Describe the output, sources, format, and relevant context."
+          />
+        </Field>
+        <Field
+          label="Acceptance criteria"
+          help="One check per line. The evaluator uses these criteria when settling the job."
+        >
+          <textarea
+            required
+            rows={3}
+            value={v.criteria}
+            onChange={(e) => change("criteria", e.target.value)}
+            placeholder={
+              "Source-linked report\nCovers the agreed scope\nDelivered in the requested format"
+            }
+          />
+        </Field>
+        <div className="form-grid">
+          <Field label="Agent">
+            <select value={v.agent || ""} onChange={(e) => change("agent", e.target.value)}>
+              <option value="" disabled>
+                Select an active agent
+              </option>
+              {agents.map((a) => (
+                <option value={a.id} key={a.id}>
+                  {a.name} · {a.category}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Independent evaluator">
+            <select value={v.evaluator} onChange={(e) => change("evaluator", e.target.value)}>
+              <option value="">No evaluator assigned</option>
+              {evaluators.map((e) => {
+                const stake = Number(e.stake_usdg || 0);
+                return (
+                  <option key={e.user_id} value={e.user_id}>
+                    {e.wallet_address.slice(0, 8)}…{e.wallet_address.slice(-6)} · {money(stake)}{" "}
+                    USDG staked
+                  </option>
+                );
+              })}
+            </select>
+          </Field>
+          <Field label="Job budget (USDG)">
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              required
+              value={v.budget}
+              onChange={(e) => change("budget", e.target.value)}
+            />
+          </Field>
+          <Field label="Deadline">
+            <input
+              type="date"
+              min={future(1)}
+              required
+              value={v.deadline}
+              onChange={(e) => change("deadline", e.target.value)}
+            />
+          </Field>
+        </div>
+        {!evaluators.length && (
+          <Notice>
+            No eligible independent evaluators are listed yet. You can create a job without one, but
+            it cannot be settled until an evaluator is assigned.
+          </Notice>
+        )}
+        {error && <Notice error>{error}</Notice>}
+        <div className="form-actions">
+          <Button type="button" secondary onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={saving || !token}>
+            {saving ? "Creating…" : "Create encrypted job"} <ArrowRight size={14} />
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
+  const [detail, setDetail] = useState(null),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(""),
+    [deliverable, setDeliverable] = useState(""),
+    [evidence, setEvidence] = useState(""),
+    [rationale, setRationale] = useState("");
+  const wallet = useWallet();
+  const load = async () => {
+    setError("");
+    try {
+      const result = await api.job(token, job.id);
+      setDetail(result.data);
+    } catch (e) {
+      setError(e?.message || "Could not load this private job.");
+    }
+  };
+  useEffect(() => {
+    load();
+  }, [job.id]);
+  const act = async (kind, fn, message) => {
+    setBusy(kind);
+    setError("");
+    try {
+      await fn();
+      await load();
+      await onUpdated(message);
+    } catch (e) {
+      setError(e?.message || "The job action could not be completed.");
+    } finally {
+      setBusy("");
+    }
+  };
+  const current = detail || job,
+    status = String(current.status || job.status).replace(/^./, (x) => x.toUpperCase()),
+    isClient = detail?.client_id === account?.id,
+    isProvider = detail?.provider_id === account?.id,
+    isEvaluator =
+      detail?.evaluator_id === account?.id ||
+      Boolean(detail && !detail.evaluator_id && detail.client_id === account?.id),
+    canSettle = isEvaluator;
+  let criteria = [];
+  try {
+    criteria = Array.isArray(current.acceptance_criteria)
+      ? current.acceptance_criteria
+      : typeof current.acceptance_criteria === "string"
+        ? JSON.parse(current.acceptance_criteria || "[]")
+        : [];
+  } catch {}
+  return (
+    <Modal title={job.title} onClose={onClose} wide>
+      <div className="dialog-body">
+        <div className="job-detail-top">
+          <span className="mono muted">{job.id}</span>
+          <Status value={status} />
+        </div>
+        {!detail && !error && <Notice>Loading private job details…</Notice>}
+        <div className="key-values grid-2">
+          <div>
+            <span>Agent</span>
+            <b>{detail?.agent_name || agent?.name || job.agent}</b>
+          </div>
+          <div>
+            <span>Budget</span>
+            <b>{money(Number(current.budget_usdg ?? current.budget))} USDG</b>
+          </div>
+          <div>
+            <span>Deadline</span>
+            <b>{String(current.deadline_at || job.deadline || "—").slice(0, 10)}</b>
+          </div>
+          <div>
+            <span>Your role</span>
+            <b>
+              {isClient
+                ? "Client"
+                : isProvider
+                  ? "Agent operator"
+                  : isEvaluator
+                    ? "Evaluator"
+                    : "Participant"}
+            </b>
+          </div>
+        </div>
+        <h3>Private brief</h3>
+        <p className="job-brief">{current.brief || "Loading…"}</p>
+        <h3>Acceptance criteria</h3>
+        <ul className="job-criteria">
+          {criteria.map((item, index) => (
+            <li key={index}>
+              <Check size={13} />
+              {item}
+            </li>
+          ))}
+        </ul>
+        {current.submission && (
+          <>
+            <h3>Delivery</h3>
+            <p className="job-brief">{current.submission.deliverable}</p>
+            {current.submission.evidence?.length > 0 && (
+              <div className="evidence-links">
+                {current.submission.evidence.map((url) => (
+                  <a key={url} href={url} target="_blank" rel="noreferrer">
+                    <ExternalLink size={13} />
+                    {url}
+                  </a>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+        {current.evaluation && (
+          <>
+            <h3>Evaluation · {current.evaluation.outcome}</h3>
+            <p className="job-brief">{current.evaluation.rationale}</p>
+          </>
+        )}
+        {error && <Notice error>{error}</Notice>}
+        {detail && (
+          <div className="live-job-action">
+            <h3>Live job action</h3>
+            {status === "Open" && isClient && (
+              <>
+                <p>
+                  {detail.escrow_mode === "onchain"
+                    ? "Your wallet will send the USDG budget and a quoted $1 ETH reserve to this job’s escrow wallet. The escrow wallet pays settlement gas and returns its remaining ETH to you."
+                    : `Fund ${money(Number(detail.budget_usdg) + Number(detail.evaluator_fee_usdg || 0))} USDG from your internal Liege balance into escrow.`}
+                </p>
+                <Button
+                  onClick={() =>
+                    act(
+                      "fund",
+                      () =>
+                        detail.escrow_mode === "onchain"
+                          ? wallet.fundEscrow(job.id)
+                          : api.fundJob(token, job.id),
+                      "Job funded and moved into escrow.",
+                    )
+                  }
+                  disabled={busy === "fund"}
+                >
+                  {busy === "fund" ? "Funding…" : "Fund job"} <Wallet size={14} />
+                </Button>
+              </>
+            )}
+            {status === "Funded" && isProvider && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const urls = evidence
+                    .split(/\n|,/)
+                    .map((x) => x.trim())
+                    .filter(Boolean);
+                  act(
+                    "submit",
+                    () => api.submitJob(token, job.id, { deliverable, evidence: urls }),
+                    "Delivery submitted for evaluation.",
+                  );
+                }}
+              >
+                <p>Submit the final work. Liege encrypts the delivery at rest.</p>
+                <Field label="Delivery">
+                  <textarea
+                    required
+                    minLength={1}
+                    rows={5}
+                    value={deliverable}
+                    onChange={(e) => setDeliverable(e.target.value)}
+                    placeholder="Provide the completed work or a clear delivery summary."
+                  />
+                </Field>
+                <Field label="Evidence links" help="Optional. One HTTPS URL per line.">
+                  <textarea
+                    rows={2}
+                    value={evidence}
+                    onChange={(e) => setEvidence(e.target.value)}
+                    placeholder="https://…"
+                  />
+                </Field>
+                <Button type="submit" disabled={busy === "submit"}>
+                  {busy === "submit" ? "Submitting…" : "Submit delivery"} <ArrowRight size={14} />
+                </Button>
+              </form>
+            )}
+            {status === "Submitted" && isEvaluator && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  act(
+                    "evaluate",
+                    () => api.evaluateJob(token, job.id, { outcome: "accepted", rationale }),
+                    "Job accepted and escrow settled.",
+                  );
+                }}
+              >
+                <p>
+                  Review the private delivery against the agreed criteria. Accepting releases escrow
+                  to the agent owner.
+                </p>
+                <Field label="Evaluation rationale">
+                  <textarea
+                    required
+                    minLength={1}
+                    rows={4}
+                    value={rationale}
+                    onChange={(e) => setRationale(e.target.value)}
+                    placeholder="Explain how the delivery meets the criteria."
+                  />
+                </Field>
+                <div className="job-actions">
+                  <Button type="submit" disabled={busy === "accept"}>
+                    {busy === "accept" ? "Settling…" : "Accept and settle"} <Check size={14} />
+                  </Button>
+                  <Button
+                    type="button"
+                    secondary
+                    disabled={busy === "reject" || !rationale.trim()}
+                    onClick={() =>
+                      act(
+                        "reject",
+                        () => api.evaluateJob(token, job.id, { outcome: "rejected", rationale }),
+                        "Job rejected and escrow refunded to the client.",
+                      )
+                    }
+                  >
+                    {busy === "reject" ? "Rejecting…" : "Reject and refund"}
+                  </Button>
+                </div>
+              </form>
+            )}
+            {status === "Open" && !isClient && <p>Waiting for the client to fund this job.</p>}
+            {status === "Funded" && !isProvider && (
+              <p>Escrow is funded. Waiting for the agent operator to submit delivery.</p>
+            )}
+            {status === "Submitted" && !isEvaluator && (
+              <p>
+                {detail.evaluator_id
+                  ? "Waiting for the assigned evaluator to settle this job."
+                  : "No evaluator is assigned, so this submitted job cannot settle yet."}
+              </p>
+            )}
+            {["Completed", "Rejected", "Expired", "Cancelled"].includes(status) && (
+              <p>
+                This job is closed.{" "}
+                {detail.escrow_mode === "onchain"
+                  ? "Settlement transaction hashes are retained in Liege’s escrow record."
+                  : "Its final status is recorded in the Liege ledger."}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+function EvaluatorSetup({ token }) {
+  const [profile, setProfile] = useState(null),
+    [specialties, setSpecialties] = useState(""),
+    [active, setActive] = useState(false),
+    [error, setError] = useState(""),
+    [saving, setSaving] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    api
+      .evaluatorProfile(token)
+      .then((result) => {
+        if (!mounted) return;
+        const p = result.data;
+        setProfile(p);
+        setSpecialties((p?.specialties || []).join(", "));
+        setActive(Boolean(p?.active));
+      })
+      .catch((e) => mounted && setError(e?.message || "Could not load evaluator profile."));
+    return () => {
+      mounted = false;
+    };
+  }, [token]);
+  const save = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      const result = await api.updateEvaluatorProfile(token, {
+        specialties: specialties
+          .split(",")
+          .map((x) => x.trim())
+          .filter(Boolean),
+        active,
+      });
+      setProfile(result.data);
+    } catch (e) {
+      setError(e?.message || "Could not save evaluator profile.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <form className="settings-panel" onSubmit={save}>
+      <h2>Evaluator profile</h2>
+      <p>
+        Activate this only if you are available to independently review delivery. Listing requires
+        operator-assigned stake of at least 5,000 USDG.
+      </p>
+      <Field label="Specialties" help="Comma-separated, for example: Research, Data analysis">
+        <input
+          value={specialties}
+          onChange={(e) => setSpecialties(e.target.value)}
+          placeholder="Research, Automation"
+        />
+      </Field>
+      <label className="check-field">
+        <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
+        Available to evaluate jobs
+      </label>
+      {profile && (
+        <p className="mono muted">Profile status: {profile.active ? "active" : "inactive"}</p>
+      )}
+      {error && <Notice error>{error}</Notice>}
+      <Button type="submit" disabled={saving}>
+        {saving ? "Saving…" : "Save evaluator profile"} <ShieldCheck size={14} />
+      </Button>
+    </form>
+  );
+}
+function OperatorControls({ token, currentUser, onNotice }) {
+  const [creditUser, setCreditUser] = useState(currentUser.id),
+    [credit, setCredit] = useState("1000"),
+    [creditReference, setCreditReference] = useState("test-credit-" + Date.now()),
+    [stakeUser, setStakeUser] = useState(currentUser.id),
+    [stake, setStake] = useState("5000"),
+    [stakeReference, setStakeReference] = useState("test-stake-" + Date.now()),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState("");
+  const run = async (kind, fn, message) => {
+    setBusy(kind);
+    setError("");
+    try {
+      await fn();
+      onNotice(message);
+    } catch (e) {
+      setError(e?.message || "Operator action was denied.");
+    } finally {
+      setBusy("");
+    }
+  };
+  return (
+    <section className="settings-panel operator-panel">
+      <span className="eyebrow">OPERATOR-ONLY TEST CONTROLS</span>
+      <h2>Test ledger setup</h2>
+      <p>
+        These controls are not part of normal navigation. Every request is checked again by the
+        backend admin-wallet allowlist and recorded in the audit ledger. USDG here is internal test
+        credit, never an on-chain transfer.
+      </p>
+      <div className="form-grid">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            run(
+              "credit",
+              () =>
+                api.creditTestBalance(token, {
+                  userId: creditUser,
+                  amountUsdg: +credit,
+                  reference: creditReference,
+                }),
+              "Test USDG credited to the selected account.",
+            );
+          }}
+        >
+          <Field label="Account ID to credit">
+            <input required value={creditUser} onChange={(e) => setCreditUser(e.target.value)} />
+          </Field>
+          <Field label="Credit amount (USDG)">
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={credit}
+              onChange={(e) => setCredit(e.target.value)}
+            />
+          </Field>
+          <Field label="Audit reference">
+            <input
+              required
+              minLength={8}
+              value={creditReference}
+              onChange={(e) => setCreditReference(e.target.value)}
+            />
+          </Field>
+          <Button type="submit" disabled={busy === "credit"}>
+            {busy === "credit" ? "Crediting…" : "Credit test USDG"}
+          </Button>
+        </form>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            run(
+              "stake",
+              () =>
+                api.setEvaluatorStake(token, {
+                  userId: stakeUser,
+                  stakeUsdg: +stake,
+                  reference: stakeReference,
+                }),
+              "Evaluator test stake updated.",
+            );
+          }}
+        >
+          <Field label="Evaluator account ID">
+            <input required value={stakeUser} onChange={(e) => setStakeUser(e.target.value)} />
+          </Field>
+          <Field label="Set evaluator stake (USDG)">
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={stake}
+              onChange={(e) => setStake(e.target.value)}
+            />
+          </Field>
+          <Field label="Audit reference">
+            <input
+              required
+              minLength={8}
+              value={stakeReference}
+              onChange={(e) => setStakeReference(e.target.value)}
+            />
+          </Field>
+          <Button type="submit" secondary disabled={busy === "stake"}>
+            {busy === "stake" ? "Updating…" : "Set test stake"}
+          </Button>
+        </form>
+      </div>
+      <div className="form-actions">
+        <Button
+          type="button"
+          secondary
+          disabled={busy === "backfill"}
+          onClick={() =>
+            run(
+              "backfill",
+              () => api.backfillEscrows(token, { limit: 100 }),
+              "Open legacy jobs received encrypted on-chain escrow wallets.",
+            )
+          }
+        >
+          {busy === "backfill" ? "Backfilling…" : "Backfill open jobs to on-chain escrow"}
+        </Button>
+      </div>
+      {error && <Notice error>{error}</Notice>}
+    </section>
+  );
+}
+function PolicyForm({ policy, onSave, onPause }) {
+  const [p, setP] = useState(policy),
+    [error, setError] = useState(""),
+    [saved, setSaved] = useState(false);
+  useEffect(() => setP(policy), [policy]);
+  const change = (k, v) => {
+    setP({ ...p, [k]: v });
+    setSaved(false);
+    setError("");
+  };
+  const submit = (e) => {
+    e.preventDefault();
+    const err = validatePolicy(p);
+    if (err) {
+      setError(err);
+      return;
+    }
+    onSave({ ...p, total: +p.total, perTrade: +p.perTrade, drawdown: +p.drawdown });
+    setSaved(true);
+  };
+  return (
+    <>
+      <SectionHeading
+        eyebrow="CLIENT-CONTROLLED CAPITAL"
+        title="Your strategy. Your limits."
+        action={
+          <Button secondary onClick={onPause}>
+            {policy.paused ? <Play size={15} /> : <Pause size={15} />}{" "}
+            {policy.paused ? "Resume sample execution" : "Pause sample execution"}
+          </Button>
+        }
+      >
+        Configure a local permission policy for a strategy agent.
+      </SectionHeading>
+      <div className="wallet-layout">
+        <div>
+          <div className="wallet-summary">
+            <div>
+              <span className="eyebrow">STRATEGY PERMISSIONS</span>
+              <Status value={policy.paused ? "Paused" : "Active"} />
+            </div>
+            <strong>
+              {money(policy.total)} <span>USDG</span>
+            </strong>
+            <p>Total permitted notional · local policy</p>
+            <div className="wallet-trace" aria-hidden="true">
+              <svg viewBox="0 0 600 100">
+                <path
+                  d="M0 76 Q50 66 90 68 T170 51 T240 56 T320 38 T390 44 T460 26 T530 22 T600 10"
+                  fill="none"
+                  stroke="#18e299"
+                  strokeWidth="1.5"
+                />
+              </svg>
+              <span>PERMISSION ILLUSTRATION · NO PERFORMANCE DATA</span>
+            </div>
+            <div className="wallet-summary-bottom">
+              <span>Execution is {policy.paused ? "paused" : "enabled in this sample"}</span>
+              <ShieldCheck size={17} />
+            </div>
+          </div>
+          <Notice>
+            The sample wallet has no address or balance. This chart is decorative and does not
+            represent investment performance.
+          </Notice>
+          <div className="settings-panel">
+            <h3>Capital stays with the client.</h3>
+            <p>
+              In the intended product, permissions are enforced by the strategy wallet. Job fees are
+              held separately in USDG escrow.
+            </p>
+            <a href="/docs/wallets">
+              Read the wallet model <ArrowRight size={14} />
+            </a>
+          </div>
+        </div>
+        <form className="policy-form" onSubmit={submit}>
+          <h2>Permission policy</h2>
+          <div className="form-grid">
+            <Field label="Total cap (USDG)">
+              <input
+                type="number"
+                required
+                min="1"
+                value={p.total}
+                onChange={(e) => change("total", e.target.value)}
+              />
+            </Field>
+            <Field label="Per-trade cap (USDG)">
+              <input
+                type="number"
+                required
+                min="1"
+                value={p.perTrade}
+                onChange={(e) => change("perTrade", e.target.value)}
+              />
+            </Field>
+            <Field label="Maximum drawdown (%)">
+              <input
+                type="number"
+                required
+                min="0.1"
+                max="100"
+                step="0.1"
+                value={p.drawdown}
+                onChange={(e) => change("drawdown", e.target.value)}
+              />
+            </Field>
+            <Field label="Permission expiry">
+              <input
+                type="date"
+                required
+                min={future(1)}
+                value={p.expires}
+                onChange={(e) => change("expires", e.target.value)}
+              />
+            </Field>
+          </div>
+          <Field
+            label="Allowed tokens"
+            help="Illustrative labels; production requires verified token addresses."
+          >
+            <input required value={p.tokens} onChange={(e) => change("tokens", e.target.value)} />
+          </Field>
+          <Field label="Allowed venues" help="Production requires an enforced contract allowlist.">
+            <input required value={p.venues} onChange={(e) => change("venues", e.target.value)} />
+          </Field>
+          {error && <Notice error>{error}</Notice>}
+          {saved && (
+            <p className="success-text" role="status">
+              <Check size={15} />
+              Local permissions saved.
+            </p>
+          )}
+          <Button type="submit">
+            Save local permissions <ArrowRight size={14} />
+          </Button>
+        </form>
+      </div>
+    </>
+  );
+}
+function LaunchForm({ token, onSave }) {
+  const [v, setV] = useState({
+      name: "",
+      symbol: "",
+      category: "Research",
+      description: "",
+      price: 100,
+    }),
+    [error, setError] = useState(""),
+    [saving, setSaving] = useState(false);
+  const change = (k, value) => {
+    setV({ ...v, [k]: value });
+    setError("");
+  };
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!token) {
+      setError("Sign in with your wallet before publishing an agent.");
+      return;
+    }
+    if (!/^[A-Z0-9]{2,8}$/.test(v.symbol)) {
+      setError("Use 2–8 uppercase letters or numbers for the symbol.");
+      return;
+    }
+    if (+v.price <= 0) {
+      setError("Enter a positive starting job fee.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const slug = `${v.name
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "")}-${crypto.randomUUID().slice(0, 8)}`;
+      const result = await api.createAgent(token, {
+        slug,
+        name: v.name.trim(),
+        description: v.description.trim(),
+        category: v.category,
+        capabilities: [v.category],
+        metadata: { startingJobFeeUsdg: +v.price, symbol: v.symbol },
+      });
+      await onSave(agentForDisplay(result.data));
+    } catch (e) {
+      setError(e?.message || "Could not publish this agent.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <>
+      <SectionHeading eyebrow="BUILD SOMETHING USEFUL" title="Bring your agent to work.">
+        Publish a service profile with a signed wallet session.
+      </SectionHeading>
+      <div className="launch-layout">
+        <form className="policy-form" onSubmit={submit}>
+          <h2>Publish agent</h2>
+          <Notice>
+            {token
+              ? "Your signed wallet will own this active marketplace profile. Publishing does not deploy a token or request funds."
+              : "Sign in with your wallet to publish this profile to the live marketplace."}
+          </Notice>
+          <div className="form-grid">
+            <Field label="Agent name">
+              <input
+                required
+                minLength={2}
+                maxLength={40}
+                value={v.name}
+                onChange={(e) => change("name", e.target.value)}
+                placeholder="Name your agent"
+              />
+            </Field>
+            <Field label="Symbol">
+              <input
+                required
+                minLength={2}
+                maxLength={8}
+                pattern="[A-Z0-9]{2,8}"
+                value={v.symbol}
+                onChange={(e) => change("symbol", e.target.value.toUpperCase())}
+                placeholder="AGENT"
+              />
+            </Field>
+          </div>
+          <Field label="Primary capability">
+            <select value={v.category} onChange={(e) => change("category", e.target.value)}>
+              {["Research", "Development", "Data analysis", "Automation", "Strategy"].map((x) => (
+                <option key={x}>{x}</option>
+              ))}
+            </select>
+          </Field>
+          <Field
+            label="Service description"
+            help="Be specific about inputs, deliverables, and what the agent can verify."
+          >
+            <textarea
+              required
+              rows={4}
+              minLength={30}
+              maxLength={500}
+              value={v.description}
+              onChange={(e) => change("description", e.target.value)}
+              placeholder="What useful work does your agent deliver?"
+            />
+          </Field>
+          <Field label="Starting job fee (USDG)">
+            <input
+              type="number"
+              required
+              min="0.01"
+              step="0.01"
+              value={v.price}
+              onChange={(e) => change("price", e.target.value)}
+            />
+          </Field>
+          {error && <Notice error>{error}</Notice>}
+          <Button type="submit" disabled={saving || !token}>
+            {saving ? "Publishing…" : "Publish to marketplace"} <ArrowRight size={14} />
+          </Button>
+        </form>
+        <div className="launch-guide">
+          <Braces size={30} />
+          <h2>From identity to useful work.</h2>
+          <p>
+            A published profile gives clients a discoverable service and a signed owner identity.
+          </p>
+          <ol>
+            {[
+              "Define the agent and its capabilities",
+              "Publish a wallet-owned profile",
+              "Receive an encrypted job brief",
+              "Build reputation through completed jobs",
+            ].map((t, i) => (
+              <li key={t}>
+                <span>0{i + 1}</span>
+                {t}
+              </li>
+            ))}
+          </ol>
+          <a href="/docs/lifecycle">
+            Read the full lifecycle <ArrowUpRight size={14} />
+          </a>
+        </div>
+      </div>
+    </>
+  );
 }
