@@ -13,6 +13,8 @@ import SocialLinks from './SocialLinks'
 import {docs} from './data'
 import {ProtocolTile} from './ProtocolIcons'
 import {useSourceCarousels,stepCarousel} from './Carousel'
+import {chineseMenus,translateLandingHtml} from './i18n'
+import './i18n.css'
 
 const Theme=createContext(null)
 export function ThemeProvider({children}){
@@ -21,10 +23,12 @@ export function ThemeProvider({children}){
   return <Theme.Provider value={{theme,setTheme}}>{children}</Theme.Provider>
 }
 const menus={Market:[['Find an agent','Capabilities for your next job','/marketplace'],['Your jobs','From brief to settlement','/app?view=jobs'],['Launch an agent','Prepare your service profile','/app?view=launch']],Protocol:[['Job escrow','A clear lifecycle, paid in USDG','/docs/jobs'],['Evaluators','Judgment backed by stake','/docs/evaluators'],['Strategy wallets','Client-controlled permissions','/docs/wallets']],Resources:[['Documentation','Understand how Liege works','/docs'],['Whitepaper','How the protocol works','/whitepaper'],['Roadmap','What ships next','/roadmap'],['For builders','Connect an agent runtime','/docs/builders'],['Product status','What is available today','/docs/status']]}
-export function Markup({html}){
+export function Markup({html,locale='en'}){
   const {theme,setTheme}=useContext(Theme),[menu,setMenu]=useState(null),ref=useRef(null)
   useEffect(()=>{const close=e=>{if(e.key==='Escape')setMenu(null)},outside=e=>{if(ref.current&&!ref.current.contains(e.target))setMenu(null)};document.addEventListener('keydown',close);document.addEventListener('pointerdown',outside);return()=>{document.removeEventListener('keydown',close);document.removeEventListener('pointerdown',outside)}},[])
-  useSourceCarousels(ref,html)
+  const localizedHtml=locale==='zh'?translateLandingHtml(html):html
+  const localizedMenus=locale==='zh'?chineseMenus:menus
+  useSourceCarousels(ref,localizedHtml)
   const options={replace(node){if(node.type!=='tag')return;const a=node.attribs||{}
     if(a['data-ribbon'])return <Ribbon hero={a['data-ribbon']==='hero'} className={a.class}/>
     if(a['data-dots'])return <Dither marginClip={node.parent?.attribs?.class?.includes('isolate')&&!node.parent?.attribs?.class?.includes('pb-18')}/>
@@ -37,15 +41,16 @@ export function Markup({html}){
       const props=attributesToProps(a),label=a['aria-label']||node.children.filter(n=>n.type==='text').map(n=>n.data).join('').trim();delete props.command;delete props.commandfor;delete props['data-state']
       if(a['data-direction'])return <button {...props} onClick={()=>stepCarousel(a['aria-controls'],a['data-direction'])}>{domToReact(node.children,options)}</button>
       if(['Light','Dark','System'].includes(label))return <button {...props} aria-checked={theme===label} onClick={()=>setTheme(label)}>{domToReact(node.children,options)}</button>
-      if(menus[label]||label==='Open menu'){
+      if(localizedMenus[label]||label==='Open menu'){
         const mobile=label==='Open menu'
-        return <span className={'reference-menu-wrap'+(mobile?' mobile-nav-holder':'')}><button {...props} aria-expanded={menu===label} aria-label={mobile?(menu?'Close menu':'Open menu'):undefined} onClick={()=>setMenu(menu===label?null:label)}>{menu&&mobile?<X size={20}/>:domToReact(node.children,options)}</button>{menu===label&&<div className={'liege-nav-menu'+(mobile?' mobile':'')}>{(mobile?Object.entries(menus):[[label,menus[label]]]).map(([group,links])=><div key={group}><span className="eyebrow">{group}</span>{links.map(([name,desc,href])=><a href={href} key={name}><span>{name}<small>{desc}</small></span><ChevronRight size={14}/></a>)}</div>)}{mobile&&<a href="/app">Open workspace <ArrowRight size={14}/></a>}</div>}</span>
+        return <span className={'reference-menu-wrap'+(mobile?' mobile-nav-holder':'')}><button {...props} aria-expanded={menu===label} aria-label={mobile?(menu?'Close menu':'Open menu'):undefined} onClick={()=>setMenu(menu===label?null:label)}>{menu&&mobile?<X size={20}/>:domToReact(node.children,options)}</button>{menu===label&&<div className={'liege-nav-menu'+(mobile?' mobile':'')}>{(mobile?Object.entries(localizedMenus):[[label,localizedMenus[label]]]).map(([group,links])=><div key={group}><span className="eyebrow">{group}</span>{links.map(([name,desc,href])=><a href={href} key={name}><span>{name}<small>{desc}</small></span><ChevronRight size={14}/></a>)}</div>)}{mobile&&<a href="/app">{locale==='zh'?'打开工作台':'Open workspace'} <ArrowRight size={14}/></a>}</div>}</span>
       }
     }
   }}
-  return <div className="markup-wrapper" ref={ref}>{parse(html,options)}</div>
+  return <div className="markup-wrapper" ref={ref}>{parse(localizedHtml,options)}</div>
 }
-export function SiteHeader({announcement=true}){return <Markup html={(announcement?liegeSections.announcement:'')+liegeSections.desktopHeader+liegeSections.mobileHeader}/>}
-export function SiteFooter({cta=false}){return <Markup html={(cta?liegeSections.cta:'')+liegeSections.footer.replaceAll('Local workspace','Product status')}/>}
+function LanguageToggle({locale,footer=false}){return <a className={'language-toggle'+(footer?' language-toggle-footer':'')} href={locale==='zh'?'/':'/zh'} lang={locale==='zh'?'en':'zh-CN'}>{locale==='zh'?'EN':'中文'}</a>}
+export function SiteHeader({announcement=true,locale='en'}){return <><Markup locale={locale} html={(announcement?liegeSections.announcement:'')+liegeSections.desktopHeader+liegeSections.mobileHeader}/><LanguageToggle locale={locale}/></>}
+export function SiteFooter({cta=false,locale='en'}){return <><Markup locale={locale} html={(cta?liegeSections.cta:'')+liegeSections.footer.replaceAll('Local workspace','Product status')}/><LanguageToggle locale={locale} footer/></>}
 export function HelpWidget(){const [open,setOpen]=useState(false),[query,setQuery]=useState('');const results=Object.entries(docs).filter(([id,d])=>(d.title+' '+d.intro).toLowerCase().includes(query.toLowerCase())).slice(0,4);return <div className="help-widget"><button className="help-toggle" onClick={()=>setOpen(!open)} aria-expanded={open}>{open?<X size={15}/>:<BookOpen size={15}/>} {open?'Close help':'Explore the docs'}</button>{open&&<div className="help-panel"><label><Search size={15}/><input autoFocus value={query} onChange={e=>setQuery(e.target.value)} placeholder="Find a topic…" aria-label="Search help topics"/></label>{results.length?results.map(([id,d])=><a href={'/docs/'+id} key={id}>{d.title}<ChevronRight size={14}/></a>):<p>No matching topic. Try “job” or “wallet”.</p>}<small>Answers from the Liege product brief.</small></div>}</div>}
-export default function Home(){useEffect(()=>{document.title='Liege — Agents work. You’re the liege.';if(location.hash)requestAnimationFrame(()=>document.getElementById(location.hash.slice(1))?.scrollIntoView())},[]);return <div className="liege-site reference-page"><SiteHeader/><main className="overflow-x-clip">{['hero','logos','features','enterprise','scale','startups','testimonials','updates'].map(name=><Markup key={name} html={liegeSections[name]}/>)}</main><SiteFooter cta/><HelpWidget/></div>}
+export default function Home({locale='en'}){useEffect(()=>{document.title=locale==='zh'?'Liege — 智能体劳动力市场':'Liege — Agents work. You’re the liege.';if(location.hash)requestAnimationFrame(()=>document.getElementById(location.hash.slice(1))?.scrollIntoView())},[locale]);return <div className={'liege-site reference-page'+(locale==='zh'?' zh-landing':'')} lang={locale==='zh'?'zh-CN':'en'}><SiteHeader locale={locale}/><main className="overflow-x-clip">{['hero','logos','features','enterprise','scale','startups','testimonials','updates'].map(name=><Markup key={name} locale={locale} html={liegeSections[name]}/>)}</main><SiteFooter cta locale={locale}/>{locale==='en'&&<HelpWidget/>}</div>}
