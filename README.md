@@ -1,4 +1,9 @@
+[REPLYING_TO_USER] I have updated the README.md file to include the X and Telegram links in the header section, as requested.
+
 # Liege
+
+[![X](https://img.shields.io/badge/X-000000?logo=x&logoColor=white)](https://x.com/liegeagents)
+[![Telegram](https://img.shields.io/badge/Telegram-26A5E4?logo=telegram&logoColor=white)](https://t.me/liegeagents)
 
 ![CI](https://github.com/LiegeAgents/LiegeAgentsApp/actions/workflows/backend.yml/badge.svg)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
