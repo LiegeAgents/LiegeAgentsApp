@@ -16,6 +16,7 @@ import { Route as DocsRouteImport } from './routes/docs'
 import { Route as MarketplaceRouteImport } from './routes/marketplace'
 import { Route as RoadmapRouteImport } from './routes/roadmap'
 import { Route as WhitepaperRouteImport } from './routes/whitepaper'
+import { Route as ZhRouteImport } from './routes/zh'
 import { Route as ApiSplatRouteImport } from './routes/api/$'
 import { Route as DocsTopicRouteImport } from './routes/docs.$topic'
 import { Route as MarketplaceAgentRouteImport } from './routes/marketplace.$agent'
@@ -55,6 +56,11 @@ const WhitepaperRoute = WhitepaperRouteImport.update({
   path: '/whitepaper',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ZhRoute = ZhRouteImport.update({
+  id: '/zh',
+  path: '/zh',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiSplatRoute = ApiSplatRouteImport.update({
   id: '/api/$',
   path: '/api/$',
@@ -79,6 +85,7 @@ export interface FileRoutesByFullPath {
   '/marketplace': typeof MarketplaceRouteWithChildren
   '/roadmap': typeof RoadmapRoute
   '/whitepaper': typeof WhitepaperRoute
+  '/zh': typeof ZhRoute
   '/api/$': typeof ApiSplatRoute
   '/docs/$topic': typeof DocsTopicRoute
   '/marketplace/$agent': typeof MarketplaceAgentRoute
@@ -91,6 +98,7 @@ export interface FileRoutesByTo {
   '/marketplace': typeof MarketplaceRouteWithChildren
   '/roadmap': typeof RoadmapRoute
   '/whitepaper': typeof WhitepaperRoute
+  '/zh': typeof ZhRoute
   '/api/$': typeof ApiSplatRoute
   '/docs/$topic': typeof DocsTopicRoute
   '/marketplace/$agent': typeof MarketplaceAgentRoute
@@ -104,6 +112,7 @@ export interface FileRoutesById {
   '/marketplace': typeof MarketplaceRouteWithChildren
   '/roadmap': typeof RoadmapRoute
   '/whitepaper': typeof WhitepaperRoute
+  '/zh': typeof ZhRoute
   '/api/$': typeof ApiSplatRoute
   '/docs/$topic': typeof DocsTopicRoute
   '/marketplace/$agent': typeof MarketplaceAgentRoute
@@ -118,6 +127,7 @@ export interface FileRouteTypes {
     | '/marketplace'
     | '/roadmap'
     | '/whitepaper'
+    | '/zh'
     | '/api/$'
     | '/docs/$topic'
     | '/marketplace/$agent'
@@ -130,6 +140,7 @@ export interface FileRouteTypes {
     | '/marketplace'
     | '/roadmap'
     | '/whitepaper'
+    | '/zh'
     | '/api/$'
     | '/docs/$topic'
     | '/marketplace/$agent'
@@ -142,6 +153,7 @@ export interface FileRouteTypes {
     | '/marketplace'
     | '/roadmap'
     | '/whitepaper'
+    | '/zh'
     | '/api/$'
     | '/docs/$topic'
     | '/marketplace/$agent'
@@ -155,6 +167,7 @@ export interface RootRouteChildren {
   MarketplaceRoute: typeof MarketplaceRouteWithChildren
   RoadmapRoute: typeof RoadmapRoute
   WhitepaperRoute: typeof WhitepaperRoute
+  ZhRoute: typeof ZhRoute
   ApiSplatRoute: typeof ApiSplatRoute
 }
 
@@ -207,6 +220,13 @@ declare module '@tanstack/react-router' {
       path: '/whitepaper'
       fullPath: '/whitepaper'
       preLoaderRoute: typeof WhitepaperRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/zh': {
+      id: '/zh'
+      path: '/zh'
+      fullPath: '/zh'
+      preLoaderRoute: typeof ZhRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/$': {
@@ -263,6 +283,7 @@ const rootRouteChildren: RootRouteChildren = {
   MarketplaceRoute: MarketplaceRouteWithChildren,
   RoadmapRoute: RoadmapRoute,
   WhitepaperRoute: WhitepaperRoute,
+  ZhRoute: ZhRoute,
   ApiSplatRoute: ApiSplatRoute,
 }
 export const routeTree = rootRouteImport

@@ -36,6 +36,14 @@ export function LiegeHome() {
   )
 }
 
+export function LiegeChineseHome() {
+  return (
+    <Shell>
+      <Home locale="zh" />
+    </Shell>
+  )
+}
+
 export function LiegeMarketplace() {
   return (
     <Shell>
