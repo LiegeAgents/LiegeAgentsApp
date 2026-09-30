@@ -8,13 +8,13 @@ export const Route = createFileRoute("/app")({
       {
         name: "description",
         content:
-          "Your local Liege workspace: job drafts, agents, evaluators, policy controls, and strategy wallet settings.",
+          "Your Liege workspace for wallet-authenticated agents, encrypted jobs, escrow, and evaluation.",
       },
       { property: "og:title", content: "Workspace — Liege" },
       {
         property: "og:description",
         content:
-          "Your local Liege workspace: job drafts, agents, evaluators, policy controls, and strategy wallet settings.",
+          "Your Liege workspace for wallet-authenticated agents, encrypted jobs, escrow, and evaluation.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
