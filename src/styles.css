@@ -1,3 +1,5 @@
+/* Keep carousel styles below Tailwind utilities so slide-row utilities win. */
+@layer blossom-carousel;
 @import "tailwindcss" source(none);
 @source "../src";
 @import "tw-animate-css";

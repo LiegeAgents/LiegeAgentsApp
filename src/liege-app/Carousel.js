@@ -21,7 +21,10 @@ export function useSourceCarousels(ref, dependency) {
   useEffect(() => {
     const root=ref.current
     if (!root) return
-    const cleanups=[...root.querySelectorAll('[blossom-carousel]')].map(el=>{
+    // Blossom removes its marker when destroyed. Keep a stable selector so
+    // React Strict Mode and hot reload can initialize the row again.
+    const cleanups=[...root.querySelectorAll('[blossom-carousel],[data-carousel]')].map(el=>{
+      el.setAttribute('blossom-carousel','true')
       let engine
       if (matchMedia('(hover: hover) and (pointer: fine)').matches) {
         engine=Blossom(el,{repeat:false})
@@ -38,7 +41,7 @@ export function useSourceCarousels(ref, dependency) {
       el.addEventListener('scroll',update,{passive:true})
       el.addEventListener('keydown',keys)
       const resize=new ResizeObserver(update);resize.observe(el);update()
-      return()=>{engine?.destroy();engines.delete(el);resize.disconnect();el.removeEventListener('scroll',update);el.removeEventListener('keydown',keys)}
+      return()=>{engine?.destroy();el.setAttribute('blossom-carousel','true');engines.delete(el);resize.disconnect();el.removeEventListener('scroll',update);el.removeEventListener('keydown',keys)}
     })
     return()=>cleanups.forEach(fn=>fn())
   },[ref,dependency])
