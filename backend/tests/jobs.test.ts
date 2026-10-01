@@ -78,6 +78,22 @@ describe.skipIf(!databaseAvailable)("job lifecycle", () => {
     const after = await db.query<{ count: string }>("SELECT count(*) FROM jobs");
     expect(after.rows[0].count).toBe(before.rows[0].count);
     expect(await availableBalance(client.userId)).toBe(100);
+
+    const precise = await api()
+      .post("/v1/jobs/simulate")
+      .set(bearer(client))
+      .send({
+        agentId,
+        title: "Precise token preflight",
+        brief: "Check exact token arithmetic without creating a job.",
+        acceptanceCriteria: ["Exact amount retained"],
+        settlementAsset: "liege",
+        budgetLiege: "0.123456789123456789",
+        deadlineAt: new Date(Date.now() + 86_400_000).toISOString(),
+        expiresAt: new Date(Date.now() + 2 * 86_400_000).toISOString(),
+      })
+      .expect(200);
+    expect(precise.body.data.settlement.totalEscrow).toBe("0.123456789123456789");
   });
 
   describe("expiry", () => {
