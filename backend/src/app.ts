@@ -15,8 +15,10 @@ import { evaluationRouter } from "./routes/evaluation.js";
 import { invoicesRouter } from "./routes/invoices.js";
 import { agentAccountsRouter } from "./routes/agentAccounts.js";
 import { receiptsRouter } from "./routes/receipts.js";
+import { servicesRouter } from "./routes/services.js";
 import { ApiError, asyncRoute, errorHandler } from "./http.js";
 import { parseTrustProxy, rateLimit, requestContext } from "./operations.js";
+import { getAcpStatus } from "./acp.js";
 
 export const app = express();
 export const healthPayload = () => ({
@@ -44,6 +46,7 @@ app.get("/health/config", (_request, response) =>
     usdgTokenAddress: env.USDG_TOKEN_ADDRESS ?? null,
   }),
 );
+app.get("/health/acp", (_request, response) => response.json(getAcpStatus()));
 app.get(
   "/health/ready",
   asyncRoute(async (_request, response) => {
@@ -88,6 +91,7 @@ export const routers = [
   ["/v1/invoices", invoicesRouter],
   ["/v1/agent-accounts", agentAccountsRouter],
   ["/v1/receipts", receiptsRouter],
+  ["/v1/services", servicesRouter],
 ] as const;
 for (const [path, router] of routers) app.use(path, router);
 // MCP's internal service routes are intentionally outside the public OpenAPI contract.

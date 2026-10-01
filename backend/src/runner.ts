@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, resolve, sep } from "node:path";
 import { spawn } from "node:child_process";
+import { env } from "./config.js";
 
 export type RunnerArtifact = { name: string; sizeBytes: number; sha256: string; content: Buffer };
 export type SandboxResult = {
@@ -82,6 +83,40 @@ export async function runSandboxed(input: {
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }
+}
+
+/** Execute through the isolated worker in production, with a local fallback only in development/tests. */
+export async function runIsolated(input: {
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+  files?: Record<string, string>;
+  artifactPaths?: string[];
+  timeoutMs?: number;
+  maxOutputBytes?: number;
+}): Promise<SandboxResult> {
+  if (env.NODE_ENV === "production" || env.RUNNER_WORKER_URL) {
+    if (!env.RUNNER_WORKER_URL || !env.RUNNER_WORKER_TOKEN)
+      throw new Error("The isolated runner worker is not configured.");
+    const response = await fetch(`${env.RUNNER_WORKER_URL}/run`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-runner-token": env.RUNNER_WORKER_TOKEN },
+      body: JSON.stringify(input),
+      signal: AbortSignal.timeout(Math.min((input.timeoutMs ?? 30_000) + 10_000, 130_000)),
+    });
+    if (!response.ok) throw new Error(`Runner worker returned HTTP ${response.status}.`);
+    const result = (await response.json()) as Omit<SandboxResult, "artifacts"> & {
+      artifacts: Array<{ name: string; sizeBytes: number; sha256: string; contentBase64: string }>;
+    };
+    return {
+      ...result,
+      artifacts: result.artifacts.map(({ contentBase64, ...artifact }) => ({
+        ...artifact,
+        content: Buffer.from(contentBase64, "base64"),
+      })),
+    };
+  }
+  return runSandboxed(input);
 }
 
 function execute(

@@ -55,6 +55,18 @@ const env = z
     MCP_INTERNAL_API_TOKEN: z.string().min(32).optional(),
     RUNNER_WORKER_URL: z.string().url().optional(),
     RUNNER_WORKER_TOKEN: z.string().min(32).optional(),
+    // Virtuals ACP is an opt-in provider adapter. Credentials are never required
+    // when the adapter is disabled, so existing deployments remain unchanged.
+    ACP_ENABLED: z.enum(["true", "false"]).default("false"),
+    ACP_CHAIN_ID: z.coerce.number().int().positive().default(4663),
+    ACP_EVM_WALLET_ID: z.string().min(1).optional(),
+    ACP_AGENT_WALLET_ADDRESS: z
+      .string()
+      .regex(/^0x[0-9a-fA-F]{40}$/)
+      .optional(),
+    ACP_SIGNER_PRIVATE_KEY: z.string().min(1).optional(),
+    ACP_BUILDER_CODE: z.string().min(1).optional(),
+    ACP_DEFAULT_PRICE_USD: z.coerce.number().positive().finite().default(0.01),
     ADMIN_WALLET_ADDRESSES: z.string().optional(),
   })
   .parse(source);
