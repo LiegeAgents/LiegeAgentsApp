@@ -1,0 +1,6 @@
+# This tracked template contains variable names and deliberately empty values only.
+# Real environment files remain scanned and are excluded by .gitignore.
+[allowlist]
+  paths = [
+    '''backend/\.env\.example$''',
+  ]
