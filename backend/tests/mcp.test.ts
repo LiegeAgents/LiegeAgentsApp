@@ -139,6 +139,46 @@ describe.skipIf(!databaseAvailable)("MCP connections", () => {
     expect(updated.body.data[0].status).toBe("approved");
   });
 
+  test("refuses approvals while the agent is paused and ends runtime access on kill", async () => {
+    const connection = await connect();
+    const queued = await api()
+      .post("/v1/internal/mcp/proposals")
+      .set(internalHeaders(connection.token))
+      .send({ action: "accept_job", payload: { jobId: crypto.randomUUID() } })
+      .expect(201);
+    const control = (command: string) =>
+      api()
+        .post(`/v1/agent-accounts/${agentId}/control`)
+        .set(bearer(owner))
+        .send({ command, reason: "kill switch test" })
+        .expect(200);
+
+    await control("pause");
+    const blocked = await api()
+      .post(`/v1/mcp/proposals/${queued.body.data.id}/approved`)
+      .set(bearer(owner))
+      .expect(403);
+    expect(blocked.body.error.code).toBe("agent_account_paused");
+
+    await control("resume");
+    const second = await api()
+      .post("/v1/internal/mcp/proposals")
+      .set(internalHeaders(connection.token))
+      .send({ action: "accept_job", payload: { jobId: crypto.randomUUID() } })
+      .expect(201);
+    const killed = await control("kill");
+    expect(killed.body.data.revokedConnections).toBe(1);
+    expect(killed.body.data.rejectedProposals).toBe(2);
+
+    const proposals = await api().get("/v1/mcp/proposals").set(bearer(owner)).expect(200);
+    expect(proposals.body.data.map((item: { status: string }) => item.status)).toEqual([
+      "rejected",
+      "rejected",
+    ]);
+    expect(second.body.data.status).toBe("pending");
+    await api().get("/v1/internal/mcp/session").set(internalHeaders(connection.token)).expect(401);
+  });
+
   test("does not let another wallet create or decide an owner's MCP records", async () => {
     await api()
       .post("/v1/mcp/connections")

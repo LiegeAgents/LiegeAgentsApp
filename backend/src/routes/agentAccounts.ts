@@ -215,23 +215,51 @@ agentAccountsRouter.post(
     }
     const status =
       input.command === "kill" ? "killed" : input.command === "pause" ? "paused" : "active";
-    const result = await db.query(
-      "UPDATE agent_accounts SET status=$2, kill_reason=$3, paused_at=CASE WHEN $2='active' THEN NULL ELSE COALESCE(paused_at, now()) END, updated_at=now() WHERE agent_id=$1 RETURNING *",
-      [agentId, status, input.reason ?? null],
-    );
-    await audit(db, {
-      actorId: request.auth!.userId,
-      action: `agent_account.${input.command}`,
-      targetType: "agent_account",
-      targetId: agentId,
-      requestId: request.requestId,
-      metadata: { reason: input.reason ?? null },
-    });
+    const client = await db.connect();
+    let result;
+    let revokedConnections = 0;
+    let rejectedProposals = 0;
+    try {
+      await client.query("BEGIN");
+      result = await client.query(
+        "UPDATE agent_accounts SET status=$2, kill_reason=$3, paused_at=CASE WHEN $2='active' THEN NULL ELSE COALESCE(paused_at, now()) END, updated_at=now() WHERE agent_id=$1 RETURNING *",
+        [agentId, status, input.reason ?? null],
+      );
+      // A kill is permanent, so the agent's live runtime access and queued proposals end with it.
+      if (status === "killed") {
+        const revoked = await client.query(
+          "UPDATE mcp_connections SET revoked_at=now() WHERE agent_id=$1 AND revoked_at IS NULL",
+          [agentId],
+        );
+        const rejected = await client.query(
+          "UPDATE mcp_proposals SET status='rejected', decided_at=now() WHERE agent_id=$1 AND status='pending'",
+          [agentId],
+        );
+        revokedConnections = revoked.rowCount ?? 0;
+        rejectedProposals = rejected.rowCount ?? 0;
+      }
+      await audit(client, {
+        actorId: request.auth!.userId,
+        action: `agent_account.${input.command}`,
+        targetType: "agent_account",
+        targetId: agentId,
+        requestId: request.requestId,
+        metadata: { reason: input.reason ?? null, revokedConnections, rejectedProposals },
+      });
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
     response.json({
       data: {
         accountId: agentId,
         status: result.rows[0].status,
         killReason: result.rows[0].kill_reason,
+        revokedConnections,
+        rejectedProposals,
       },
     });
   }),

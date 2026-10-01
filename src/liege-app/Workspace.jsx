@@ -20,6 +20,7 @@ import {
   ExternalLink,
   Pause,
   Play,
+  Power,
   Globe,
   Activity,
   ReceiptText,
@@ -435,6 +436,14 @@ export default function Workspace() {
               </div>
               {wallet.apiSession && (
                 <McpConnections
+                  token="cookie"
+                  agents={allAgents}
+                  ownerAddress={wallet.session.address}
+                  onNotice={notify}
+                />
+              )}
+              {wallet.apiSession && (
+                <AgentKillSwitch
                   token="cookie"
                   agents={allAgents}
                   ownerAddress={wallet.session.address}
@@ -917,6 +926,177 @@ function McpConnections({ token, agents, ownerAddress, onNotice }) {
               )}
             </div>
           ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+const accountStatusLabel = { active: "Active", paused: "Paused", killed: "Killed" };
+
+function AgentKillSwitch({ token, agents, ownerAddress, onNotice }) {
+  const [accounts, setAccounts] = useState({});
+  const [busy, setBusy] = useState("");
+  const [confirming, setConfirming] = useState("");
+  const [reason, setReason] = useState("");
+  const ownedAgents = agents.filter(
+    (agent) => agent.owner_wallet?.toLowerCase() === ownerAddress?.toLowerCase(),
+  );
+  useEffect(() => {
+    api
+      .agentAccounts(token)
+      .then((result) =>
+        setAccounts(
+          Object.fromEntries((result.data || []).map((account) => [account.agentId, account])),
+        ),
+      )
+      .catch((error) => onNotice(error?.message || "Could not load agent accounts."));
+  }, [token, ownedAgents.length]);
+  const control = async (agent, command) => {
+    setBusy(agent.id);
+    try {
+      const result = await api.controlAgentAccount(token, agent.id, {
+        command,
+        ...(command === "kill" && reason.trim() ? { reason: reason.trim() } : {}),
+      });
+      setAccounts((current) => ({
+        ...current,
+        [agent.id]: {
+          ...current[agent.id],
+          status: result.data.status,
+          killReason: result.data.killReason,
+          pausedAt:
+            result.data.status === "active"
+              ? null
+              : current[agent.id]?.pausedAt || new Date().toISOString(),
+        },
+      }));
+      setConfirming("");
+      setReason("");
+      onNotice(
+        command === "kill"
+          ? `${agent.name} was killed. ${result.data.revokedConnections} connection(s) revoked, ${result.data.rejectedProposals} pending proposal(s) rejected.`
+          : command === "pause"
+            ? `${agent.name} is paused. It cannot create proposals or start runs.`
+            : `${agent.name} is active again.`,
+      );
+    } catch (error) {
+      onNotice(error?.message || "Could not update this agent.");
+    } finally {
+      setBusy("");
+    }
+  };
+  return (
+    <section className="settings-panel mcp-settings-panel agent-kill-panel">
+      <div className="mcp-settings-heading">
+        <div>
+          <span className="eyebrow">AGENT ACCOUNTS</span>
+          <h2>Kill switch</h2>
+          <p>
+            Pause an agent to stop it instantly. It cannot create proposals or start runs, and
+            nothing it queued can be approved until you resume it. Kill ends its access for good:
+            every MCP connection is revoked and every pending proposal is rejected.
+          </p>
+        </div>
+      </div>
+      {!ownedAgents.length ? (
+        <div className="mcp-empty-note">
+          Launch an agent profile first. Its controls will appear here.
+        </div>
+      ) : (
+        <div className="mcp-connection-list">
+          <div className="mcp-list-head">
+            <h3>Your agents</h3>
+            <span>
+              {
+                ownedAgents.filter((agent) => (accounts[agent.id]?.status || "active") === "active")
+                  .length
+              }{" "}
+              running
+            </span>
+          </div>
+          {ownedAgents.map((agent) => {
+            const account = accounts[agent.id];
+            const status = account?.status || "active";
+            return (
+              <div className="agent-kill-row" key={agent.id}>
+                <div className="mcp-connection-row">
+                  <div className="mcp-connection-name">
+                    <span className={`mcp-status agent-status-${status}`} />
+                    <div>
+                      <strong>{agent.name}</strong>
+                      <small>
+                        {status === "active"
+                          ? account?.policy
+                            ? `Policy v${account.policy.version} · accepting work`
+                            : "Accepting work"
+                          : status === "paused"
+                            ? `Paused ${new Date(account.pausedAt).toLocaleString()}`
+                            : `Killed${account?.killReason ? ` · ${account.killReason}` : ""}`}
+                      </small>
+                    </div>
+                  </div>
+                  <div className="agent-kill-actions">
+                    <Status value={accountStatusLabel[status]} />
+                    {status === "active" && (
+                      <Button
+                        secondary
+                        small
+                        disabled={busy === agent.id}
+                        onClick={() => control(agent, "pause")}
+                      >
+                        <Pause size={13} /> Pause
+                      </Button>
+                    )}
+                    {status === "paused" && (
+                      <Button
+                        secondary
+                        small
+                        disabled={busy === agent.id}
+                        onClick={() => control(agent, "resume")}
+                      >
+                        <Play size={13} /> Resume
+                      </Button>
+                    )}
+                    {status !== "killed" && (
+                      <button
+                        className="agent-kill-button"
+                        disabled={busy === agent.id}
+                        onClick={() => setConfirming(confirming === agent.id ? "" : agent.id)}
+                      >
+                        <Power size={13} /> Kill
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {confirming === agent.id && (
+                  <div className="agent-kill-confirm" role="alert">
+                    <p>
+                      Killing <strong>{agent.name}</strong> is permanent. It cannot be resumed.
+                    </p>
+                    <input
+                      value={reason}
+                      onChange={(event) => setReason(event.target.value)}
+                      placeholder="Reason (optional)"
+                      maxLength={500}
+                    />
+                    <div>
+                      <Button secondary small onClick={() => setConfirming("")}>
+                        Cancel
+                      </Button>
+                      <button
+                        className="agent-kill-button solid"
+                        disabled={busy === agent.id}
+                        onClick={() => control(agent, "kill")}
+                      >
+                        <Power size={13} /> {busy === agent.id ? "Killing…" : "Kill agent"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </section>
