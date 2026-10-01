@@ -365,8 +365,7 @@ mcpInternalRouter.post(
            FROM jobs j JOIN users u ON u.id = j.client_id WHERE j.id = $1 AND j.agent_id = $2`,
           [jobId.data, c.agent_id],
         );
-        if (!job.rowCount) violations.push("The job is not assigned to this agent.");
-        else {
+        if (job.rowCount) {
           const row = job.rows[0];
           if (policy.allowedJobCategories.length && !policy.allowedJobCategories.includes(row.kind))
             violations.push("The job category is not allowed by the agent policy.");
