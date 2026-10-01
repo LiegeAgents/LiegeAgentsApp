@@ -10,6 +10,8 @@ if (!apiUrl || !serviceToken)
   throw new Error("LIEGE_API_URL and MCP_INTERNAL_API_TOKEN are required.");
 const liegeApiUrl = apiUrl;
 const internalToken = serviceToken;
+const allowedHosts = ["localhost", "127.0.0.1"];
+if (process.env.MCP_PUBLIC_URL) allowedHosts.push(new URL(process.env.MCP_PUBLIC_URL).hostname);
 async function api(path: string, connectionToken: string, init: RequestInit = {}) {
   const response = await fetch(`${liegeApiUrl}${path}`, {
     ...init,
@@ -67,7 +69,7 @@ function serverFor(connectionToken: string) {
   );
   return server;
 }
-const app = createMcpExpressApp();
+const app = createMcpExpressApp({ host: "0.0.0.0", allowedHosts });
 app.get("/health", (_request, response) =>
   response.json({ status: "ok", service: "liege-mcp", commit: process.env.GIT_SHA || undefined }),
 );
