@@ -10,6 +10,7 @@ import {
   type EscrowChain,
   type ReceiptStatus,
 } from "./escrow.js";
+import type { SettlementAsset } from "./assets.js";
 
 // On-chain settlement runs in two phases. Planning happens inside the caller's database
 // transaction and only writes rows: the outcome plus one pending payout per transfer. Processing
@@ -25,7 +26,13 @@ export function useEscrowChain(replacement: EscrowChain) {
   chain = replacement;
 }
 
-type Purpose = "provider_payment" | "evaluator_fee" | "client_refund" | "usdg_sweep" | "eth_sweep";
+type Purpose =
+  | "provider_payment"
+  | "evaluator_fee"
+  | "client_refund"
+  | "token_sweep"
+  | "usdg_sweep"
+  | "eth_sweep";
 type Payout = {
   id: string;
   job_id: string;
@@ -52,22 +59,27 @@ export async function planSettlement(
     clientAddress: string;
     providerAddress: string;
     evaluatorAddress: string;
-    budgetUsdg: string;
-    evaluatorFeeUsdg: string;
+    budgetUsdg?: string;
+    evaluatorFeeUsdg?: string;
+    budget?: string;
+    evaluatorFee?: string;
+    asset?: SettlementAsset;
   },
 ) {
-  const budget = parseUnits(input.budgetUsdg, env.USDG_DECIMALS);
-  const fee = parseUnits(input.evaluatorFeeUsdg, env.USDG_DECIMALS);
+  const asset = input.asset ?? "usdg";
+  const decimals = asset === "liege" ? env.LIEGE_DECIMALS : env.USDG_DECIMALS;
+  const budget = parseUnits(input.budget ?? input.budgetUsdg ?? "0", decimals);
+  const fee = parseUnits(input.evaluatorFee ?? input.evaluatorFeeUsdg ?? "0", decimals);
   const payouts: [Purpose, EscrowAsset, string, bigint | null][] = [];
   if (input.funded && input.outcome === "accepted") {
-    payouts.push(["provider_payment", "usdg", input.providerAddress, budget]);
-    if (fee > 0n) payouts.push(["evaluator_fee", "usdg", input.evaluatorAddress, fee]);
+    payouts.push(["provider_payment", asset, input.providerAddress, budget]);
+    if (fee > 0n) payouts.push(["evaluator_fee", asset, input.evaluatorAddress, fee]);
   }
   if (input.funded && input.outcome === "rejected")
-    payouts.push(["client_refund", "usdg", input.clientAddress, budget + fee]);
+    payouts.push(["client_refund", asset, input.clientAddress, budget + fee]);
   // Anything else in the wallet (unrecorded or stray deposits, the unused gas reserve) goes back
   // to the client. The ETH sweep is last because every other payout spends gas.
-  payouts.push(["usdg_sweep", "usdg", input.clientAddress, null]);
+  payouts.push([asset === "usdg" ? "usdg_sweep" : "token_sweep", asset, input.clientAddress, null]);
   payouts.push(["eth_sweep", "eth", input.clientAddress, null]);
 
   await client.query("INSERT INTO escrow_settlements (job_id, outcome, cause) VALUES ($1,$2,$3)", [
@@ -175,11 +187,12 @@ async function signingPolicyViolation(payout: Payout) {
     client: string;
     provider: string;
     evaluator: string | null;
-    budget_usdg: string;
-    evaluator_fee_usdg: string;
+    settlement_asset: SettlementAsset;
+    budget_amount: string;
+    evaluator_fee_amount: string;
   }>(
     `SELECT c.wallet_address AS client, p.wallet_address AS provider, e.wallet_address AS evaluator,
-       j.budget_usdg, j.evaluator_fee_usdg
+       j.settlement_asset, j.budget_amount, j.evaluator_fee_amount
      FROM jobs j JOIN users c ON c.id = j.client_id JOIN agents a ON a.id = j.agent_id
      JOIN users p ON p.id = a.owner_id LEFT JOIN users e ON e.id = j.evaluator_id
      WHERE j.id = $1`,
@@ -187,12 +200,15 @@ async function signingPolicyViolation(payout: Payout) {
   );
   if (!job.rowCount) return "the job no longer exists";
   const terms = job.rows[0];
-  const budget = parseUnits(terms.budget_usdg, env.USDG_DECIMALS);
-  const fee = parseUnits(terms.evaluator_fee_usdg, env.USDG_DECIMALS);
+  const asset = terms.settlement_asset;
+  const decimals = asset === "liege" ? env.LIEGE_DECIMALS : env.USDG_DECIMALS;
+  const budget = parseUnits(terms.budget_amount, decimals);
+  const fee = parseUnits(terms.evaluator_fee_amount, decimals);
   const rules: Record<Purpose, { recipient: string; asset: EscrowAsset; amount?: bigint }> = {
-    provider_payment: { recipient: terms.provider, asset: "usdg", amount: budget },
-    evaluator_fee: { recipient: terms.evaluator ?? terms.client, asset: "usdg", amount: fee },
-    client_refund: { recipient: terms.client, asset: "usdg", amount: budget + fee },
+    provider_payment: { recipient: terms.provider, asset, amount: budget },
+    evaluator_fee: { recipient: terms.evaluator ?? terms.client, asset, amount: fee },
+    client_refund: { recipient: terms.client, asset, amount: budget + fee },
+    token_sweep: { recipient: terms.client, asset },
     usdg_sweep: { recipient: terms.client, asset: "usdg" },
     eth_sweep: { recipient: terms.client, asset: "eth" },
   };
@@ -222,7 +238,9 @@ const logSignature = (payout: Payout, nonce: number, signed: { hash: Hash; amoun
   });
 
 const isSweep = (payout: Payout) =>
-  payout.purpose === "usdg_sweep" || payout.purpose === "eth_sweep";
+  payout.purpose === "usdg_sweep" ||
+  payout.purpose === "token_sweep" ||
+  payout.purpose === "eth_sweep";
 
 async function advance(account: LocalAccount, payout: Payout): Promise<Step> {
   const amount = isSweep(payout) ? ("all" as const) : BigInt(payout.amount_raw!);

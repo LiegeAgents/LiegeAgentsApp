@@ -1,22 +1,24 @@
 import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { ApiError } from "./http.js";
+import type { SettlementAsset } from "./assets.js";
 
 type AccountKind = "available" | "escrow" | "stake" | "platform_clearing";
 
 async function account(
   client: PoolClient,
   kind: AccountKind,
-  options: { userId?: string; jobId?: string } = {},
+  options: { userId?: string; jobId?: string; asset?: SettlementAsset } = {},
 ) {
+  const asset = options.asset ?? "usdg";
   const existing = await client.query<{ id: string }>(
-    "SELECT id FROM ledger_accounts WHERE kind = $1 AND user_id IS NOT DISTINCT FROM $2 AND job_id IS NOT DISTINCT FROM $3",
-    [kind, options.userId ?? null, options.jobId ?? null],
+    "SELECT id FROM ledger_accounts WHERE kind = $1 AND asset = $4 AND user_id IS NOT DISTINCT FROM $2 AND job_id IS NOT DISTINCT FROM $3",
+    [kind, options.userId ?? null, options.jobId ?? null, asset],
   );
   if (existing.rowCount) return existing.rows[0].id;
   const created = await client.query<{ id: string }>(
-    "INSERT INTO ledger_accounts (kind, user_id, job_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING RETURNING id",
-    [kind, options.userId ?? null, options.jobId ?? null],
+    "INSERT INTO ledger_accounts (kind, user_id, job_id, asset) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING RETURNING id",
+    [kind, options.userId ?? null, options.jobId ?? null, asset],
   );
   if (created.rowCount) return created.rows[0].id;
   // A concurrent request created the same account first.
@@ -35,7 +37,7 @@ async function lockAccount(client: PoolClient, accountId: string) {
 
 export async function balance(client: PoolClient, accountId: string) {
   const result = await client.query<{ balance: string }>(
-    "SELECT COALESCE(sum(amount_usdg), 0) AS balance FROM ledger_postings WHERE account_id = $1",
+    "SELECT COALESCE(sum(amount), 0) AS balance FROM ledger_postings WHERE account_id = $1",
     [accountId],
   );
   return Number(result.rows[0].balance);
@@ -45,8 +47,9 @@ export async function userBalance(
   client: PoolClient,
   userId: string,
   kind: "available" | "stake" = "available",
+  asset: SettlementAsset = "usdg",
 ) {
-  const id = await account(client, kind, { userId });
+  const id = await account(client, kind, { userId, asset });
   return { accountId: id, amount: await balance(client, id) };
 }
 
@@ -61,6 +64,7 @@ export async function transfer(
     createdBy?: string;
     metadata?: object;
     insufficientFunds?: ApiError;
+    asset?: SettlementAsset;
   },
 ) {
   if (!Number.isFinite(input.amount) || input.amount <= 0)
@@ -68,9 +72,10 @@ export async function transfer(
   // Only the platform clearing account may go negative. The row lock serializes debits per
   // account until this transaction ends; the balance is read in a separate statement so that,
   // under READ COMMITTED, it includes any debit committed while this one waited for the lock.
+  const asset = input.asset ?? "usdg";
   if ((await lockAccount(client, input.from)) !== "platform_clearing") {
     const funded = await client.query<{ covered: boolean }>(
-      "SELECT COALESCE(sum(amount_usdg), 0) >= round($2::numeric, 6) AS covered FROM ledger_postings WHERE account_id = $1",
+      "SELECT COALESCE(sum(amount), 0) >= $2::numeric AS covered FROM ledger_postings WHERE account_id = $1",
       [input.from, input.amount],
     );
     if (!funded.rows[0].covered)
@@ -93,8 +98,8 @@ export async function transfer(
     ],
   );
   await client.query(
-    "INSERT INTO ledger_postings (transaction_id, account_id, amount_usdg) VALUES ($1,$2,$3),($1,$4,$5)",
-    [transaction.rows[0].id, input.from, -input.amount, input.to, input.amount],
+    "INSERT INTO ledger_postings (transaction_id, account_id, amount, amount_usdg) VALUES ($1,$2,$3,CASE WHEN $6 = 'usdg' THEN $3 ELSE NULL END),($1,$4,$5,CASE WHEN $6 = 'usdg' THEN $5 ELSE NULL END)",
+    [transaction.rows[0].id, input.from, -input.amount, input.to, input.amount, asset],
   );
   return transaction.rows[0].id;
 }
@@ -107,8 +112,8 @@ export async function creditUser(
   reference: string,
   metadata: object = {},
 ) {
-  const platform = await account(client, "platform_clearing");
-  const available = await account(client, "available", { userId });
+  const platform = await account(client, "platform_clearing", { asset: "usdg" });
+  const available = await account(client, "available", { userId, asset: "usdg" });
   return transfer(client, {
     reference,
     type: "admin_credit",
@@ -127,8 +132,8 @@ export async function setStake(
   createdBy: string,
   reference: string,
 ) {
-  const available = await account(client, "available", { userId });
-  const stake = await account(client, "stake", { userId });
+  const available = await account(client, "available", { userId, asset: "usdg" });
+  const stake = await account(client, "stake", { userId, asset: "usdg" });
   await lockAccount(client, stake);
   const current = await balance(client, stake);
   const difference = targetStake - current;
@@ -160,6 +165,10 @@ export async function setStake(
   return targetStake;
 }
 
-export async function escrowAccount(client: PoolClient, jobId: string) {
-  return account(client, "escrow", { jobId });
+export async function escrowAccount(
+  client: PoolClient,
+  jobId: string,
+  asset: SettlementAsset = "usdg",
+) {
+  return account(client, "escrow", { jobId, asset });
 }

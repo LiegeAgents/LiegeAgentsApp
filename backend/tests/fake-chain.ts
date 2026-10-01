@@ -9,7 +9,7 @@ type Transaction = {
   nonce: number;
   salt: number;
 };
-type Balances = { usdg: bigint; eth: bigint };
+type Balances = { usdg: bigint; liege?: bigint; eth: bigint };
 
 // Gas cost of every transaction, paid in ETH by the sender.
 export const GAS_COST = 1_000n;
@@ -29,12 +29,13 @@ export class FakeChain implements EscrowChain {
   credit(address: string, amounts: Partial<Balances>) {
     const balance = this.balanceOf(address);
     balance.usdg += amounts.usdg ?? 0n;
+    balance.liege = (balance.liege ?? 0n) + (amounts.liege ?? 0n);
     balance.eth += amounts.eth ?? 0n;
   }
 
   balanceOf(address: string) {
     const key = address.toLowerCase();
-    if (!this.balances.has(key)) this.balances.set(key, { usdg: 0n, eth: 0n });
+    if (!this.balances.has(key)) this.balances.set(key, { usdg: 0n, liege: 0n, eth: 0n });
     return this.balances.get(key)!;
   }
 
@@ -74,7 +75,9 @@ export class FakeChain implements EscrowChain {
           ? payout.amount
           : payout.asset === "usdg"
             ? balance.usdg
-            : balance.eth - GAS_COST;
+            : payout.asset === "liege"
+              ? (balance.liege ?? 0n)
+              : balance.eth - GAS_COST;
       if (amount <= 0n) return null;
       const transaction: Transaction = {
         from: account.address.toLowerCase(),
@@ -103,10 +106,13 @@ export class FakeChain implements EscrowChain {
         throw new Error("insufficient funds for gas * price + value");
       this.nonces.set(transaction.from, nonce + 1);
       from.eth -= GAS_COST;
-      const status = from[transaction.asset] >= amount ? "success" : "reverted";
+      const status = (from[transaction.asset] ?? 0n) >= amount ? "success" : "reverted";
       if (status === "success") {
-        from[transaction.asset] -= amount;
-        this.balanceOf(transaction.to)[transaction.asset] += amount;
+        if (transaction.asset === "liege") from.liege = (from.liege ?? 0n) - amount;
+        else from[transaction.asset] -= amount;
+        const target = this.balanceOf(transaction.to);
+        if (transaction.asset === "liege") target.liege = (target.liege ?? 0n) + amount;
+        else target[transaction.asset] += amount;
       }
       this.receipts.set(hash, status);
       this.mined.push({ ...transaction, hash, status });

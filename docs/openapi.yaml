@@ -424,7 +424,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [agentId, title, acceptanceCriteria, budgetUsdg, deadlineAt, expiresAt]
+              required: [agentId, title, acceptanceCriteria, settlementAsset, deadlineAt, expiresAt]
               properties:
                 agentId: { type: string, format: uuid }
                 evaluatorId: { type: string, format: uuid }
@@ -433,8 +433,11 @@ paths:
                 brief: { type: string, minLength: 1, maxLength: 100000, description: Required unless briefCiphertext is given. }
                 briefCiphertext: { type: string, minLength: 1, maxLength: 100000, description: A client-encrypted brief, stored as given. }
                 acceptanceCriteria: { type: array, minItems: 1, maxItems: 20, items: { type: string, minLength: 1, maxLength: 500 } }
+                settlementAsset: { type: string, enum: [usdg, liege], default: usdg, description: Immutable settlement token selected when the job is created. }
                 budgetUsdg: { $ref: '#/components/schemas/UsdgInput' }
                 evaluatorFeeUsdg: { $ref: '#/components/schemas/UsdgInput' }
+                budgetLiege: { type: [number, string], description: Direct LIEGE token amount when settlementAsset is liege. }
+                evaluatorFeeLiege: { type: [number, string], description: Direct LIEGE token amount when settlementAsset is liege. }
                 deadlineAt: { type: string, format: date-time }
                 expiresAt: { type: string, format: date-time }
                 strategyPolicy: { type: object }
@@ -507,9 +510,13 @@ paths:
                 properties:
                   data:
                     type: object
-                    required: [escrowAddress, usdgTokenAddress, usdgDecimals, usdgAmountRaw, quoteId, gasReserveWei, ethUsdPrice, expiresAt]
+                    required: [escrowAddress, settlementAsset, tokenAddress, tokenDecimals, tokenAmountRaw, quoteId, gasReserveWei, ethUsdPrice, expiresAt]
                     properties:
                       escrowAddress: { $ref: '#/components/schemas/Address' }
+                      settlementAsset: { type: string, enum: [usdg, liege] }
+                      tokenAddress: { $ref: '#/components/schemas/Address' }
+                      tokenDecimals: { type: integer }
+                      tokenAmountRaw: { type: string, pattern: '^[0-9]+$' }
                       usdgTokenAddress: { $ref: '#/components/schemas/Address' }
                       usdgDecimals: { type: integer }
                       usdgAmountRaw: { type: string, pattern: '^[0-9]+$' }
@@ -541,6 +548,7 @@ paths:
               description: Required for on-chain escrow; ignored for ledger escrow.
               properties:
                 quoteId: { type: string, format: uuid }
+                tokenTxHash: { $ref: '#/components/schemas/TransactionHash' }
                 usdgTxHash: { $ref: '#/components/schemas/TransactionHash' }
                 gasTxHash: { $ref: '#/components/schemas/TransactionHash' }
       responses:
@@ -945,7 +953,7 @@ components:
     JobKind: { enum: [standard, trade_stock_token, manage_vault, subscription, fund_transfer] }
     Job:
       type: object
-      required: [id, public_id, client_id, agent_id, status, title, budget_usdg, evaluator_fee_usdg, deadline_at, expires_at, escrow_mode]
+      required: [id, public_id, client_id, agent_id, status, title, settlement_asset, budget_amount, evaluator_fee_amount, deadline_at, expires_at, escrow_mode]
       properties:
         id: { type: string, format: uuid }
         public_id: { type: string }
@@ -955,10 +963,13 @@ components:
         kind: { $ref: '#/components/schemas/JobKind' }
         status: { $ref: '#/components/schemas/JobStatus' }
         title: { type: string }
+        settlement_asset: { type: string, enum: [usdg, liege] }
+        budget_amount: { type: string, description: Direct amount in the selected settlement asset. }
+        evaluator_fee_amount: { type: string, description: Direct amount in the selected settlement asset. }
         brief_hash: { type: string, description: A keyed digest of the brief. }
         acceptance_criteria: { type: array, items: { type: string } }
-        budget_usdg: { $ref: '#/components/schemas/Usdg' }
-        evaluator_fee_usdg: { $ref: '#/components/schemas/Usdg' }
+        budget_usdg: { oneOf: [{ $ref: '#/components/schemas/Usdg' }, { type: 'null' }] }
+        evaluator_fee_usdg: { oneOf: [{ $ref: '#/components/schemas/Usdg' }, { type: 'null' }] }
         deadline_at: { type: string, format: date-time }
         expires_at: { type: string, format: date-time }
         funded_at: { type: [string, 'null'], format: date-time }

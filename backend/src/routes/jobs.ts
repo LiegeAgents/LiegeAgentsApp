@@ -13,6 +13,7 @@ import { env } from "../config.js";
 import { evidenceUrl, isSafeEvidenceUrl } from "../evidence.js";
 import { createFundingQuote, ensureEscrowWallet, verifyOnchainFunding } from "../escrow.js";
 import { planSettlement, processSettlement } from "../settlement.js";
+import type { SettlementAsset } from "../assets.js";
 import {
   evaluatorPosition,
   lockEvaluator,
@@ -32,13 +33,23 @@ const jobInput = z
     brief: z.string().min(1).max(100_000).optional(),
     briefCiphertext: z.string().min(1).max(100_000).optional(),
     acceptanceCriteria: z.array(z.string().min(1).max(500)).min(1).max(20),
-    budgetUsdg: z.coerce.number().positive(),
+    settlementAsset: z.enum(["usdg", "liege"]).default("usdg"),
+    budgetUsdg: z.coerce.number().positive().optional(),
     evaluatorFeeUsdg: z.coerce.number().min(0).default(0),
+    budgetLiege: z.coerce.number().positive().optional(),
+    evaluatorFeeLiege: z.coerce.number().min(0).default(0),
     deadlineAt: z.coerce.date(),
     expiresAt: z.coerce.date(),
     strategyPolicy: z.record(z.unknown()).optional(),
   })
   .superRefine((value, ctx) => {
+    const budget = value.settlementAsset === "liege" ? value.budgetLiege : value.budgetUsdg;
+    if (!budget)
+      ctx.addIssue({
+        code: "custom",
+        path: [value.settlementAsset === "liege" ? "budgetLiege" : "budgetUsdg"],
+        message: `${value.settlementAsset === "liege" ? "budgetLiege" : "budgetUsdg"} is required.`,
+      });
     if (!value.brief && !value.briefCiphertext)
       ctx.addIssue({ code: "custom", message: "brief is required." });
     if (value.deadlineAt.getTime() <= Date.now())
@@ -49,10 +60,12 @@ const jobInput = z
       });
     if (value.expiresAt < value.deadlineAt)
       ctx.addIssue({ code: "custom", message: "expiresAt cannot precede deadlineAt." });
-    if (!value.evaluatorId && value.evaluatorFeeUsdg > 0)
+    const fee =
+      value.settlementAsset === "liege" ? value.evaluatorFeeLiege : value.evaluatorFeeUsdg;
+    if (!value.evaluatorId && fee > 0)
       ctx.addIssue({
         code: "custom",
-        path: ["evaluatorFeeUsdg"],
+        path: [value.settlementAsset === "liege" ? "evaluatorFeeLiege" : "evaluatorFeeUsdg"],
         message: "An evaluator is required when an evaluator fee is configured.",
       });
   });
@@ -164,6 +177,10 @@ jobsRouter.post(
   requireAuth,
   asyncRoute(async (request, response) => {
     const input = jobInput.parse(request.body);
+    const settlementAsset = input.settlementAsset as SettlementAsset;
+    const budget = settlementAsset === "liege" ? input.budgetLiege! : input.budgetUsdg!;
+    const evaluatorFee =
+      settlementAsset === "liege" ? input.evaluatorFeeLiege : input.evaluatorFeeUsdg;
     const agent = await db.query<{ owner_id: string }>(
       "SELECT owner_id FROM agents WHERE id = $1 AND active",
       [input.agentId],
@@ -183,7 +200,7 @@ jobsRouter.post(
         "An agent owner cannot evaluate their own job.",
       );
     const selfSettled = !input.evaluatorId || input.evaluatorId === request.auth!.userId;
-    if (selfSettled && input.budgetUsdg >= SELF_SETTLEMENT_LIMIT_USDG)
+    if (selfSettled && settlementAsset === "usdg" && budget >= SELF_SETTLEMENT_LIMIT_USDG)
       throw new ApiError(
         422,
         "self_evaluation_limit",
@@ -199,7 +216,7 @@ jobsRouter.post(
         const evaluator = await lockEvaluator(client, input.evaluatorId);
         const position = evaluator
           ? await evaluatorPosition(client, input.evaluatorId, {
-              addedExposureUsdg: input.budgetUsdg,
+              addedExposureUsdg: settlementAsset === "usdg" ? budget : 0,
             })
           : null;
         if (!evaluator?.active || position!.stakeUsdg < MINIMUM_EVALUATOR_STAKE_USDG)
@@ -216,8 +233,8 @@ jobsRouter.post(
           );
       }
       const result = await client.query(
-        `INSERT INTO jobs (id, client_id, agent_id, evaluator_id, kind, title, brief_ciphertext, brief_hash, acceptance_criteria, budget_usdg, evaluator_fee_usdg, deadline_at, expires_at, strategy_policy, escrow_mode)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+        `INSERT INTO jobs (id, client_id, agent_id, evaluator_id, kind, title, brief_ciphertext, brief_hash, acceptance_criteria, settlement_asset, budget_amount, evaluator_fee_amount, budget_usdg, evaluator_fee_usdg, deadline_at, expires_at, strategy_policy, escrow_mode)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
         [
           jobId,
           request.auth!.userId,
@@ -228,8 +245,11 @@ jobsRouter.post(
           encryptPayload(privateBrief, payloadContext(jobId, "brief")),
           payloadDigest(privateBrief),
           JSON.stringify(input.acceptanceCriteria),
-          input.budgetUsdg,
-          input.evaluatorFeeUsdg,
+          settlementAsset,
+          budget,
+          evaluatorFee,
+          settlementAsset === "usdg" ? budget : null,
+          settlementAsset === "usdg" ? evaluatorFee : null,
           input.deadlineAt,
           input.expiresAt,
           input.strategyPolicy ? JSON.stringify(input.strategyPolicy) : null,
@@ -345,12 +365,13 @@ jobsRouter.post(
       client_id: string;
       status: string;
       escrow_mode: string;
+      settlement_asset: SettlementAsset;
+      budget_amount: string;
+      evaluator_fee_amount: string;
       address: string;
-      budget_usdg: string;
-      evaluator_fee_usdg: string;
       expires_at: Date;
     }>(
-      "SELECT j.client_id, j.status, j.escrow_mode, j.budget_usdg, j.evaluator_fee_usdg, j.expires_at, ew.address FROM jobs j LEFT JOIN escrow_wallets ew ON ew.job_id = j.id WHERE j.id = $1",
+      "SELECT j.client_id, j.status, j.escrow_mode, j.settlement_asset, j.budget_amount, j.evaluator_fee_amount, j.expires_at, ew.address FROM jobs j LEFT JOIN escrow_wallets ew ON ew.job_id = j.id WHERE j.id = $1",
       [id],
     );
     if (!job.rowCount || job.rows[0].client_id !== request.auth!.userId)
@@ -376,10 +397,31 @@ jobsRouter.post(
         escrowAddress: job.rows[0].address,
         usdgTokenAddress: env.USDG_TOKEN_ADDRESS,
         usdgDecimals: env.USDG_DECIMALS,
-        usdgAmountRaw: (
-          parseUnits(job.rows[0].budget_usdg, env.USDG_DECIMALS) +
-          parseUnits(job.rows[0].evaluator_fee_usdg, env.USDG_DECIMALS)
+        settlementAsset: job.rows[0].settlement_asset,
+        tokenAddress:
+          job.rows[0].settlement_asset === "liege"
+            ? env.LIEGE_TOKEN_ADDRESS
+            : env.USDG_TOKEN_ADDRESS,
+        tokenDecimals:
+          job.rows[0].settlement_asset === "liege" ? env.LIEGE_DECIMALS : env.USDG_DECIMALS,
+        tokenAmountRaw: (
+          parseUnits(
+            job.rows[0].budget_amount,
+            job.rows[0].settlement_asset === "liege" ? env.LIEGE_DECIMALS : env.USDG_DECIMALS,
+          ) +
+          parseUnits(
+            job.rows[0].evaluator_fee_amount,
+            job.rows[0].settlement_asset === "liege" ? env.LIEGE_DECIMALS : env.USDG_DECIMALS,
+          )
         ).toString(),
+        ...(job.rows[0].settlement_asset === "usdg"
+          ? {
+              usdgAmountRaw: (
+                parseUnits(job.rows[0].budget_amount, env.USDG_DECIMALS) +
+                parseUnits(job.rows[0].evaluator_fee_amount, env.USDG_DECIMALS)
+              ).toString(),
+            }
+          : {}),
         ...(await createFundingQuote(db, id)),
       },
     });
@@ -391,7 +433,12 @@ jobsRouter.post(
   requireAuth,
   asyncRoute(async (request, response) => {
     const onchainInput = z
-      .object({ quoteId: z.string().uuid(), usdgTxHash: z.string(), gasTxHash: z.string() })
+      .object({
+        quoteId: z.string().uuid(),
+        tokenTxHash: z.string().optional(),
+        usdgTxHash: z.string().optional(),
+        gasTxHash: z.string(),
+      })
       .safeParse(request.body);
     const id = z.string().uuid().parse(request.params.id);
     // On-chain deposits are verified before the transaction opens, so waiting for confirmations
@@ -400,10 +447,13 @@ jobsRouter.post(
       client_id: string;
       status: string;
       escrow_mode: string;
+      settlement_asset: SettlementAsset;
+      budget_amount: string;
+      evaluator_fee_amount: string;
       budget_usdg: string;
       evaluator_fee_usdg: string;
     }>(
-      "SELECT client_id, status, escrow_mode, budget_usdg, evaluator_fee_usdg FROM jobs WHERE id = $1",
+      "SELECT client_id, status, escrow_mode, settlement_asset, budget_amount, evaluator_fee_amount, budget_usdg, evaluator_fee_usdg FROM jobs WHERE id = $1",
       [id],
     );
     const verifying =
@@ -414,15 +464,16 @@ jobsRouter.post(
       throw new ApiError(
         422,
         "onchain_funding_payload_required",
-        "quoteId, usdgTxHash, and gasTxHash are required for on-chain funding.",
+        "quoteId, tokenTxHash, and gasTxHash are required for on-chain funding.",
       );
     const funding =
       verifying && onchainInput.success
         ? await verifyOnchainFunding(db, onchainInput.data, {
             jobId: id,
             clientAddress: request.auth!.walletAddress,
-            budgetUsdg: current.rows[0].budget_usdg,
-            evaluatorFeeUsdg: current.rows[0].evaluator_fee_usdg,
+            budget: current.rows[0].budget_amount,
+            evaluatorFee: current.rows[0].evaluator_fee_amount,
+            asset: current.rows[0].settlement_asset,
           })
         : null;
     const client = await db.connect();
@@ -437,30 +488,39 @@ jobsRouter.post(
             "This job's escrow mode changed while funding was verified. Retry funding.",
           );
         await client.query(
-          "INSERT INTO escrow_fundings (job_id, usdg_tx_hash, gas_tx_hash, usdg_amount_raw, gas_amount_wei) VALUES ($1,$2,$3,$4,$5)",
+          "INSERT INTO escrow_fundings (job_id, usdg_tx_hash, gas_tx_hash, usdg_amount_raw, gas_amount_wei, token_tx_hash, token_amount_raw, settlement_asset) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
           [
             job.id,
             funding.usdgTxHash,
             funding.gasTxHash,
             funding.usdgAmountRaw,
             funding.gasAmountWei,
+            funding.tokenTxHash,
+            funding.tokenAmountRaw,
+            current.rows[0].settlement_asset,
           ],
         );
       } else {
-        const total = Number(job.budget_usdg) + Number(job.evaluator_fee_usdg);
-        const available = await userBalance(client, request.auth!.userId);
+        const total = Number(job.budget_amount) + Number(job.evaluator_fee_amount);
+        const available = await userBalance(
+          client,
+          request.auth!.userId,
+          "available",
+          job.settlement_asset,
+        );
         await transfer(client, {
           reference: `job-fund:${job.id}`,
           type: "job_fund",
           from: available.accountId,
-          to: await escrowAccount(client, job.id),
+          to: await escrowAccount(client, job.id, job.settlement_asset),
+          asset: job.settlement_asset,
           amount: total,
           createdBy: request.auth!.userId,
           metadata: { jobId: job.id },
           insufficientFunds: new ApiError(
             422,
             "insufficient_available_balance",
-            "Your available USDG balance cannot fund this job.",
+            `Your available ${job.settlement_asset === "liege" ? "LIEGE" : "USDG"} balance cannot fund this job.`,
           ),
         });
       }
@@ -577,42 +637,61 @@ jobsRouter.post(
           clientAddress: addresses.rows[0].client_address,
           providerAddress: addresses.rows[0].provider_address,
           evaluatorAddress: addresses.rows[0].evaluator_address,
-          budgetUsdg: String(job.budget_usdg),
-          evaluatorFeeUsdg: String(job.evaluator_fee_usdg),
+          budget: String(job.budget_amount),
+          evaluatorFee: String(job.evaluator_fee_amount),
+          asset: job.settlement_asset,
         });
       } else {
-        const escrow = await escrowAccount(client, job.id);
-        const total = Number(job.budget_usdg) + Number(job.evaluator_fee_usdg);
+        const escrow = await escrowAccount(client, job.id, job.settlement_asset);
+        const total = Number(job.budget_amount) + Number(job.evaluator_fee_amount);
         if (target === "completed") {
-          const provider = await userBalance(client, job.provider_id);
-          const evaluator = await userBalance(client, request.auth!.userId);
+          const provider = await userBalance(
+            client,
+            job.provider_id,
+            "available",
+            job.settlement_asset,
+          );
+          const evaluator = await userBalance(
+            client,
+            request.auth!.userId,
+            "available",
+            job.settlement_asset,
+          );
           await transfer(client, {
             reference: `job-settle-provider:${job.id}`,
             type: "job_settlement",
             from: escrow,
             to: provider.accountId,
-            amount: Number(job.budget_usdg),
+            amount: Number(job.budget_amount),
+            asset: job.settlement_asset,
             createdBy: request.auth!.userId,
             metadata: { jobId: job.id },
           });
-          if (Number(job.evaluator_fee_usdg) > 0)
+          if (Number(job.evaluator_fee_amount) > 0)
             await transfer(client, {
               reference: `job-settle-evaluator:${job.id}`,
               type: "evaluator_fee",
               from: escrow,
               to: evaluator.accountId,
-              amount: Number(job.evaluator_fee_usdg),
+              amount: Number(job.evaluator_fee_amount),
+              asset: job.settlement_asset,
               createdBy: request.auth!.userId,
               metadata: { jobId: job.id },
             });
         } else {
-          const clientBalance = await userBalance(client, job.client_id);
+          const clientBalance = await userBalance(
+            client,
+            job.client_id,
+            "available",
+            job.settlement_asset,
+          );
           await transfer(client, {
             reference: `job-refund:${job.id}`,
             type: "job_refund",
             from: escrow,
             to: clientBalance.accountId,
             amount: total,
+            asset: job.settlement_asset,
             createdBy: request.auth!.userId,
             metadata: { jobId: job.id },
           });

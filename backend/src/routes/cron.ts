@@ -45,9 +45,10 @@ cronRouter.post(
         client_id: string;
         client_address: string;
         provider_address: string;
-        budget_usdg: string;
-        evaluator_fee_usdg: string;
-      }>(`SELECT j.id, j.status, j.escrow_mode, ew.job_id IS NOT NULL AS has_wallet, j.client_id, c.wallet_address AS client_address, p.wallet_address AS provider_address, j.budget_usdg, j.evaluator_fee_usdg
+        settlement_asset: "usdg" | "liege";
+        budget_amount: string;
+        evaluator_fee_amount: string;
+      }>(`SELECT j.id, j.status, j.escrow_mode, ew.job_id IS NOT NULL AS has_wallet, j.client_id, c.wallet_address AS client_address, p.wallet_address AS provider_address, j.settlement_asset, j.budget_amount, j.evaluator_fee_amount
       FROM jobs j JOIN users c ON c.id = j.client_id JOIN agents a ON a.id = j.agent_id JOIN users p ON p.id = a.owner_id
       LEFT JOIN escrow_wallets ew ON ew.job_id = j.id
       WHERE j.status IN ('open', 'funded', 'submitted') AND j.expires_at <= now()
@@ -66,17 +67,20 @@ cronRouter.post(
             clientAddress: job.client_address,
             providerAddress: job.provider_address,
             evaluatorAddress: job.client_address,
-            budgetUsdg: job.budget_usdg,
-            evaluatorFeeUsdg: job.evaluator_fee_usdg,
+            budget: job.budget_amount,
+            evaluatorFee: job.evaluator_fee_amount,
+            asset: job.settlement_asset,
           });
           settlements++;
         } else if (funded) {
           await transfer(client, {
             reference: `job-expiry-refund:${job.id}`,
             type: "job_expiry_refund",
-            from: await escrowAccount(client, job.id),
-            to: (await userBalance(client, job.client_id)).accountId,
-            amount: Number(job.budget_usdg) + Number(job.evaluator_fee_usdg),
+            from: await escrowAccount(client, job.id, job.settlement_asset),
+            to: (await userBalance(client, job.client_id, "available", job.settlement_asset))
+              .accountId,
+            amount: Number(job.budget_amount) + Number(job.evaluator_fee_amount),
+            asset: job.settlement_asset,
             metadata: { jobId: job.id },
           });
         }

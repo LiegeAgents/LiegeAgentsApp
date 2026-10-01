@@ -21,10 +21,16 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { env } from "./config.js";
 import { decryptEscrowPrivateKey, encryptEscrowPrivateKey } from "./crypto.js";
 import { ApiError } from "./http.js";
+import type { SettlementAsset } from "./assets.js";
 
 type Queryable = Pool | PoolClient;
 type EscrowWallet = { job_id: string; address: string; encrypted_private_key: string };
-type FundingInput = { usdgTxHash: string; gasTxHash: string; quoteId: string };
+type FundingInput = {
+  tokenTxHash?: string;
+  usdgTxHash?: string;
+  gasTxHash: string;
+  quoteId: string;
+};
 const robinhoodChain: Chain = {
   id: env.RHC_ID,
   name: "Robinhood Chain",
@@ -40,6 +46,12 @@ const usdg = () => {
     throw new ApiError(503, "onchain_escrow_unconfigured", "On-chain escrow is not configured.");
   return env.USDG_TOKEN_ADDRESS.toLowerCase() as Address;
 };
+const tokenAddress = (asset: SettlementAsset) => {
+  if (asset === "liege") return env.LIEGE_TOKEN_ADDRESS.toLowerCase() as Address;
+  return usdg();
+};
+const tokenDecimals = (asset: SettlementAsset) =>
+  asset === "liege" ? env.LIEGE_DECIMALS : env.USDG_DECIMALS;
 const address = (value: string) => value.toLowerCase() as Address;
 const hash = (value: string) => {
   if (!/^0x[0-9a-fA-F]{64}$/.test(value))
@@ -124,8 +136,19 @@ export async function createFundingQuote(client: Queryable, jobId: string) {
 export async function verifyOnchainFunding(
   client: Queryable,
   input: FundingInput,
-  expected: { jobId: string; clientAddress: string; budgetUsdg: string; evaluatorFeeUsdg: string },
+  expected: {
+    jobId: string;
+    clientAddress: string;
+    budget?: string;
+    evaluatorFee?: string;
+    budgetUsdg?: string;
+    evaluatorFeeUsdg?: string;
+    asset?: SettlementAsset;
+  },
 ) {
+  const asset = expected.asset ?? "usdg";
+  const budget = expected.budget ?? expected.budgetUsdg ?? "0";
+  const evaluatorFee = expected.evaluatorFee ?? expected.evaluatorFeeUsdg ?? "0";
   const quote = await client.query<{ gas_reserve_wei: string; expires_at: Date }>(
     "SELECT gas_reserve_wei, expires_at FROM escrow_funding_quotes WHERE id = $1 AND job_id = $2",
     [input.quoteId, expected.jobId],
@@ -168,7 +191,7 @@ export async function verifyOnchainFunding(
     );
   };
   const [token, gas] = await Promise.all([
-    confirmedTransaction(hash(input.usdgTxHash)),
+    confirmedTransaction(hash(input.tokenTxHash ?? input.usdgTxHash ?? "")),
     confirmedTransaction(hash(input.gasTxHash)),
   ]);
   const [tokenBlock, gasBlock] = await Promise.all([
@@ -190,7 +213,7 @@ export async function verifyOnchainFunding(
     throw new ApiError(
       422,
       "funding_transaction_failed",
-      "Both USDG and ETH reserve transfers must succeed.",
+      `Both ${asset === "liege" ? "LIEGE" : "USDG"} and ETH reserve transfers must succeed.`,
     );
   const clientAddress = address(expected.clientAddress),
     escrowAddress = address(wallet.rows[0].address);
@@ -206,8 +229,7 @@ export async function verifyOnchainFunding(
       "Funding transfers must come from the client wallet and use the quoted ETH reserve.",
     );
   const expectedRaw =
-    parseUnits(expected.budgetUsdg, env.USDG_DECIMALS) +
-    parseUnits(expected.evaluatorFeeUsdg, env.USDG_DECIMALS);
+    parseUnits(budget, tokenDecimals(asset)) + parseUnits(evaluatorFee, tokenDecimals(asset));
   const transfer = tokenReceipt.logs
     .map((log) => {
       try {
@@ -222,7 +244,7 @@ export async function verifyOnchainFunding(
     .find(
       (event) =>
         event?.decoded.eventName === "Transfer" &&
-        event.address.toLowerCase() === usdg() &&
+        event.address.toLowerCase() === tokenAddress(asset) &&
         event.decoded.args.from?.toLowerCase() === clientAddress &&
         event.decoded.args.to?.toLowerCase() === escrowAddress &&
         event.decoded.args.value === expectedRaw,
@@ -230,12 +252,14 @@ export async function verifyOnchainFunding(
   if (!transfer)
     throw new ApiError(
       422,
-      "invalid_usdg_deposit",
-      "The USDG transfer does not match this job escrow and amount.",
+      "invalid_token_deposit",
+      `The ${asset === "liege" ? "LIEGE" : "USDG"} transfer does not match this job escrow and amount.`,
     );
   return {
-    usdgTxHash: hash(input.usdgTxHash),
+    tokenTxHash: hash(input.tokenTxHash ?? input.usdgTxHash ?? ""),
+    usdgTxHash: hash(input.tokenTxHash ?? input.usdgTxHash ?? ""),
     gasTxHash: hash(input.gasTxHash),
+    tokenAmountRaw: expectedRaw.toString(),
     usdgAmountRaw: expectedRaw.toString(),
     gasAmountWei: quote.rows[0].gas_reserve_wei,
     escrowAddress: wallet.rows[0].address,
@@ -254,7 +278,7 @@ export async function escrowSigner(client: Queryable, jobId: string) {
   );
 }
 
-export type EscrowAsset = "usdg" | "eth";
+export type EscrowAsset = SettlementAsset | "eth";
 // "pending" means mined but short of ESCROW_CONFIRMATIONS; null means no receipt is known.
 export type ReceiptStatus = "success" | "reverted" | "pending" | null;
 
@@ -301,6 +325,34 @@ async function signUsdgTransfer(
   return { raw, hash: keccak256(raw), amount: value };
 }
 
+async function signTokenTransfer(
+  asset: SettlementAsset,
+  account: LocalAccount,
+  to: Address,
+  amount: bigint | "all",
+  nonce: number,
+) {
+  const token = tokenAddress(asset);
+  const value =
+    amount === "all"
+      ? await publicClient.readContract({
+          address: token,
+          abi: erc20Abi,
+          functionName: "balanceOf",
+          args: [account.address],
+        })
+      : amount;
+  if (value <= 0n) return null;
+  const wallet = walletClient(account);
+  const request = await wallet.prepareTransactionRequest({
+    to: token,
+    data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [to, value] }),
+    nonce,
+  });
+  const raw = await wallet.signTransaction(request);
+  return { raw, hash: keccak256(raw), amount: value };
+}
+
 async function signEthTransfer(
   account: LocalAccount,
   to: Address,
@@ -330,8 +382,8 @@ async function confirmedStatus(receipt: TransactionReceipt): Promise<ReceiptStat
 export const viemEscrowChain: EscrowChain = {
   transactionCount: (address, blockTag) => publicClient.getTransactionCount({ address, blockTag }),
   sign: (account, payout) =>
-    payout.asset === "usdg"
-      ? signUsdgTransfer(account, payout.to, payout.amount, payout.nonce)
+    payout.asset === "usdg" || payout.asset === "liege"
+      ? signTokenTransfer(payout.asset, account, payout.to, payout.amount, payout.nonce)
       : signEthTransfer(account, payout.to, payout.amount, payout.nonce),
   async broadcast(raw) {
     await publicClient.sendRawTransaction({ serializedTransaction: raw });
