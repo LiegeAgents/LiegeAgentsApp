@@ -92,9 +92,11 @@ describe.skipIf(!databaseAvailable)("USDG invoices", () => {
         expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
       })
       .expect(201);
-    await db.query("UPDATE invoices SET expires_at=now() - interval '1 second' WHERE id=$1", [
-      issued.body.data.id,
-    ]);
+    // Preserve the database invariant expires_at > created_at while making the invoice due.
+    await db.query(
+      "UPDATE invoices SET created_at=now() - interval '2 seconds', expires_at=now() - interval '1 second' WHERE id=$1",
+      [issued.body.data.id],
+    );
     const cron = await api()
       .post("/v1/cron/expire-jobs")
       .set({ "x-cron-secret": process.env.CRON_SECRET! })
