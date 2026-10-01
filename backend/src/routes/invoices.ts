@@ -7,6 +7,15 @@ import { db } from "../db/index.js";
 import { ApiError, asyncRoute } from "../http.js";
 import { transfer, userBalance } from "../ledger.js";
 import { enqueueWebhookEvent } from "../webhooks.js";
+import {
+  decodePaymentSignature,
+  encodePaymentRequired,
+  encodeSettlementResponse,
+  paymentRequired,
+  settlePayment,
+  verifyPayment,
+  x402Configured,
+} from "../x402.js";
 
 const amount = z
   .union([z.string(), z.number()])
@@ -42,6 +51,9 @@ type InvoiceRow = {
   issuer_wallet?: string;
   payer_id?: string | null;
   payer_wallet?: string | null;
+  payment_method?: string;
+  settlement_transaction?: string | null;
+  settlement_network?: string | null;
 };
 const publicInvoice = (row: InvoiceRow) => ({
   id: row.id,
@@ -61,9 +73,24 @@ const publicInvoice = (row: InvoiceRow) => ({
   createdAt: row.created_at,
   updatedAt: row.updated_at,
   ...(row.issuer_wallet ? { issuerWallet: row.issuer_wallet } : {}),
-  ...(row.payer_id ? { payerId: row.payer_id, payerWallet: row.payer_wallet } : {}),
+  ...(row.payer_id || row.payer_wallet
+    ? {
+        ...(row.payer_id ? { payerId: row.payer_id } : {}),
+        ...(row.payer_wallet ? { payerWallet: row.payer_wallet } : {}),
+      }
+    : {}),
+  ...(row.payment_method
+    ? {
+        paymentMethod: row.payment_method,
+        ...(row.settlement_transaction
+          ? { settlementTransaction: row.settlement_transaction }
+          : {}),
+        ...(row.settlement_network ? { settlementNetwork: row.settlement_network } : {}),
+      }
+    : {}),
 });
-const selectInvoice = `SELECT i.*, issuer.wallet_address AS issuer_wallet, p.payer_id, payer.wallet_address AS payer_wallet
+const selectInvoice = `SELECT i.*, issuer.wallet_address AS issuer_wallet, p.payer_id, payer.wallet_address AS payer_wallet,
+  p.payment_method, p.settlement_transaction, p.settlement_network
   FROM invoices i JOIN users issuer ON issuer.id=i.issuer_id
   LEFT JOIN invoice_payments p ON p.invoice_id=i.id LEFT JOIN users payer ON payer.id=p.payer_id`;
 
@@ -147,6 +174,144 @@ invoicesRouter.get(
 );
 
 invoicesRouter.get(
+  "/:id/x402",
+  asyncRoute(async (request, response) => {
+    if (!x402Configured())
+      throw new ApiError(501, "x402_not_configured", "x402 payment settlement is not configured.");
+    const invoiceId = id.parse(request.params.id);
+    const resourceUrl = `${request.protocol}://${request.get("host")}${request.originalUrl.split("?")[0]}`;
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query<InvoiceRow>(
+        `${selectInvoice} WHERE i.id=$1 FOR UPDATE OF i`,
+        [invoiceId],
+      );
+      if (!result.rowCount)
+        throw new ApiError(404, "invoice_not_found", "This invoice is unavailable.");
+      const invoice = result.rows[0];
+      if (invoice.status === "paid") {
+        await client.query("COMMIT");
+        return response.json({ data: publicInvoice(invoice) });
+      }
+      if (invoice.status !== "issued")
+        throw new ApiError(409, "invoice_unavailable", "This invoice cannot be paid.");
+      if (new Date(invoice.expires_at) <= new Date())
+        throw new ApiError(409, "invoice_expired", "This invoice has expired.");
+      const terms = paymentRequired(invoice, resourceUrl);
+      const encodedTerms = encodePaymentRequired(terms);
+      const signature = request.header("payment-signature") ?? request.header("x-payment");
+      if (!signature) {
+        await client.query("ROLLBACK");
+        return response
+          .status(402)
+          .set("PAYMENT-REQUIRED", encodedTerms)
+          .json({ ...terms, error: "PAYMENT-SIGNATURE header is required" });
+      }
+      let payload: Record<string, unknown>;
+      try {
+        payload = decodePaymentSignature(signature);
+      } catch (error) {
+        await client.query("ROLLBACK");
+        return response
+          .status(402)
+          .set("PAYMENT-REQUIRED", encodedTerms)
+          .json({
+            error: error instanceof Error ? error.message : "Invalid payment signature.",
+            ...terms,
+          });
+      }
+      const verification = await verifyPayment(payload, terms.accepts[0]);
+      if (!verification.isValid || !verification.payer) {
+        await client.query("ROLLBACK");
+        return response
+          .status(402)
+          .set("PAYMENT-REQUIRED", encodedTerms)
+          .json({
+            error: verification.invalidReason ?? "Payment authorization was rejected.",
+            ...terms,
+          });
+      }
+      const settlement = await settlePayment(payload, terms.accepts[0]);
+      if (!settlement.success || !settlement.transaction || !settlement.network) {
+        await client.query("ROLLBACK");
+        return response
+          .status(402)
+          .set("PAYMENT-REQUIRED", encodedTerms)
+          .json({
+            error: settlement.errorReason ?? "Payment settlement failed.",
+            ...terms,
+          });
+      }
+      const payerWallet = verification.payer.toLowerCase();
+      const payer = await client.query<{ id: string }>(
+        "SELECT id FROM users WHERE lower(wallet_address)=lower($1)",
+        [payerWallet],
+      );
+      const payerId = payer.rows[0]?.id ?? null;
+      await client.query(
+        `INSERT INTO invoice_payments
+          (invoice_id,payer_id,ledger_transaction_id,amount_usdg,payment_method,payer_wallet,settlement_transaction,settlement_network)
+         VALUES ($1,$2,NULL,$3,'x402',$4,$5,$6)`,
+        [
+          invoiceId,
+          payerId,
+          invoice.amount_usdg,
+          payerWallet,
+          settlement.transaction,
+          settlement.network,
+        ],
+      );
+      const paid = await client.query<InvoiceRow>(
+        "UPDATE invoices SET status='paid', paid_at=now(), updated_at=now() WHERE id=$1 RETURNING *",
+        [invoiceId],
+      );
+      await enqueueWebhookEvent(client, {
+        invoiceId,
+        eventType: "invoice.paid",
+        actorId: payerId ?? undefined,
+        data: {
+          amountUsdg: Number(invoice.amount_usdg),
+          paymentMethod: "x402",
+          payerWallet,
+          settlementTransaction: settlement.transaction,
+          settlementNetwork: settlement.network,
+        },
+      });
+      await audit(client, {
+        actorId: payerId ?? undefined,
+        action: "invoice.paid",
+        targetType: "invoice",
+        targetId: invoiceId,
+        requestId: request.requestId,
+        metadata: {
+          paymentMethod: "x402",
+          payerWallet,
+          settlementTransaction: settlement.transaction,
+          settlementNetwork: settlement.network,
+        },
+      });
+      await client.query("COMMIT");
+      return response.set("PAYMENT-RESPONSE", encodeSettlementResponse(settlement)).json({
+        data: publicInvoice({
+          ...paid.rows[0],
+          payer_id: payerId,
+          payer_wallet: payerWallet,
+          payment_method: "x402",
+          settlement_transaction: settlement.transaction,
+          settlement_network: settlement.network,
+        }),
+      });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }),
+);
+
+invoicesRouter.get(
   "/:id/payment",
   asyncRoute(async (request, response) => {
     const invoiceId = id.parse(request.params.id);
@@ -161,7 +326,8 @@ invoicesRouter.get(
           method: "liege_ledger",
           asset: "usdg",
           amountUsdg: Number(invoice.amount_usdg),
-          x402: "not_configured",
+          x402: x402Configured() ? "available" : "not_configured",
+          ...(x402Configured() ? { endpoint: `/v1/invoices/${invoice.id}/x402` } : {}),
         },
       },
     });
@@ -268,6 +434,12 @@ invoicesRouter.post(
       if (!result.rowCount)
         throw new ApiError(404, "invoice_not_found", "This invoice is unavailable.");
       const invoice = result.rows[0];
+      if (invoice.payment_method === "x402")
+        throw new ApiError(
+          501,
+          "x402_refund_not_configured",
+          "Refunds for on-chain x402 payments are not configured yet.",
+        );
       if (invoice.status !== "paid" || !invoice.payer_id)
         throw new ApiError(
           409,
