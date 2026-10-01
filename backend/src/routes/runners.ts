@@ -7,6 +7,7 @@ import { db } from "../db/index.js";
 import { ApiError, asyncRoute } from "../http.js";
 import { runSandboxed } from "../runner.js";
 import { env } from "../config.js";
+import { recordTrace } from "../observability.js";
 
 const input = z.object({
   agentId: z.string().uuid(),
@@ -21,6 +22,28 @@ const input = z.object({
   artifactPaths: z.array(z.string().max(200)).max(20).default([]),
   timeoutMs: z.coerce.number().int().min(100).max(120_000).default(30_000),
   maxOutputBytes: z.coerce.number().int().min(1_024).max(1_000_000).default(256_000),
+});
+const traceMetadata = z
+  .record(
+    z.string().min(1).max(80),
+    z.union([z.string().max(500), z.number().finite(), z.boolean(), z.null()]),
+  )
+  .superRefine((metadata, context) => {
+    if (Object.keys(metadata).length > 30)
+      context.addIssue({
+        code: "custom",
+        message: "Trace metadata cannot contain more than 30 fields.",
+      });
+    for (const key of Object.keys(metadata))
+      if (/(brief|deliverable|rationale|payload|content|stdout|stderr|secret|private)/i.test(key))
+        context.addIssue({
+          code: "custom",
+          message: `Trace metadata field ${key} is not allowed.`,
+        });
+  });
+const traceInput = z.object({
+  eventType: z.enum(["tool_call", "runtime", "retry", "artifact", "checkpoint", "cost", "outcome"]),
+  metadata: traceMetadata.default({}),
 });
 
 export const runnersRouter = Router();
@@ -56,6 +79,11 @@ runnersRouter.post(
       ],
     );
     const runId = created.rows[0].id;
+    await recordTrace(db, runId, "runtime", {
+      command: value.command,
+      timeoutMs: value.timeoutMs,
+      maxOutputBytes: value.maxOutputBytes,
+    });
     await audit(db, {
       actorId: request.auth!.userId,
       action: "runner.started",
@@ -86,6 +114,7 @@ runnersRouter.post(
         "UPDATE execution_runs SET status='failed', error=$2, finished_at=now() WHERE id=$1",
         [runId, message],
       );
+      await recordTrace(db, runId, "outcome", { status: "failed" });
       await audit(db, {
         actorId: request.auth!.userId,
         action: "runner.failed",
@@ -111,6 +140,17 @@ runnersRouter.post(
           encryptPayload(artifact.content.toString("base64"), payloadContext(runId, "artifact")),
         ],
       );
+    for (const artifact of result.artifacts)
+      await recordTrace(db, runId, "artifact", {
+        name: artifact.name,
+        sizeBytes: artifact.sizeBytes,
+        sha256: artifact.sha256,
+      });
+    await recordTrace(db, runId, "outcome", {
+      status: result.status,
+      exitCode: result.exitCode,
+      artifactCount: result.artifacts.length,
+    });
     await audit(db, {
       actorId: request.auth!.userId,
       action: `runner.${result.status}`,
@@ -130,6 +170,31 @@ runnersRouter.post(
         artifacts: result.artifacts.map(({ content: _content, ...artifact }) => artifact),
       },
     });
+  }),
+);
+
+runnersRouter.post(
+  "/:id/trace",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const id = z.string().uuid().parse(request.params.id);
+    const value = traceInput.parse(request.body);
+    const run = await db.query<{ id: string; job_id: string | null }>(
+      "SELECT id, job_id FROM execution_runs WHERE id=$1 AND owner_id=$2",
+      [id, request.auth!.userId],
+    );
+    if (!run.rowCount)
+      throw new ApiError(404, "runner_not_found", "This execution run is unavailable.");
+    await recordTrace(db, id, value.eventType, value.metadata);
+    await audit(db, {
+      actorId: request.auth!.userId,
+      action: "runner.trace_recorded",
+      targetType: "execution_run",
+      targetId: id,
+      requestId: request.requestId,
+      metadata: { eventType: value.eventType, fieldCount: Object.keys(value.metadata).length },
+    });
+    response.status(201).json({ data: { runId: id, eventType: value.eventType } });
   }),
 );
 

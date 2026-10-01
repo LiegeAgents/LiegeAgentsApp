@@ -54,6 +54,7 @@ export const api = {
   job: (token, id) => request(`/v1/jobs/${id}`, { token }),
   jobPayload: (token, id, payload) => request(`/v1/jobs/${id}/payload/${payload}`, { token }),
   jobPayloadAccess: (token, id) => request(`/v1/jobs/${id}/payload-access`, { token }),
+  jobObservability: (token, id) => request(`/v1/jobs/${id}/observability`, { token }),
   evaluators: () => request("/v1/evaluators"),
   evaluatorProfile: (token) => request("/v1/evaluators/me", { token }),
   updateEvaluatorProfile: (token, input) =>
