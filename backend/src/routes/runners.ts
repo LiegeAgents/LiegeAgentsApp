@@ -58,6 +58,16 @@ runnersRouter.post(
     ]);
     if (!owned.rowCount)
       throw new ApiError(404, "agent_not_found", "This agent is not owned by your account.");
+    const account = await db.query<{ status: string }>(
+      "SELECT status FROM agent_accounts WHERE agent_id=$1",
+      [value.agentId],
+    );
+    if (account.rowCount && account.rows[0].status !== "active")
+      throw new ApiError(
+        403,
+        "agent_account_paused",
+        `This agent account is ${account.rows[0].status} and cannot start runs.`,
+      );
     if (value.jobId) {
       const job = await db.query("SELECT id FROM jobs WHERE id = $1 AND agent_id = $2", [
         value.jobId,

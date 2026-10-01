@@ -1,0 +1,455 @@
+import { createHash } from "node:crypto";
+import { Router } from "express";
+import { verifyMessage } from "viem";
+import { z } from "zod";
+import { requireAuth } from "../auth.js";
+import { audit } from "../audit.js";
+import { db } from "../db/index.js";
+import { ApiError, asyncRoute } from "../http.js";
+
+const controlInput = z.object({
+  command: z.enum(["pause", "resume", "kill"]),
+  reason: z.string().max(500).optional(),
+});
+const policyInput = z.object({
+  maxActionAmount: z.coerce.number().positive().nullable().optional(),
+  dailyBudget: z.coerce.number().positive().nullable().optional(),
+  monthlyBudget: z.coerce.number().positive().nullable().optional(),
+  allowedAssets: z.array(z.string().min(1).max(80)).max(50).default([]),
+  allowedVenues: z.array(z.string().min(1).max(120)).max(50).default([]),
+  approvedCounterparties: z.array(z.string().min(1).max(120)).max(100).default([]),
+  allowedActions: z.array(z.string().min(1).max(120)).max(100).default([]),
+  approvalMode: z.enum(["always", "within_policy"]).default("always"),
+  simulationRequired: z.boolean().default(true),
+});
+const actionInput = z.object({
+  action: z.string().min(1).max(120),
+  amount: z.coerce.number().nonnegative().optional(),
+  asset: z.string().min(1).max(80).optional(),
+  venue: z.string().min(1).max(120).optional(),
+  counterparty: z.string().min(1).max(120).optional(),
+  simulationDigest: z
+    .string()
+    .regex(/^[a-zA-Z0-9:_-]{8,256}$/)
+    .optional(),
+  simulate: z.boolean().default(false),
+});
+const mandateInput = z.object({
+  nonce: z.string().min(8).max(160),
+  payload: z.record(z.unknown()),
+  expiresAt: z.coerce.date(),
+  signature: z.string().regex(/^0x[0-9a-fA-F]+$/),
+  parentMandateId: z.string().uuid().optional(),
+});
+
+const canonical = (value: unknown): string => {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+};
+const digest = (value: unknown) => createHash("sha256").update(canonical(value)).digest("hex");
+
+async function ownedAgent(agentId: string, userId: string) {
+  const result = await db.query<{ wallet_address: string }>(
+    "SELECT u.wallet_address FROM agents a JOIN users u ON u.id = a.owner_id WHERE a.id=$1 AND a.owner_id=$2",
+    [agentId, userId],
+  );
+  if (!result.rowCount)
+    throw new ApiError(404, "agent_not_found", "This agent is not owned by your account.");
+  return result.rows[0].wallet_address;
+}
+
+async function ensureAccount(agentId: string, userId: string) {
+  await ownedAgent(agentId, userId);
+  await db.query(
+    "INSERT INTO agent_accounts (agent_id) VALUES ($1) ON CONFLICT (agent_id) DO NOTHING",
+    [agentId],
+  );
+  await db.query(
+    `INSERT INTO agent_account_policies (agent_id, updated_by) VALUES ($1,$2)
+     ON CONFLICT (agent_id) DO NOTHING`,
+    [agentId, userId],
+  );
+}
+
+const publicAccount = (row: Record<string, unknown>) => ({
+  accountId: row.agent_id,
+  agentId: row.agent_id,
+  status: row.status,
+  killReason: row.kill_reason,
+  pausedAt: row.paused_at,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+  policy:
+    row.policy_version == null
+      ? null
+      : {
+          version: Number(row.policy_version),
+          maxActionAmount: row.max_action_amount == null ? null : String(row.max_action_amount),
+          dailyBudget: row.daily_budget == null ? null : String(row.daily_budget),
+          monthlyBudget: row.monthly_budget == null ? null : String(row.monthly_budget),
+          allowedAssets: row.allowed_assets ?? [],
+          allowedVenues: row.allowed_venues ?? [],
+          approvedCounterparties: row.approved_counterparties ?? [],
+          allowedActions: row.allowed_actions ?? [],
+          approvalMode: row.approval_mode,
+          simulationRequired: row.simulation_required,
+          updatedAt: row.policy_updated_at,
+        },
+});
+
+export const agentAccountsRouter = Router();
+agentAccountsRouter.use(requireAuth);
+
+agentAccountsRouter.post(
+  "/",
+  asyncRoute(async (request, response) => {
+    const agentId = z.string().uuid().parse(request.body?.agentId);
+    await ensureAccount(agentId, request.auth!.userId);
+    const result = await db.query(
+      `SELECT a.*, p.version AS policy_version, p.max_action_amount, p.daily_budget, p.monthly_budget,
+        p.allowed_assets, p.allowed_venues, p.approved_counterparties, p.allowed_actions,
+        p.approval_mode, p.simulation_required, p.updated_at AS policy_updated_at
+       FROM agent_accounts a LEFT JOIN agent_account_policies p ON p.agent_id=a.agent_id
+       WHERE a.agent_id=$1`,
+      [agentId],
+    );
+    response.status(201).json({ data: publicAccount(result.rows[0]) });
+  }),
+);
+
+agentAccountsRouter.get(
+  "/",
+  asyncRoute(async (request, response) => {
+    const result = await db.query(
+      `SELECT a.*, p.version AS policy_version, p.max_action_amount, p.daily_budget, p.monthly_budget,
+        p.allowed_assets, p.allowed_venues, p.approved_counterparties, p.allowed_actions,
+        p.approval_mode, p.simulation_required, p.updated_at AS policy_updated_at
+       FROM agent_accounts a JOIN agents ag ON ag.id=a.agent_id
+       LEFT JOIN agent_account_policies p ON p.agent_id=a.agent_id
+       WHERE ag.owner_id=$1 ORDER BY a.created_at DESC`,
+      [request.auth!.userId],
+    );
+    response.json({ data: result.rows.map(publicAccount) });
+  }),
+);
+
+agentAccountsRouter.get(
+  "/:agentId",
+  asyncRoute(async (request, response) => {
+    const agentId = z.string().uuid().parse(request.params.agentId);
+    await ensureAccount(agentId, request.auth!.userId);
+    const result = await db.query(
+      `SELECT a.*, p.version AS policy_version, p.max_action_amount, p.daily_budget, p.monthly_budget,
+        p.allowed_assets, p.allowed_venues, p.approved_counterparties, p.allowed_actions,
+        p.approval_mode, p.simulation_required, p.updated_at AS policy_updated_at
+       FROM agent_accounts a LEFT JOIN agent_account_policies p ON p.agent_id=a.agent_id WHERE a.agent_id=$1`,
+      [agentId],
+    );
+    response.json({ data: publicAccount(result.rows[0]) });
+  }),
+);
+
+agentAccountsRouter.put(
+  "/:agentId/policy",
+  asyncRoute(async (request, response) => {
+    const agentId = z.string().uuid().parse(request.params.agentId);
+    await ensureAccount(agentId, request.auth!.userId);
+    const input = policyInput.parse(request.body);
+    const result = await db.query(
+      `INSERT INTO agent_account_policies
+       (agent_id, version, max_action_amount, daily_budget, monthly_budget, allowed_assets, allowed_venues,
+        approved_counterparties, allowed_actions, approval_mode, simulation_required, updated_by)
+       VALUES ($1,1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       ON CONFLICT (agent_id) DO UPDATE SET version=agent_account_policies.version+1,
+        max_action_amount=EXCLUDED.max_action_amount, daily_budget=EXCLUDED.daily_budget,
+        monthly_budget=EXCLUDED.monthly_budget, allowed_assets=EXCLUDED.allowed_assets,
+        allowed_venues=EXCLUDED.allowed_venues, approved_counterparties=EXCLUDED.approved_counterparties,
+        allowed_actions=EXCLUDED.allowed_actions, approval_mode=EXCLUDED.approval_mode,
+        simulation_required=EXCLUDED.simulation_required, updated_by=EXCLUDED.updated_by, updated_at=now()
+       RETURNING *`,
+      [
+        agentId,
+        input.maxActionAmount ?? null,
+        input.dailyBudget ?? null,
+        input.monthlyBudget ?? null,
+        input.allowedAssets.map((value) => value.toLowerCase()),
+        input.allowedVenues.map((value) => value.toLowerCase()),
+        input.approvedCounterparties.map((value) => value.toLowerCase()),
+        input.allowedActions,
+        input.approvalMode,
+        input.simulationRequired,
+        request.auth!.userId,
+      ],
+    );
+    await audit(db, {
+      actorId: request.auth!.userId,
+      action: "agent_account.policy_updated",
+      targetType: "agent_account",
+      targetId: agentId,
+      requestId: request.requestId,
+      metadata: { version: result.rows[0].version },
+    });
+    response.json({
+      data: publicAccount({
+        agent_id: agentId,
+        status: "active",
+        policy_version: result.rows[0].version,
+        ...result.rows[0],
+      }),
+    });
+  }),
+);
+
+agentAccountsRouter.post(
+  "/:agentId/control",
+  asyncRoute(async (request, response) => {
+    const agentId = z.string().uuid().parse(request.params.agentId);
+    await ensureAccount(agentId, request.auth!.userId);
+    const input = controlInput.parse(request.body);
+    if (input.command === "resume") {
+      const current = await db.query<{ status: string }>(
+        "SELECT status FROM agent_accounts WHERE agent_id=$1",
+        [agentId],
+      );
+      if (current.rows[0]?.status === "killed")
+        throw new ApiError(409, "account_killed", "A killed account cannot be resumed.");
+    }
+    const status =
+      input.command === "kill" ? "killed" : input.command === "pause" ? "paused" : "active";
+    const result = await db.query(
+      "UPDATE agent_accounts SET status=$2, kill_reason=$3, paused_at=CASE WHEN $2='active' THEN NULL ELSE COALESCE(paused_at, now()) END, updated_at=now() WHERE agent_id=$1 RETURNING *",
+      [agentId, status, input.reason ?? null],
+    );
+    await audit(db, {
+      actorId: request.auth!.userId,
+      action: `agent_account.${input.command}`,
+      targetType: "agent_account",
+      targetId: agentId,
+      requestId: request.requestId,
+      metadata: { reason: input.reason ?? null },
+    });
+    response.json({
+      data: {
+        accountId: agentId,
+        status: result.rows[0].status,
+        killReason: result.rows[0].kill_reason,
+      },
+    });
+  }),
+);
+
+agentAccountsRouter.post(
+  "/:agentId/actions/authorize",
+  asyncRoute(async (request, response) => {
+    const agentId = z.string().uuid().parse(request.params.agentId);
+    await ensureAccount(agentId, request.auth!.userId);
+    const input = actionInput.parse(request.body);
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const state = await client.query(
+        "SELECT a.*, p.* FROM agent_accounts a JOIN agent_account_policies p ON p.agent_id=a.agent_id WHERE a.agent_id=$1 FOR UPDATE",
+        [agentId],
+      );
+      const row = state.rows[0];
+      const reasons: string[] = [];
+      if (row.status !== "active") reasons.push(`account_${row.status}`);
+      if (row.allowed_actions.length && !row.allowed_actions.includes(input.action))
+        reasons.push("action_not_allowed");
+      if (
+        input.asset &&
+        row.allowed_assets.length &&
+        !row.allowed_assets.includes(input.asset.toLowerCase())
+      )
+        reasons.push("asset_not_allowed");
+      if (
+        input.venue &&
+        row.allowed_venues.length &&
+        !row.allowed_venues.includes(input.venue.toLowerCase())
+      )
+        reasons.push("venue_not_allowed");
+      if (
+        input.counterparty &&
+        row.approved_counterparties.length &&
+        !row.approved_counterparties.includes(input.counterparty.toLowerCase())
+      )
+        reasons.push("counterparty_not_allowed");
+      const limits = await client.query<{
+        action_exceeded: boolean;
+        daily_exceeded: boolean;
+        monthly_exceeded: boolean;
+      }>(
+        `SELECT
+           ($2::numeric IS NOT NULL AND p.max_action_amount IS NOT NULL AND $2::numeric > p.max_action_amount) AS action_exceeded,
+           ($2::numeric IS NOT NULL AND p.daily_budget IS NOT NULL AND
+             COALESCE((SELECT SUM(amount) FROM agent_account_actions WHERE agent_id=$1
+               AND decision IN ('approved', 'approval_required') AND created_at >= date_trunc('day', now())), 0) + $2::numeric > p.daily_budget) AS daily_exceeded,
+           ($2::numeric IS NOT NULL AND p.monthly_budget IS NOT NULL AND
+             COALESCE((SELECT SUM(amount) FROM agent_account_actions WHERE agent_id=$1
+               AND decision IN ('approved', 'approval_required') AND created_at >= date_trunc('month', now())), 0) + $2::numeric > p.monthly_budget) AS monthly_exceeded
+         FROM agent_account_policies p WHERE p.agent_id=$1`,
+        [agentId, input.amount ?? null],
+      );
+      if (limits.rows[0]?.action_exceeded) reasons.push("action_limit_exceeded");
+      if (limits.rows[0]?.daily_exceeded) reasons.push("daily_budget_exceeded");
+      if (limits.rows[0]?.monthly_exceeded) reasons.push("monthly_budget_exceeded");
+      if (row.simulation_required && !input.simulationDigest && !input.simulate)
+        reasons.push("simulation_required");
+      const hardReasons = reasons.filter((reason) => reason !== "simulation_required");
+      const decision = input.simulate
+        ? "simulation"
+        : hardReasons.length
+          ? "denied"
+          : reasons.length || row.approval_mode === "always"
+            ? "approval_required"
+            : "approved";
+      const recorded = await client.query(
+        "INSERT INTO agent_account_actions (agent_id,action,amount,asset,venue,counterparty,decision,reasons,policy_version,simulation_digest) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id,created_at",
+        [
+          agentId,
+          input.action,
+          input.amount ?? null,
+          input.asset?.toLowerCase() ?? null,
+          input.venue?.toLowerCase() ?? null,
+          input.counterparty?.toLowerCase() ?? null,
+          decision,
+          reasons,
+          row.version,
+          input.simulationDigest ?? null,
+        ],
+      );
+      await client.query("COMMIT");
+      response.json({
+        data: {
+          actionId: recorded.rows[0].id,
+          accountId: agentId,
+          decision,
+          reasons,
+          policyVersion: row.version,
+          simulationDigest: input.simulationDigest ?? null,
+          createdAt: recorded.rows[0].created_at,
+        },
+      });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }),
+);
+
+agentAccountsRouter.post(
+  "/:agentId/mandates",
+  asyncRoute(async (request, response) => {
+    const agentId = z.string().uuid().parse(request.params.agentId);
+    const wallet = await ownedAgent(agentId, request.auth!.userId);
+    await ensureAccount(agentId, request.auth!.userId);
+    const input = mandateInput.parse(request.body);
+    if (input.expiresAt <= new Date())
+      throw new ApiError(400, "mandate_expired", "A mandate must expire in the future.");
+    const contents = {
+      agentId,
+      nonce: input.nonce,
+      expiresAt: input.expiresAt.toISOString(),
+      payload: input.payload,
+      parentMandateId: input.parentMandateId ?? null,
+    };
+    const mandateDigest = digest(contents);
+    if (input.parentMandateId) {
+      const parent = await db.query(
+        "SELECT id FROM agent_mandates WHERE id=$1 AND agent_id=$2 AND status='active' AND expires_at > now()",
+        [input.parentMandateId, agentId],
+      );
+      if (!parent.rowCount)
+        throw new ApiError(
+          400,
+          "invalid_parent_mandate",
+          "The parent mandate is not active for this account.",
+        );
+    }
+    let valid = false;
+    try {
+      valid = await verifyMessage({
+        address: wallet as `0x${string}`,
+        message: `Liege Agent Mandate\n${mandateDigest}`,
+        signature: input.signature as `0x${string}`,
+      });
+    } catch {
+      valid = false;
+    }
+    if (!valid)
+      throw new ApiError(
+        401,
+        "invalid_mandate_signature",
+        "The mandate signature does not match the agent owner wallet.",
+      );
+    const result = await db.query(
+      "INSERT INTO agent_mandates (agent_id,issuer_id,parent_mandate_id,nonce,digest,payload,signature,expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (agent_id, nonce) DO NOTHING RETURNING id,agent_id,nonce,digest,payload,status,expires_at,created_at",
+      [
+        agentId,
+        request.auth!.userId,
+        input.parentMandateId ?? null,
+        input.nonce,
+        mandateDigest,
+        JSON.stringify(input.payload),
+        input.signature,
+        input.expiresAt,
+      ],
+    );
+    if (!result.rowCount)
+      throw new ApiError(409, "mandate_nonce_used", "This mandate nonce has already been used.");
+    await audit(db, {
+      actorId: request.auth!.userId,
+      action: "agent_account.mandate_created",
+      targetType: "agent_mandate",
+      targetId: result.rows[0].id,
+      requestId: request.requestId,
+      metadata: { agentId, digest: mandateDigest },
+    });
+    response.status(201).json({ data: result.rows[0] });
+  }),
+);
+
+agentAccountsRouter.get(
+  "/:agentId/mandates",
+  asyncRoute(async (request, response) => {
+    const agentId = z.string().uuid().parse(request.params.agentId);
+    await ensureAccount(agentId, request.auth!.userId);
+    const result = await db.query(
+      "SELECT id,agent_id,parent_mandate_id,nonce,digest,payload,signature,status,expires_at,revoked_at,created_at FROM agent_mandates WHERE agent_id=$1 ORDER BY created_at DESC",
+      [agentId],
+    );
+    response.json({ data: result.rows });
+  }),
+);
+
+agentAccountsRouter.post(
+  "/:agentId/mandates/:mandateId/revoke",
+  asyncRoute(async (request, response) => {
+    const agentId = z.string().uuid().parse(request.params.agentId);
+    const mandateId = z.string().uuid().parse(request.params.mandateId);
+    await ensureAccount(agentId, request.auth!.userId);
+    const result = await db.query(
+      "UPDATE agent_mandates SET status='revoked', revoked_at=now() WHERE id=$1 AND agent_id=$2 AND status='active' RETURNING id,status,revoked_at",
+      [mandateId, agentId],
+    );
+    if (!result.rowCount)
+      throw new ApiError(404, "mandate_not_found", "This mandate is unavailable.");
+    await audit(db, {
+      actorId: request.auth!.userId,
+      action: "agent_account.mandate_revoked",
+      targetType: "agent_mandate",
+      targetId: mandateId,
+      requestId: request.requestId,
+      metadata: { agentId },
+    });
+    response.json({ data: result.rows[0] });
+  }),
+);

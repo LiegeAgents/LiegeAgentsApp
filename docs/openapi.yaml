@@ -1456,6 +1456,114 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  /v1/agent-accounts:
+    post:
+      operationId: createAgentAccount
+      summary: Create or return the deterministic control account for an owned agent.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [agentId], properties: { agentId: { type: string, format: uuid } } }
+      responses:
+        "201": { description: Agent account, content: { application/json: { schema: { $ref: "#/components/schemas/AgentAccountEnvelope" } } } }
+    get:
+      operationId: listAgentAccounts
+      summary: List the authenticated owner's agent accounts.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Agent accounts, content: { application/json: { schema: { $ref: "#/components/schemas/AgentAccountListEnvelope" } } } }
+
+  /v1/agent-accounts/{agentId}:
+    get:
+      operationId: getAgentAccount
+      summary: Read an agent account and its current policy.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: agentId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Agent account, content: { application/json: { schema: { $ref: "#/components/schemas/AgentAccountEnvelope" } } } }
+
+  /v1/agent-accounts/{agentId}/policy:
+    put:
+      operationId: updateAgentAccountPolicy
+      summary: Replace an agent account policy and increment its version.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: agentId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentAccountPolicyInput" }
+      responses:
+        "200": { description: Updated account policy, content: { application/json: { schema: { $ref: "#/components/schemas/AgentAccountEnvelope" } } } }
+
+  /v1/agent-accounts/{agentId}/control:
+    post:
+      operationId: controlAgentAccount
+      summary: Pause, resume, or permanently kill an agent account.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: agentId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [command], properties: { command: { enum: [pause, resume, kill] }, reason: { type: string } } }
+      responses:
+        "200": { description: Account control result, content: { application/json: { schema: { $ref: "#/components/schemas/AgentAccountControlEnvelope" } } } }
+
+  /v1/agent-accounts/{agentId}/actions/authorize:
+    post:
+      operationId: authorizeAgentAction
+      summary: Evaluate and record a proposed agent action without executing it.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: agentId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentActionInput" }
+      responses:
+        "200": { description: Deterministic policy decision, content: { application/json: { schema: { $ref: "#/components/schemas/AgentActionEnvelope" } } } }
+
+  /v1/agent-accounts/{agentId}/mandates:
+    post:
+      operationId: createAgentMandate
+      summary: Store an owner-signed, expiry-bound agent mandate.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: agentId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentMandateInput" }
+      responses:
+        "201": { description: Agent mandate, content: { application/json: { schema: { $ref: "#/components/schemas/AgentMandateEnvelope" } } } }
+    get:
+      operationId: listAgentMandates
+      summary: List mandates for an owned agent account.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: agentId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Agent mandates, content: { application/json: { schema: { $ref: "#/components/schemas/AgentMandateListEnvelope" } } } }
+
+  /v1/agent-accounts/{agentId}/mandates/{mandateId}/revoke:
+    post:
+      operationId: revokeAgentMandate
+      summary: Revoke an active mandate before its expiry.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: agentId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: mandateId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Revoked mandate, content: { application/json: { schema: { $ref: "#/components/schemas/AgentMandateEnvelope" } } } }
+
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, description: A session token from /v1/auth/verify. }
@@ -1789,3 +1897,65 @@ components:
         pending: { type: integer }
         failed: { type: integer }
         busy: { type: integer }
+    AgentAccountEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { type: object }
+    AgentAccountListEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { type: array, items: { type: object } }
+    AgentAccountControlEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { type: object }
+    AgentActionEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { type: object }
+    AgentMandateEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { type: object }
+    AgentMandateListEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { type: array, items: { type: object } }
+    AgentAccountPolicyInput:
+      type: object
+      properties:
+        maxActionAmount: { type: [number, "null"] }
+        dailyBudget: { type: [number, "null"] }
+        monthlyBudget: { type: [number, "null"] }
+        allowedAssets: { type: array, items: { type: string } }
+        allowedVenues: { type: array, items: { type: string } }
+        approvedCounterparties: { type: array, items: { type: string } }
+        allowedActions: { type: array, items: { type: string } }
+        approvalMode: { enum: [always, within_policy] }
+        simulationRequired: { type: boolean }
+    AgentActionInput:
+      type: object
+      required: [action]
+      properties:
+        action: { type: string }
+        amount: { type: number }
+        asset: { type: string }
+        venue: { type: string }
+        counterparty: { type: string }
+        simulationDigest: { type: string }
+        simulate: { type: boolean }
+    AgentMandateInput:
+      type: object
+      required: [nonce, payload, expiresAt, signature]
+      properties:
+        nonce: { type: string }
+        payload: { type: object }
+        expiresAt: { type: string, format: date-time }
+        signature: { type: string }
+        parentMandateId: { type: string, format: uuid }
