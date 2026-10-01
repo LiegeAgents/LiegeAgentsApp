@@ -17,3 +17,9 @@ test("health config exposes only deployment values that clients must verify", as
     usdgTokenAddress: env.USDG_TOKEN_ADDRESS ?? null,
   });
 });
+
+test("CLI installer is hosted as a shell script", async () => {
+  const response = await api().get("/install.sh").expect(200);
+  expect(response.headers["content-type"]).toContain("application/x-sh");
+  expect(response.text).toStartWith("#!/usr/bin/env sh");
+});

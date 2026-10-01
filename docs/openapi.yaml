@@ -19,6 +19,17 @@ servers:
 security: []
 
 paths:
+  /install.sh:
+    get:
+      operationId: installCli
+      summary: Shell installer for the Liege operator CLI.
+      responses:
+        '200':
+          description: POSIX shell installer.
+          content:
+            text/plain:
+              schema: { type: string }
+
   /health:
     get:
       operationId: health
