@@ -836,7 +836,20 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
     setError("");
     try {
       const result = await api.job(token, job.id);
-      setDetail(result.data);
+      const base = result.data;
+      const payloads = await Promise.allSettled([
+        api.jobPayload(token, job.id, "brief"),
+        base.submission ? api.jobPayload(token, job.id, "deliverable") : Promise.resolve(null),
+      ]);
+      const brief = payloads[0].status === "fulfilled" ? payloads[0].value?.data : null;
+      const delivery = payloads[1].status === "fulfilled" ? payloads[1].value?.data : null;
+      setDetail({
+        ...base,
+        brief: brief?.content || "Private brief unavailable or expired.",
+        submission: base.submission
+          ? { ...base.submission, deliverable: delivery?.content || "Delivery unavailable or expired." }
+          : null,
+      });
     } catch (e) {
       setError(e?.message || "Could not load this private job.");
     }

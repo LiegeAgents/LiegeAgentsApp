@@ -52,6 +52,7 @@ export const api = {
   ledger: (token) => request("/v1/me/ledger", { token }),
   jobs: (token) => request("/v1/jobs", { token }),
   job: (token, id) => request(`/v1/jobs/${id}`, { token }),
+  jobPayload: (token, id, payload) => request(`/v1/jobs/${id}/payload/${payload}`, { token }),
   evaluators: () => request("/v1/evaluators"),
   evaluatorProfile: (token) => request("/v1/evaluators/me", { token }),
   updateEvaluatorProfile: (token, input) =>

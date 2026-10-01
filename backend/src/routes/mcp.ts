@@ -294,6 +294,25 @@ mcpInternalRouter.get(
     if (!result.rowCount)
       throw new ApiError(404, "job_not_found", "This job is not assigned to the connected agent.");
     const job = result.rows[0];
+    if (new Date(job.expires_at) <= new Date()) {
+      await audit(db, {
+        actorId: c.user_id,
+        action: "job.payload_access_denied",
+        targetType: "job",
+        targetId: id,
+        metadata: {
+          payload: "job",
+          role: "provider",
+          code: "payload_expired",
+          agentId: c.agent_id,
+        },
+      });
+      throw new ApiError(
+        410,
+        "payload_expired",
+        "Private payload access for this job has expired.",
+      );
+    }
     const policy = await policyFor(c.agent_id);
     if (policy.payloadAccess === "none") {
       response.json({
@@ -310,6 +329,18 @@ mcpInternalRouter.get(
       });
       return;
     }
+    await audit(db, {
+      actorId: c.user_id,
+      action: "job.payload_accessed",
+      targetType: "job",
+      targetId: id,
+      metadata: {
+        payload: policy.payloadAccess === "metadata" ? "metadata" : "brief_and_deliverable",
+        role: "provider",
+        policyVersion: policy.version,
+        agentId: c.agent_id,
+      },
+    });
     response.json({
       data: {
         ...job,
