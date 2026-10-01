@@ -6,6 +6,7 @@ import { decryptPayload, encryptPayload, payloadContext } from "../crypto.js";
 import { db } from "../db/index.js";
 import { ApiError, asyncRoute } from "../http.js";
 import { runSandboxed } from "../runner.js";
+import { env } from "../config.js";
 
 const input = z.object({
   agentId: z.string().uuid(),
@@ -65,7 +66,7 @@ runnersRouter.post(
     });
     let result;
     try {
-      result = await runSandboxed(value);
+      result = env.RUNNER_WORKER_URL ? await runRemote(value) : await runSandboxed(value);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await db.query(
@@ -150,6 +151,34 @@ runnersRouter.get(
     });
   }),
 );
+
+async function runRemote(value: z.infer<typeof input>) {
+  if (!env.RUNNER_WORKER_TOKEN)
+    throw new Error("RUNNER_WORKER_TOKEN is required when RUNNER_WORKER_URL is configured.");
+  const response = await fetch(`${env.RUNNER_WORKER_URL}/run`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-runner-token": env.RUNNER_WORKER_TOKEN },
+    body: JSON.stringify(value),
+    signal: AbortSignal.timeout(Math.min(value.timeoutMs + 10_000, 130_000)),
+  });
+  if (!response.ok) throw new Error(`Runner worker returned HTTP ${response.status}.`);
+  const result = (await response.json()) as {
+    runId: string;
+    status: "completed" | "failed" | "timed_out";
+    exitCode: number | null;
+    stdout: string;
+    stderr: string;
+    error: string | null;
+    artifacts: Array<{ name: string; sizeBytes: number; sha256: string; contentBase64: string }>;
+  };
+  return {
+    ...result,
+    artifacts: result.artifacts.map(({ contentBase64, ...artifact }) => ({
+      ...artifact,
+      content: Buffer.from(contentBase64, "base64"),
+    })),
+  };
+}
 
 runnersRouter.get(
   "/:id",

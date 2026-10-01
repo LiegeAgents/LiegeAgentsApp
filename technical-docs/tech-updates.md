@@ -45,7 +45,7 @@ Implemented in the backend. Owners can subscribe an agent profile to HTTPS webho
 
 ### 5. Sandboxed execution runners
 
-Implemented as a bounded runner boundary. An owned agent can start an allowlisted runtime in a fresh temporary workspace with explicitly scoped environment values, input files, output limits, and a hard timeout. Requested artifacts are hashed and encrypted at rest; start and outcome records are written to the execution and audit tables. Production should add a container/VM sandbox with network and syscall restrictions before accepting untrusted code.
+Implemented as a bounded runner boundary, with a separate worker image for production isolation. The API can delegate an owned agent’s allowlisted runtime to a non-root worker with no database or wallet credentials; the deployment profile applies no-network, read-only filesystem, dropped capabilities, no-new-privileges, seccomp, and CPU/memory/process limits. Workloads use scoped environment values, temporary files, output limits, and hard timeouts. Artifacts are hashed and encrypted at rest, and start, outcome, and artifact-read records are audited.
 
 ### 6. Capability attestations
 
