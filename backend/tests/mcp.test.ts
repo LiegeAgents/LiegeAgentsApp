@@ -46,7 +46,7 @@ describe.skipIf(!databaseAvailable)("MCP connections", () => {
       .get("/v1/internal/mcp/session")
       .set(internalHeaders(connection.token))
       .expect(200);
-    expect(session.body.data.agent_id).toBe(agentId);
+    expect(session.body.data.agentId).toBe(agentId);
 
     const jobs = await api()
       .get("/v1/internal/mcp/jobs")

@@ -148,7 +148,10 @@ mcpRouter.post(
 export const mcpInternalRouter = Router();
 mcpInternalRouter.get(
   "/session",
-  asyncRoute(async (request, response) => response.json({ data: await connection(request) })),
+  asyncRoute(async (request, response) => {
+    const c = await connection(request);
+    response.json({ data: { agentId: c.agent_id, agentName: c.agent_name } });
+  }),
 );
 mcpInternalRouter.get(
   "/jobs",
