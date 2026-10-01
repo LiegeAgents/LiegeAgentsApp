@@ -17,6 +17,7 @@ const env = z
     PORT: z.coerce.number().int().positive().default(3001),
     TRUST_PROXY: z.string().min(1).default("1"),
     DATABASE_URL: z.string().url(),
+    DATABASE_ALLOW_INSECURE_TRANSPORT: z.coerce.boolean().default(false),
     RHC_ID: z.coerce.number().int().positive().default(4663),
     RHC_RPC_URL: z.string().url(),
     ESCROW_MODE: z
@@ -59,6 +60,16 @@ export const adminWallets = new Set(
     .filter(Boolean),
 );
 
+export function databaseTransportProblem(databaseUrl: string) {
+  const url = new URL(databaseUrl);
+  const local = ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
+  if (local || env.DATABASE_ALLOW_INSECURE_TRANSPORT) return null;
+  const sslMode = url.searchParams.get("sslmode");
+  if (sslMode === "verify-full") return null;
+  if (sslMode === "verify-ca" && url.searchParams.has("sslrootcert")) return null;
+  return "DATABASE_URL must set sslmode=verify-full (or verify-ca with sslrootcert) for a remote database in production. Set DATABASE_ALLOW_INSECURE_TRANSPORT=true only when the database is reachable solely over a private network.";
+}
+
 if (
   env.NODE_ENV === "production" &&
   (!env.AUTH_TOKEN_PEPPER ||
@@ -73,6 +84,10 @@ if (
   throw new Error(
     "AUTH_TOKEN_PEPPER, CRON_SECRET, ADMIN_WALLET_ADDRESSES, AUTH_DOMAIN, AUTH_URI, MCP_INTERNAL_API_TOKEN, RUNNER_WORKER_URL, and RUNNER_WORKER_TOKEN are required in production.",
   );
+}
+if (env.NODE_ENV === "production") {
+  const problem = databaseTransportProblem(env.DATABASE_URL);
+  if (problem) throw new Error(problem);
 }
 if (
   env.NODE_ENV === "production" &&

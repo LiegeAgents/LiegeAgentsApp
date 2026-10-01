@@ -1,5 +1,13 @@
 import { expect, test } from "bun:test";
 import { assertSafeWebhookUrl } from "../src/webhooks.js";
+import { databaseTransportProblem } from "../src/config.js";
+
+test("remote production databases require certificate verification", () => {
+  const secure = "postgresql://user:pass@db.example.com:5432/liege?sslmode=verify-full";
+  const insecure = "postgresql://user:pass@db.example.com:5432/liege?sslmode=require";
+  expect(databaseTransportProblem(secure)).toBeNull();
+  expect(databaseTransportProblem(insecure)).toContain("sslmode=verify-full");
+});
 
 test("production refuses to boot without a remote runner worker", () => {
   const result = Bun.spawnSync({
