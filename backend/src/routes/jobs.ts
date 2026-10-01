@@ -371,7 +371,7 @@ jobsRouter.post(
       address: string;
       expires_at: Date;
     }>(
-      "SELECT j.client_id, j.status, j.escrow_mode, j.settlement_asset, j.budget_amount, j.evaluator_fee_amount, j.expires_at, ew.address FROM jobs j LEFT JOIN escrow_wallets ew ON ew.job_id = j.id WHERE j.id = $1",
+      "SELECT j.client_id, j.status, j.escrow_mode, COALESCE(j.settlement_asset, 'usdg') AS settlement_asset, COALESCE(j.budget_amount, j.budget_usdg) AS budget_amount, COALESCE(j.evaluator_fee_amount, j.evaluator_fee_usdg, 0) AS evaluator_fee_amount, j.expires_at, ew.address FROM jobs j LEFT JOIN escrow_wallets ew ON ew.job_id = j.id WHERE j.id = $1",
       [id],
     );
     if (!job.rowCount || job.rows[0].client_id !== request.auth!.userId)
@@ -453,7 +453,7 @@ jobsRouter.post(
       budget_usdg: string;
       evaluator_fee_usdg: string;
     }>(
-      "SELECT client_id, status, escrow_mode, settlement_asset, budget_amount, evaluator_fee_amount, budget_usdg, evaluator_fee_usdg FROM jobs WHERE id = $1",
+      "SELECT client_id, status, escrow_mode, COALESCE(settlement_asset, 'usdg') AS settlement_asset, COALESCE(budget_amount, budget_usdg) AS budget_amount, COALESCE(evaluator_fee_amount, evaluator_fee_usdg, 0) AS evaluator_fee_amount, budget_usdg, evaluator_fee_usdg FROM jobs WHERE id = $1",
       [id],
     );
     const verifying =
