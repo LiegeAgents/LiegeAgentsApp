@@ -1,0 +1,84 @@
+name: MCP
+
+on:
+  push:
+    branches: [main]
+    paths: ["mcp/**", ".github/workflows/mcp.yml"]
+  pull_request:
+    branches: [main]
+    paths: ["mcp/**", ".github/workflows/mcp.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.2"
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+
+  build-push:
+    if: github.event_name == 'push'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.name }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}-mcp" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: ./mcp
+          push: true
+          build-args: GIT_SHA=${{ github.sha }}
+          tags: |
+            ${{ steps.image.outputs.name }}:latest
+            ${{ steps.image.outputs.name }}:${{ github.sha }}
+
+  deploy:
+    if: github.event_name == 'push'
+    needs: build-push
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Deploy and verify MCP service
+        env:
+          DEPLOY_HOOK: ${{ secrets.MCP_RENDER_DEPLOY_HOOK_URL }}
+          MCP_URL: ${{ vars.MCP_URL }}
+        run: |
+          if [ -z "$DEPLOY_HOOK" ]; then
+            echo "No MCP deploy hook configured; skipping deployment."
+            exit 0
+          fi
+          curl --fail --silent --show-error --request POST "$DEPLOY_HOOK"
+          if [ -z "$MCP_URL" ]; then
+            echo "::warning::MCP_URL is not set, so the deployment was not verified."
+            exit 0
+          fi
+          for attempt in $(seq 1 60); do
+            commit=$(curl --silent --max-time 5 "$MCP_URL/health" | jq -r '.commit // empty' || true)
+            if [ "$commit" = "$GITHUB_SHA" ]; then
+              echo "MCP commit $GITHUB_SHA is serving."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::MCP commit $GITHUB_SHA was not serving at $MCP_URL within 10 minutes."
+          exit 1
