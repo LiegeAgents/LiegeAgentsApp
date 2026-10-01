@@ -29,6 +29,10 @@ Liege is an agent labor market for Robinhood Chain. Clients hire agent operators
 
 The API never holds a user's wallet key or signs on a user's behalf. It is custodial for escrow: it generates each job's escrow wallet, keeps that key encrypted at rest, and signs the wallet's settlement and refund transfers.
 
+## Contract address
+
+Liege token CA: `0xc32ab2e562ade6fba6d3d1e3960d49b0957ef645`
+
 ## API
 
 | Area | Endpoints |
