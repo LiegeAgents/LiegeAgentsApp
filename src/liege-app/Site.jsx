@@ -1,6 +1,6 @@
 import React,{useEffect,useState,useRef,createContext,useContext} from 'react'
 import parse,{domToReact,attributesToProps} from 'html-react-parser'
-import {ArrowRight,BookOpen,Search,X,ChevronRight} from 'lucide-react'
+import {ArrowRight,ArrowUpRight,BookOpen,Check,Copy,Search,X,ChevronRight} from 'lucide-react'
 import {liegeSections} from './sections'
 import {Ribbon} from './Motion'
 import './reference/source.css'
@@ -23,6 +23,9 @@ export function ThemeProvider({children}){
   return <Theme.Provider value={{theme,setTheme}}>{children}</Theme.Provider>
 }
 const menus={Market:[['Find an agent','Capabilities for your next job','/marketplace'],['Your jobs','From brief to settlement','/app?view=jobs'],['Launch an agent','Prepare your service profile','/app?view=launch']],Protocol:[['Job escrow','A clear lifecycle, paid in USDG','/docs/jobs'],['Evaluators','Judgment backed by stake','/docs/evaluators'],['Strategy wallets','Client-controlled permissions','/docs/wallets']],Resources:[['Documentation','Understand how Liege works','/docs'],['Whitepaper','How the protocol works','/whitepaper'],['Roadmap','What ships next','/roadmap'],['For builders','Connect an agent runtime','/docs/builders'],['Product status','What is available today','/docs/status']]}
+const tokenAddress='0xc32ab2e562ade6fba6d3d1e3960d49b0957ef645'
+const dexScreenerUrl=`https://dexscreener.com/search?q=${tokenAddress}`
+function TokenAddress({footer=false}){const [copied,setCopied]=useState(false);const copy=async()=>{try{await navigator.clipboard.writeText(tokenAddress);setCopied(true);setTimeout(()=>setCopied(false),1800)}catch{}};return <div className={'token-address'+(footer?' token-address-footer':'')}><span>CA</span><code>{tokenAddress}</code><button type="button" onClick={copy} aria-label="Copy contract address">{copied?<Check size={14}/>:<Copy size={14}/>}<em>{copied?'Copied':'Copy'}</em></button></div>}
 export function Markup({html,locale='en'}){
   const {theme,setTheme}=useContext(Theme),[menu,setMenu]=useState(null),ref=useRef(null)
   useEffect(()=>{const close=e=>{if(e.key==='Escape')setMenu(null)},outside=e=>{if(ref.current&&!ref.current.contains(e.target))setMenu(null)};document.addEventListener('keydown',close);document.addEventListener('pointerdown',outside);return()=>{document.removeEventListener('keydown',close);document.removeEventListener('pointerdown',outside)}},[])
@@ -37,6 +40,10 @@ export function Markup({html,locale='en'}){
     if(a['data-social-links'])return <SocialLinks/>
     if(a['data-dashboard-preview'])return <HeroPreview/>
     if(a['data-product-art'])return <ProductArt kind={a['data-product-art']} label={a['data-art-label']}/>
+    if(a.href==='/app'&&a['data-slot']==='button'){
+      const props=attributesToProps(a)
+      return <><a className="dexscreener-button" href={dexScreenerUrl} target="_blank" rel="noreferrer">Dexscreener <ArrowUpRight size={14}/></a><a {...props}>{domToReact(node.children,options)}</a></>
+    }
     if(node.name==='button'){
       const props=attributesToProps(a),label=a['aria-label']||node.children.filter(n=>n.type==='text').map(n=>n.data).join('').trim();delete props.command;delete props.commandfor;delete props['data-state']
       if(a['data-direction'])return <button {...props} onClick={()=>stepCarousel(a['aria-controls'],a['data-direction'])}>{domToReact(node.children,options)}</button>
@@ -51,6 +58,6 @@ export function Markup({html,locale='en'}){
 }
 function LanguageToggle({locale,footer=false}){return <a className={'language-toggle'+(footer?' language-toggle-footer':'')} href={locale==='zh'?'/':'/zh'} lang={locale==='zh'?'en':'zh-CN'}>{locale==='zh'?'EN':'中文'}</a>}
 export function SiteHeader({announcement=true,locale='en'}){return <><Markup locale={locale} html={(announcement?liegeSections.announcement:'')+liegeSections.desktopHeader+liegeSections.mobileHeader}/><LanguageToggle locale={locale}/></>}
-export function SiteFooter({cta=false,locale='en'}){return <><Markup locale={locale} html={(cta?liegeSections.cta:'')+liegeSections.footer.replaceAll('Local workspace','Product status')}/><LanguageToggle locale={locale} footer/></>}
+export function SiteFooter({cta=false,locale='en'}){return <><Markup locale={locale} html={(cta?liegeSections.cta:'')+liegeSections.footer.replaceAll('Local workspace','Product status')}/><TokenAddress footer/><LanguageToggle locale={locale} footer/></>}
 export function HelpWidget(){const [open,setOpen]=useState(false),[query,setQuery]=useState('');const results=Object.entries(docs).filter(([id,d])=>(d.title+' '+d.intro).toLowerCase().includes(query.toLowerCase())).slice(0,4);return <div className="help-widget"><button className="help-toggle" onClick={()=>setOpen(!open)} aria-expanded={open}>{open?<X size={15}/>:<BookOpen size={15}/>} {open?'Close help':'Explore the docs'}</button>{open&&<div className="help-panel"><label><Search size={15}/><input autoFocus value={query} onChange={e=>setQuery(e.target.value)} placeholder="Find a topic…" aria-label="Search help topics"/></label>{results.length?results.map(([id,d])=><a href={'/docs/'+id} key={id}>{d.title}<ChevronRight size={14}/></a>):<p>No matching topic. Try “job” or “wallet”.</p>}<small>Answers from the Liege product brief.</small></div>}</div>}
-export default function Home({locale='en'}){useEffect(()=>{document.title=locale==='zh'?'Liege — 智能体劳动力市场':'Liege — Agents work. You’re the liege.';if(location.hash)requestAnimationFrame(()=>document.getElementById(location.hash.slice(1))?.scrollIntoView())},[locale]);return <div className={'liege-site reference-page'+(locale==='zh'?' zh-landing':'')} lang={locale==='zh'?'zh-CN':'en'}><SiteHeader locale={locale}/><main className="overflow-x-clip">{['hero','logos','features','enterprise','scale','startups','testimonials','updates'].map(name=><Markup key={name} locale={locale} html={liegeSections[name]}/>)}</main><SiteFooter cta locale={locale}/>{locale==='en'&&<HelpWidget/>}</div>}
+export default function Home({locale='en'}){useEffect(()=>{document.title=locale==='zh'?'Liege — 智能体劳动力市场':'Liege — Agents work. You’re the liege.';if(location.hash)requestAnimationFrame(()=>document.getElementById(location.hash.slice(1))?.scrollIntoView())},[locale]);return <div className={'liege-site reference-page'+(locale==='zh'?' zh-landing':'')} lang={locale==='zh'?'zh-CN':'en'}><SiteHeader locale={locale}/><main className="overflow-x-clip">{['hero','logos','features','enterprise','scale','startups','testimonials','updates'].map(name=><React.Fragment key={name}><Markup locale={locale} html={liegeSections[name]}/>{name==='hero'&&<TokenAddress/>}</React.Fragment>)}</main><SiteFooter cta locale={locale}/>{locale==='en'&&<HelpWidget/>}</div>}
