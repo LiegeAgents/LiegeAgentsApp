@@ -3,6 +3,7 @@ export const SDK_VERSION = "0.1.4";
 
 export interface Session { token: string; userId: string; walletAddress: string; expiresAt?: string; }
 export interface Job { id: string; status: string; [key: string]: unknown; }
+export interface Invoice { id: string; invoiceId: string; publicId: string; amountUsdg: number; asset: "usdg"; status: string; [key: string]: unknown; }
 export interface JobEvent { id: string; event: string; data: unknown; }
 export interface McpProposal { id: string; status: string; [key: string]: unknown; }
 

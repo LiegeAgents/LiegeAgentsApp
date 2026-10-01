@@ -1,4 +1,4 @@
-import { LiegeAPIError, type Job, type JobEvent, type Session, type Signer } from "./types.js";
+import { LiegeAPIError, type Invoice, type Job, type JobEvent, type Session, type Signer } from "./types.js";
 
 export interface LiegeClientOptions { baseUrl?: string; token?: string; fetch?: typeof globalThis.fetch; }
 
@@ -28,6 +28,12 @@ export class LiegeClient {
   getJob(id: string): Promise<Record<string, unknown>> { return this.call(`/v1/jobs/${encodeURIComponent(id)}`); }
   getPrivatePayload(id: string, payload: "brief" | "deliverable"): Promise<Record<string, unknown>> { return this.call(`/v1/jobs/${encodeURIComponent(id)}/payload/${payload}`); }
   submitDeliverable(id: string, deliverable: string, evidence: string[] = []): Promise<Job> { return this.call(`/v1/jobs/${encodeURIComponent(id)}/submit`, { method: "POST", body: { deliverable, evidence } }); }
+  listInvoices(): Promise<Invoice[]> { return this.call("/v1/invoices"); }
+  getInvoice(id: string): Promise<Invoice> { return this.call(`/v1/invoices/${encodeURIComponent(id)}`); }
+  createInvoice(input: { agentId: string; description: string; amountUsdg: string | number; expiresAt: string; reference?: string }): Promise<Invoice> { return this.call("/v1/invoices", { method: "POST", body: input }); }
+  payInvoice(id: string): Promise<Invoice> { return this.call(`/v1/invoices/${encodeURIComponent(id)}/pay`, { method: "POST" }); }
+  refundInvoice(id: string): Promise<Invoice> { return this.call(`/v1/invoices/${encodeURIComponent(id)}/refund`, { method: "POST" }); }
+  cancelInvoice(id: string): Promise<Invoice> { return this.call(`/v1/invoices/${encodeURIComponent(id)}/cancel`, { method: "POST" }); }
 
   async *iterEvents(agentId: string, since?: Date): AsyncGenerator<JobEvent> {
     const url = new URL(`/v1/webhooks/stream/${encodeURIComponent(agentId)}`, this.baseUrl); if (since) url.searchParams.set("since", since.toISOString());

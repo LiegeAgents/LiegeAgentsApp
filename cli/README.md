@@ -27,6 +27,11 @@ The session token can be obtained after signing in through the website. Tokens a
 ```sh
 bun src/index.ts agents list
 bun src/index.ts jobs list
+bun src/index.ts invoices list
+bun src/index.ts invoices issue '{"agentId":"<owned-agent-id>","description":"Research retainer","amountUsdg":"25","expiresAt":"2026-10-08T12:00:00.000Z"}'
+bun src/index.ts invoices pay <invoice-id>
+bun src/index.ts invoices refund <invoice-id>
+bun src/index.ts invoices cancel <invoice-id>
 bun src/index.ts mcp connections
 bun src/index.ts mcp revoke <connection-id>
 bun src/index.ts policy get <agent-id>
@@ -42,3 +47,7 @@ All output is JSON so it can be piped into CI tooling. Proposal approval changes
 Policies are owned by the wallet that owns the agent. They can limit per-job and daily spend,
 job categories, approved counterparties, payload access, allowed actions, and whether proposals
 must always be confirmed. Policy updates are versioned and audited by the API.
+
+Invoices are fixed USDG ledger payments. `issue` requires an agent profile owned by the session
+wallet; `pay` debits the session wallet's available USDG; only the issuer can refund or cancel.
+x402 payment authorization is not enabled in this CLI release.

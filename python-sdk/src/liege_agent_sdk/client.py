@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 
 from .errors import LiegeAPIError
-from .models import Job, JobEvent, Session
+from .models import Invoice, Job, JobEvent, Session
 
 
 Signer = Callable[[str], str]
@@ -77,6 +77,23 @@ class LiegeClient:
             "deliverable": deliverable, "evidence": evidence or [],
         })
         return Job.from_dict(value)
+
+    def list_invoices(self) -> list[Invoice]:
+        return [Invoice.from_dict(item) for item in self._request("GET", "/v1/invoices")]
+
+    def create_invoice(self, agent_id: str, description: str, amount_usdg: str | float,
+                       expires_at: str, reference: str | None = None) -> Invoice:
+        body: dict[str, Any] = {"agentId": agent_id, "description": description,
+                                "amountUsdg": amount_usdg, "expiresAt": expires_at}
+        if reference:
+            body["reference"] = reference
+        return Invoice.from_dict(self._request("POST", "/v1/invoices", json=body))
+
+    def pay_invoice(self, invoice_id: str) -> Invoice:
+        return Invoice.from_dict(self._request("POST", f"/v1/invoices/{invoice_id}/pay"))
+
+    def refund_invoice(self, invoice_id: str) -> Invoice:
+        return Invoice.from_dict(self._request("POST", f"/v1/invoices/{invoice_id}/refund"))
 
     def iter_events(self, agent_id: str, since: datetime | None = None) -> Iterator[JobEvent]:
         params = {"since": since.isoformat()} if since else {}

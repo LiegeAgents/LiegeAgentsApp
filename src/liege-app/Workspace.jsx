@@ -22,6 +22,7 @@ import {
   Play,
   Globe,
   Activity,
+  ReceiptText,
 } from "lucide-react";
 import { Brand, AgentIcon } from "./ProductArt";
 import { Button, Status, Empty, Modal, Field, Notice, SectionHeading } from "./UI";
@@ -49,6 +50,7 @@ const tabs = [
   ["overview", "Overview", LayoutGrid],
   ["agents", "Agent market", Globe],
   ["jobs", "Your jobs", BriefcaseBusiness],
+  ["invoices", "USDG invoices", ReceiptText],
   ["evaluations", "Evaluations", Activity],
   ["launch", "Launch an agent", Plus],
   ["settings", "Workspace settings", Settings2],
@@ -56,8 +58,10 @@ const tabs = [
 export default function Workspace() {
   const [state, setState] = useState(read),
     [storageError, setStorageError] = useState(""),
-    [view, setView] = useState(
-      () => new URLSearchParams(location.search).get("view") || "overview",
+    [view, setView] = useState(() =>
+      new URLSearchParams(location.search).get("pay")
+        ? "invoice-payment"
+        : new URLSearchParams(location.search).get("view") || "overview",
     ),
     [search, setSearch] = useState(""),
     [filter, setFilter] = useState(
@@ -113,7 +117,11 @@ export default function Workspace() {
   }, [state]);
   useEffect(() => {
     const pop = () => {
-      setView(new URLSearchParams(location.search).get("view") || "overview");
+      setView(
+        new URLSearchParams(location.search).get("pay")
+          ? "invoice-payment"
+          : new URLSearchParams(location.search).get("view") || "overview",
+      );
       setSearch("");
       setFilter(new URLSearchParams(location.search).get("filter") || "All");
     };
@@ -178,6 +186,7 @@ export default function Workspace() {
       (filter === "All" || j.status === filter) &&
       (j.title + " " + j.id).toLowerCase().includes(search.toLowerCase()),
   );
+  const paymentInvoiceId = new URLSearchParams(location.search).get("pay");
   const selectedJob = modal?.type === "job" ? allJobs.find((j) => j.id === modal.id) : null;
   const saveAgent = (id) =>
     setState((s) => ({
@@ -293,7 +302,14 @@ export default function Workspace() {
           )}
           {storageError && <Notice error>{storageError}</Notice>}
           {apiError && <Notice error>{apiError}</Notice>}
-          {(view === "overview" || !tabs.some((t) => t[0] === view)) && (
+          {paymentInvoiceId && (
+            <InvoicePayment
+              invoiceId={paymentInvoiceId}
+              token={wallet.apiSession ? "cookie" : null}
+              onNotice={notify}
+            />
+          )}
+          {!paymentInvoiceId && (view === "overview" || !tabs.some((t) => t[0] === view)) && (
             <WorkspaceOverview
               state={{ ...state, jobs: allJobs }}
               agents={allAgents}
@@ -308,7 +324,7 @@ export default function Workspace() {
               onSaved={() => navigate("agents", "Saved")}
             />
           )}
-          {view === "agents" && (
+          {!paymentInvoiceId && view === "agents" && (
             <MarketplaceContent
               agents={allAgents}
               saved={state.saved}
@@ -317,7 +333,7 @@ export default function Workspace() {
               initialFilter={filter}
             />
           )}
-          {view === "jobs" && (
+          {!paymentInvoiceId && view === "jobs" && (
             <>
               <SectionHeading
                 eyebrow="FROM BRIEF TO SETTLEMENT"
@@ -366,7 +382,16 @@ export default function Workspace() {
               )}
             </>
           )}
-          {view === "evaluations" && (
+          {!paymentInvoiceId && view === "invoices" && (
+            <InvoiceCenter
+              token={wallet.apiSession ? "cookie" : null}
+              agents={allAgents}
+              accountId={wallet.apiSession?.id}
+              ownerAddress={wallet.session.address}
+              onNotice={notify}
+            />
+          )}
+          {!paymentInvoiceId && view === "evaluations" && (
             <EvaluationCenter
               token={wallet.apiSession ? "cookie" : null}
               address={wallet.session.address}
@@ -376,10 +401,10 @@ export default function Workspace() {
               onNotice={notify}
             />
           )}
-          {view === "launch" && (
+          {!paymentInvoiceId && view === "launch" && (
             <LaunchForm token={wallet.apiSession ? "cookie" : null} onSave={saveLaunchedAgent} />
           )}
-          {view === "settings" && (
+          {!paymentInvoiceId && view === "settings" && (
             <>
               <SectionHeading eyebrow="WORKSPACE SETTINGS" title="Your account.">
                 Manage your current wallet connection, evaluator profile, and saved shortlist.
@@ -488,6 +513,246 @@ export default function Workspace() {
         />
       )}
     </div>
+  );
+}
+
+function InvoiceCenter({ token, agents, accountId, ownerAddress, onNotice }) {
+  const [invoices, setInvoices] = useState([]);
+  const [agentId, setAgentId] = useState("");
+  const [description, setDescription] = useState("Agent services");
+  const [amountUsdg, setAmountUsdg] = useState("10");
+  const [expiresAt, setExpiresAt] = useState(() =>
+    new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 16),
+  );
+  const [loading, setLoading] = useState(false);
+  const ownedAgents = agents.filter(
+    (agent) => agent.owner_wallet?.toLowerCase() === ownerAddress?.toLowerCase(),
+  );
+  const load = async () => {
+    if (!token) return;
+    try {
+      const result = await api.invoices(token);
+      setInvoices(result.data || []);
+      setAgentId((current) => current || ownedAgents[0]?.id || "");
+    } catch (error) {
+      onNotice(error?.message || "Could not load invoices.");
+    }
+  };
+  useEffect(() => {
+    load();
+  }, [token, ownedAgents.length]);
+  const create = async (event) => {
+    event.preventDefault();
+    if (!agentId) return;
+    setLoading(true);
+    try {
+      const result = await api.createInvoice(token, {
+        agentId,
+        description,
+        amountUsdg,
+        expiresAt: new Date(expiresAt).toISOString(),
+      });
+      setInvoices((items) => [result.data, ...items]);
+      onNotice("USDG invoice issued. Share its payment link with the payer.");
+    } catch (error) {
+      onNotice(error?.message || "Could not issue invoice.");
+    } finally {
+      setLoading(false);
+    }
+  };
+  const act = async (action, invoice) => {
+    try {
+      const result = await action(token, invoice.id);
+      setInvoices((items) => items.map((item) => (item.id === invoice.id ? result.data : item)));
+      onNotice(`Invoice ${result.data.status}.`);
+    } catch (error) {
+      onNotice(error?.message || "Invoice action could not be completed.");
+    }
+  };
+  const copy = async (invoice) => {
+    const url = `${location.origin}/app?pay=${encodeURIComponent(invoice.id)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      onNotice("Payment link copied.");
+    } catch {
+      onNotice("Copy failed. Copy the payment URL from your browser.");
+    }
+  };
+  return (
+    <>
+      <SectionHeading
+        eyebrow="LIEGE PAY · USDG"
+        title="Invoice agent work."
+        action={
+          <a className="button secondary" href="/docs/payments">
+            Payment docs <ArrowUpRight size={14} />
+          </a>
+        }
+      >
+        Issue fixed USDG invoices, receive an auditable ledger receipt, and refund a paid invoice
+        once. x402 checkout is intentionally not enabled yet.
+      </SectionHeading>
+      <section className="settings-panel invoice-create-panel">
+        <h2>Create invoice</h2>
+        <form onSubmit={create} className="mcp-create-form">
+          <Field label="Agent profile">
+            <select
+              value={agentId}
+              onChange={(event) => setAgentId(event.target.value)}
+              disabled={!ownedAgents.length}
+            >
+              {!ownedAgents.length && <option>No owned agent profiles found</option>}
+              {ownedAgents.map((agent) => (
+                <option key={agent.id} value={agent.id}>
+                  {agent.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Description">
+            <input
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              minLength={3}
+              maxLength={500}
+            />
+          </Field>
+          <Field label="Amount (USDG)">
+            <input
+              value={amountUsdg}
+              onChange={(event) => setAmountUsdg(event.target.value)}
+              inputMode="decimal"
+            />
+          </Field>
+          <Field label="Expiry">
+            <input
+              type="datetime-local"
+              value={expiresAt}
+              onChange={(event) => setExpiresAt(event.target.value)}
+            />
+          </Field>
+          <div className="form-actions">
+            <Button type="submit" disabled={loading || !agentId}>
+              {loading ? "Issuing…" : "Issue USDG invoice"}
+            </Button>
+          </div>
+        </form>
+      </section>
+      <section className="settings-panel invoice-list-panel">
+        <div className="mcp-list-head">
+          <h2>Invoices</h2>
+          <span>{invoices.length} total</span>
+        </div>
+        {!token ? (
+          <Empty title="Sign in to issue invoices">A signed wallet session is required.</Empty>
+        ) : !invoices.length ? (
+          <Empty title="No invoices yet">Create one for an owned agent profile.</Empty>
+        ) : (
+          invoices.map((invoice) => (
+            <div className="mcp-connection-row invoice-row" key={invoice.id}>
+              <div className="mcp-connection-name">
+                <span className="mcp-status" />
+                <div>
+                  <strong>{invoice.description}</strong>
+                  <small>
+                    {invoice.publicId} · {Number(invoice.amountUsdg).toLocaleString()} USDG ·{" "}
+                    {invoice.status}
+                  </small>
+                </div>
+              </div>
+              <div className="invoice-actions">
+                <Button secondary small onClick={() => copy(invoice)}>
+                  Copy link
+                </Button>
+                {invoice.status === "issued" && invoice.issuerId === accountId && (
+                  <Button secondary small onClick={() => act(api.cancelInvoice, invoice)}>
+                    Cancel
+                  </Button>
+                )}
+                {invoice.status === "paid" && invoice.issuerId === accountId && (
+                  <Button small onClick={() => act(api.refundInvoice, invoice)}>
+                    Refund
+                  </Button>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </section>
+    </>
+  );
+}
+
+function InvoicePayment({ invoiceId, token, onNotice }) {
+  const [invoice, setInvoice] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [paying, setPaying] = useState(false);
+  useEffect(() => {
+    let active = true;
+    api
+      .invoicePayment(invoiceId)
+      .then((result) => {
+        if (active) setInvoice(result.data);
+      })
+      .catch((error) => active && onNotice(error?.message || "This payment link is unavailable."))
+      .finally(() => active && setLoading(false));
+    return () => {
+      active = false;
+    };
+  }, [invoiceId]);
+  const pay = async () => {
+    setPaying(true);
+    try {
+      const result = await api.payInvoice(token, invoiceId);
+      setInvoice((current) => ({ ...current, ...result.data }));
+      onNotice("Invoice paid. Your USDG receipt is recorded.");
+    } catch (error) {
+      onNotice(error?.message || "Invoice payment failed.");
+    } finally {
+      setPaying(false);
+    }
+  };
+  if (loading) return <Empty title="Loading invoice">Checking USDG payment terms…</Empty>;
+  if (!invoice)
+    return (
+      <Empty title="Invoice unavailable">
+        Check that the payment link is complete and has not been cancelled.
+      </Empty>
+    );
+  return (
+    <section className="settings-panel invoice-payment-panel">
+      <span className="eyebrow">LIEGE PAY · USDG INVOICE</span>
+      <h1>{invoice.description}</h1>
+      <p className="mono muted">{invoice.publicId}</p>
+      <div className="invoice-payment-amount">
+        {Number(invoice.amountUsdg).toLocaleString()} <small>USDG</small>
+      </div>
+      <p>
+        Issued for agent work. This payment is a fixed internal USDG ledger transfer and is not an
+        on-chain x402 authorization.
+      </p>
+      <p>
+        Expires {new Date(invoice.expiresAt).toLocaleString()} · Status:{" "}
+        <strong>{invoice.status}</strong>
+      </p>
+      {invoice.status === "issued" &&
+        (token ? (
+          <Button onClick={pay} disabled={paying}>
+            {paying ? "Paying…" : "Pay invoice"}
+          </Button>
+        ) : (
+          <Notice>
+            Connect and sign in with the wallet that holds the USDG balance to pay this invoice.
+          </Notice>
+        ))}
+      {invoice.status !== "issued" && (
+        <Notice>
+          {invoice.status === "paid"
+            ? "This invoice has already been paid."
+            : "This invoice is no longer payable."}
+        </Notice>
+      )}
+    </section>
   );
 }
 

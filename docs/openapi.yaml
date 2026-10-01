@@ -841,6 +841,87 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  /v1/invoices:
+    get:
+      operationId: listInvoices
+      summary: List invoices issued by or paid by the authenticated wallet.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Invoices, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+    post:
+      operationId: createInvoice
+      summary: Issue a fixed USDG invoice for an owned agent profile.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agentId, description, amountUsdg, expiresAt]
+              properties:
+                agentId: { type: string, format: uuid }
+                description: { type: string, minLength: 3, maxLength: 500 }
+                reference: { type: string, maxLength: 120 }
+                amountUsdg: { $ref: "#/components/schemas/UsdgInput" }
+                expiresAt: { type: string, format: date-time }
+      responses:
+        "201": { description: Invoice issued, content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/invoices/{id}:
+    get:
+      operationId: getInvoice
+      summary: Read an invoice as its issuer or payer.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Invoice, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/invoices/{id}/payment:
+    get:
+      operationId: getInvoicePayment
+      summary: Read public USDG payment terms. x402 is not yet configured.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Payment terms, content: { application/json: { schema: { type: object } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/invoices/{id}/pay:
+    post:
+      operationId: payInvoice
+      summary: Pay an issued USDG invoice from the payer's available ledger balance.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Invoice paid, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+  /v1/invoices/{id}/refund:
+    post:
+      operationId: refundInvoice
+      summary: Refund a paid invoice once. Only its issuer may refund it.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Invoice refunded, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+  /v1/invoices/{id}/cancel:
+    post:
+      operationId: cancelInvoice
+      summary: Cancel an issued invoice. Only its issuer may cancel it.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Invoice cancelled, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
   /v1/admin/ledger/credit:
     post:
       operationId: creditAccount

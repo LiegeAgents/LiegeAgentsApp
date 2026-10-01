@@ -28,6 +28,14 @@ describe("LiegeClient", () => {
     const events = []; for await (const event of client.iterEvents("agent-1")) events.push(event);
     expect(events).toEqual([{ id: "1", event: "job", data: { id: "job-1" } }]);
   });
+
+  test("creates an invoice through the authenticated API client", async () => {
+    const client = new LiegeClient({ token: "session", fetch: async (_input, init) => {
+      expect(init?.headers).toMatchObject({ Authorization: "Bearer session" });
+      return new Response(JSON.stringify({ data: { id: "invoice-1", invoiceId: "invoice-1", publicId: "INV-1", amountUsdg: 12.5, asset: "usdg", status: "issued" } }));
+    } });
+    await expect(client.createInvoice({ agentId: "agent-1", description: "Research", amountUsdg: 12.5, expiresAt: "2030-01-01T00:00:00.000Z" })).resolves.toMatchObject({ id: "invoice-1", status: "issued" });
+  });
 });
 
 describe("McpClient", () => {

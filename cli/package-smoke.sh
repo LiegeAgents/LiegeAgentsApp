@@ -7,6 +7,7 @@ trap 'rm -f "$artifact"' EXIT
 bun build --compile src/index.ts --outfile="$artifact"
 help="$($artifact --help)"
 printf '%s\n' "$help" | grep -Fq "liege policy get <agent-id>"
+printf '%s\n' "$help" | grep -Fq "liege invoices issue '<json-invoice>'"
 printf '%s\n' "$help" | grep -Fq "liege proposals approve <proposal-id>"
 sh -n install.sh
 

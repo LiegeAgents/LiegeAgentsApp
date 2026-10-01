@@ -85,3 +85,20 @@ browser-compatible runtimes with `fetch`. A dedicated workflow builds and tests 
 `@liegeagents/agent-sdk` on `typescript-sdk-v*` tags using npm provenance.
 The TypeScript package uses reproducible npm installs, typed API errors, tested SSE cleanup and
 end-of-stream handling, and no runtime dependency beyond `fetch`.
+
+### 13. Liege Pay — USDG invoices
+
+Implemented as the first payment primitive, without claiming x402 is live. An owner can issue a
+fixed USDG invoice for an owned agent profile, share a hosted payment link, and let an
+authenticated payer settle it through the existing balanced internal USDG ledger. Each payment
+has an immutable ledger reference, audit record, signed-delivery/SSE event, and a payer-visible
+receipt. Issuers may cancel unpaid invoices or refund one paid invoice once, subject to having
+enough available USDG to fund that reversal. The existing expiry cron now also expires invoices,
+so it does not require a second scheduler. Per-agent approval policies can optionally cap an
+invoice amount with `maxInvoiceAmount`.
+
+The Python SDK, TypeScript SDK, operator CLI, website workspace, OpenAPI contract, and docs all
+expose the invoice workflow. The public payment endpoint explicitly reports `x402:
+not_configured`; a USDG/Robinhood Chain token authorization and facilitator compatibility check
+remains the gate for a future actual HTTP 402 payment adapter. Streaming pay, subscriptions,
+payroll, and fleet treasuries remain later work built on this invoice/ledger foundation.

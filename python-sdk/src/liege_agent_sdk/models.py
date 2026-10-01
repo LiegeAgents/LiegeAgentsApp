@@ -36,3 +36,15 @@ class JobEvent:
     id: str
     event_type: str
     data: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class Invoice:
+    id: str
+    public_id: str
+    amount_usdg: float
+    status: str
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "Invoice":
+        return cls(value["id"], value.get("publicId", value["id"]), float(value["amountUsdg"]), value["status"])

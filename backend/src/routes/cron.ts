@@ -100,7 +100,17 @@ cronRouter.post(
         );
       for (const row of expired.rows)
         await enqueueWebhookEvent(client, { jobId: row.id, eventType: "job.expired" });
-      const result = { expired: expired.rowCount ?? 0, refunded, settlements };
+      const expiredInvoices = await client.query<{ id: string }>(
+        "UPDATE invoices SET status='expired', updated_at=now() WHERE status='issued' AND expires_at <= now() RETURNING id",
+      );
+      for (const invoice of expiredInvoices.rows)
+        await enqueueWebhookEvent(client, { invoiceId: invoice.id, eventType: "invoice.expired" });
+      const result = {
+        expired: expired.rowCount ?? 0,
+        invoicesExpired: expiredInvoices.rowCount ?? 0,
+        refunded,
+        settlements,
+      };
       await client.query(
         "INSERT INTO cron_runs (name, idempotency_key, result) VALUES ($1,$2,$3)",
         ["expire-jobs", idempotencyKey, JSON.stringify(result)],
