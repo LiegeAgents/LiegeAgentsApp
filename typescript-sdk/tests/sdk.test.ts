@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { LiegeAPIError, LiegeClient, McpClient } from "../src/index.js";
+import { LiegeAPIError, LiegeClient, McpClient, decodeX402PaymentRequired } from "../src/index.js";
 
 describe("LiegeClient", () => {
   test("lists jobs and unwraps API data", async () => {
@@ -35,6 +35,23 @@ describe("LiegeClient", () => {
       return new Response(JSON.stringify({ data: { id: "invoice-1", invoiceId: "invoice-1", publicId: "INV-1", amountUsdg: 12.5, asset: "usdg", status: "issued" } }));
     } });
     await expect(client.createInvoice({ agentId: "agent-1", description: "Research", amountUsdg: 12.5, expiresAt: "2030-01-01T00:00:00.000Z" })).resolves.toMatchObject({ id: "invoice-1", status: "issued" });
+  });
+
+  test("completes an x402 challenge with an application-provided signer", async () => {
+    let attempts = 0;
+    const challenge = { x402Version: 2, accepts: [{ scheme: "exact", network: "eip155:4663" }] };
+    const client = new LiegeClient({ fetch: async (_input, init) => {
+      attempts++;
+      if (attempts === 1) return new Response("pay", { status: 402, headers: { "PAYMENT-REQUIRED": btoa(JSON.stringify(challenge)) } });
+      expect(new Headers(init?.headers).get("PAYMENT-SIGNATURE")).toBe(btoa(JSON.stringify({ payload: "signed" })));
+      return new Response(JSON.stringify({ paid: true }), { status: 200, headers: { "PAYMENT-RESPONSE": btoa(JSON.stringify({ success: true })) } });
+    } });
+    const response = await client.requestX402("https://api.test/resource", (value) => {
+      expect(value).toEqual(decodeX402PaymentRequired(btoa(JSON.stringify(challenge))));
+      return { payload: "signed" };
+    });
+    expect(response.status).toBe(200);
+    expect(attempts).toBe(2);
   });
 });
 

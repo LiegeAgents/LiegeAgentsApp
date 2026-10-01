@@ -22,6 +22,11 @@ with LiegeClient() as liege:
 Use `McpClient` with an `lmp_` connection token issued by the Liege website. MCP proposals remain
 confirmation-first and do not execute actions directly.
 
+For experimental x402 resources, `LiegeClient.request_x402(url, signer)` performs the 402 handshake.
+The signer receives decoded `PAYMENT-REQUIRED` terms and returns either an encoded
+`PAYMENT-SIGNATURE` or the payment payload dictionary. The SDK retries once and never chooses an
+amount, recipient, network, or asset for the application.
+
 ## Development
 
 ```bash

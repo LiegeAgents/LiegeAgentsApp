@@ -1,5 +1,16 @@
 export type Signer = (message: string) => Promise<string> | string;
-export const SDK_VERSION = "0.1.4";
+export const SDK_VERSION = "0.1.5";
+
+export interface X402PaymentRequired {
+  x402Version: number;
+  resource?: Record<string, unknown>;
+  accepts: Array<Record<string, unknown>>;
+  [key: string]: unknown;
+}
+export type X402PaymentPayload = Record<string, unknown>;
+export type X402Signer = (
+  challenge: X402PaymentRequired,
+) => Promise<string | X402PaymentPayload> | string | X402PaymentPayload;
 
 export interface Session { token: string; userId: string; walletAddress: string; expiresAt?: string; }
 export interface Job { id: string; status: string; [key: string]: unknown; }

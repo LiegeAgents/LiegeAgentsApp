@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import binascii
+import json
 from collections.abc import Callable, Iterator
 from datetime import datetime
 from typing import Any
@@ -11,6 +14,7 @@ from .models import Invoice, Job, JobEvent, Session
 
 
 Signer = Callable[[str], str]
+X402Signer = Callable[[dict[str, Any]], str | dict[str, Any]]
 
 
 class LiegeClient:
@@ -95,6 +99,33 @@ class LiegeClient:
     def refund_invoice(self, invoice_id: str) -> Invoice:
         return Invoice.from_dict(self._request("POST", f"/v1/invoices/{invoice_id}/refund"))
 
+    def request_x402(self, url: str, signer: X402Signer, method: str = "GET", **kwargs: Any) -> httpx.Response:
+        """Request an x402 resource and retry once with an app-signed payment authorization.
+
+        The signer owns wallet access and must return either an already encoded
+        ``PAYMENT-SIGNATURE`` value or the JSON payload to base64-encode.
+        """
+        headers = dict(kwargs.pop("headers", {}))
+        target = httpx.URL(url)
+        base = httpx.URL(self.base_url)
+        same_origin = (
+            target.scheme == base.scheme
+            and target.host == base.host
+            and target.port == base.port
+        )
+        if self.token and same_origin:
+            headers["Authorization"] = f"Bearer {self.token}"
+        first = self._http.request(method, url, headers=headers, **kwargs)
+        if first.status_code != 402:
+            return first
+        encoded = first.headers.get("PAYMENT-REQUIRED") or first.headers.get("X-PAYMENT-REQUIRED")
+        if not encoded:
+            raise LiegeAPIError("The x402 response did not include PAYMENT-REQUIRED", 502, "x402_invalid_challenge")
+        challenge = decode_x402_payment_required(encoded)
+        signed = signer(challenge)
+        headers["PAYMENT-SIGNATURE"] = signed if isinstance(signed, str) else encode_x402_json(signed)
+        return self._http.request(method, url, headers=headers, **kwargs)
+
     def iter_events(self, agent_id: str, since: datetime | None = None) -> Iterator[JobEvent]:
         params = {"since": since.isoformat()} if since else {}
         with self._http.stream("GET", f"{self.base_url}/v1/webhooks/stream/{agent_id}",
@@ -123,3 +154,17 @@ class LiegeClient:
 
 def _date(value: str | None) -> datetime | None:
     return datetime.fromisoformat(value.replace("Z", "+00:00")) if value else None
+
+
+def encode_x402_json(value: dict[str, Any]) -> str:
+    return base64.b64encode(json.dumps(value, separators=(",", ":")).encode()).decode()
+
+
+def decode_x402_payment_required(value: str) -> dict[str, Any]:
+    try:
+        parsed = json.loads(base64.b64decode(value).decode())
+        if not isinstance(parsed, dict) or not isinstance(parsed.get("accepts"), list) or not parsed["accepts"]:
+            raise ValueError("invalid challenge")
+        return parsed
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError, binascii.Error) as error:
+        raise LiegeAPIError("The x402 PAYMENT-REQUIRED header is invalid", 502, "x402_invalid_challenge") from error
