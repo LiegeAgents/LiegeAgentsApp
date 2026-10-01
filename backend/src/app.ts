@@ -26,6 +26,13 @@ app.use(requestContext);
 app.use(express.json({ limit: "128kb" }));
 app.use(rateLimit);
 app.get("/health", (_request, response) => response.json(healthPayload()));
+app.get("/health/config", (_request, response) =>
+  response.json({
+    chainId: env.RHC_ID,
+    escrowMode: env.ESCROW_MODE,
+    usdgTokenAddress: env.USDG_TOKEN_ADDRESS ?? null,
+  }),
+);
 app.get(
   "/health/ready",
   asyncRoute(async (_request, response) => {

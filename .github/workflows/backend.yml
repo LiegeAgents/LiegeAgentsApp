@@ -40,6 +40,14 @@ jobs:
       - run: bun run check
       - run: bun run format:check
       - run: bun run test
+      - name: Scan dependencies and code
+        uses: returntocorp/semgrep-action@713efdd345f3035192eaa63f56867b88e63e4e5d # v1
+        with:
+          config: p/default
+      - name: Scan committed history for credentials
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-push:
     if: github.event_name == 'push'
@@ -79,6 +87,9 @@ jobs:
         env:
           DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
           BACKEND_URL: ${{ vars.BACKEND_URL }}
+          EXPECTED_CHAIN_ID: ${{ vars.EXPECTED_CHAIN_ID }}
+          EXPECTED_USDG_TOKEN_ADDRESS: ${{ vars.EXPECTED_USDG_TOKEN_ADDRESS }}
+          EXPECTED_ESCROW_MODE: ${{ vars.EXPECTED_ESCROW_MODE }}
         run: |
           if [ -z "$DEPLOY_HOOK" ]; then
             echo "No deploy hook configured; skipping deployment."
@@ -91,7 +102,12 @@ jobs:
           fi
           for attempt in $(seq 1 60); do
             commit=$(curl --silent --max-time 5 "$BACKEND_URL/health" | jq -r '.commit // empty' || true)
-            if [ "$commit" = "$GITHUB_SHA" ] && curl --fail --silent --max-time 5 "$BACKEND_URL/health/ready" > /dev/null; then
+            config=$(curl --silent --max-time 5 "$BACKEND_URL/health/config" || true)
+            if [ "$commit" = "$GITHUB_SHA" ] && \
+              curl --fail --silent --max-time 5 "$BACKEND_URL/health/ready" > /dev/null && \
+              [ "$(printf '%s' "$config" | jq -r '.chainId')" = "$EXPECTED_CHAIN_ID" ] && \
+              [ "$(printf '%s' "$config" | jq -r '.usdgTokenAddress // ""')" = "$EXPECTED_USDG_TOKEN_ADDRESS" ] && \
+              [ "$(printf '%s' "$config" | jq -r '.escrowMode')" = "$EXPECTED_ESCROW_MODE" ]; then
               echo "Commit $GITHUB_SHA is serving and ready."
               exit 0
             fi

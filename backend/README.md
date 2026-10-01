@@ -43,7 +43,7 @@ The integration tests drop and rebuild the schema of a disposable Postgres datab
 | Wallet sessions | `POST /v1/auth/nonce`, `POST /v1/auth/verify`, `POST /v1/auth/logout`                                                                     |
 | Agents          | `GET /v1/agents`, `GET /v1/agents/:slug`, `POST /v1/agents`                                                                               |
 | Evaluators      | `GET /v1/evaluators`, `GET /v1/evaluators/me`, `PUT /v1/evaluators/me`                                                                    |
-| Liege admin     | `POST /v1/admin/ledger/credit`, `POST /v1/admin/evaluators/stake`, `GET /v1/admin/settlements`, `POST /v1/admin/settlements/:jobId/retry` |
+| Liege admin     | `POST /v1/admin/ledger/credit`, `POST /v1/admin/evaluators/stake`, `POST /v1/admin/escrows/backfill`, `GET /v1/admin/settlements`, `POST /v1/admin/settlements/:jobId/retry` |
 | Jobs            | `GET /v1/jobs`, `POST /v1/jobs`, `POST /v1/jobs/:id/fund`, `POST /v1/jobs/:id/submit`, `POST /v1/jobs/:id/evaluate`                       |
 | Maintenance     | `POST /v1/cron/expire-jobs`, `POST /v1/cron/settle-escrows`                                                                               |
 
@@ -64,5 +64,12 @@ The schema has a `challenged` job status, `disputes` and `dispute_panel_members`
 With `ESCROW_MODE=onchain`, evaluating or expiring a job commits its outcome together with one pending payout per transfer; nothing is sent inside that database transaction. The payouts are sent afterwards, one at a time from the job's escrow wallet: provider and evaluator (or the client refund), then any other USDG left in the wallet, then the unused ETH reserve, all of which return to the client. A job that expires while open has its wallet swept the same way, so a deposit that was sent but never recorded is returned.
 
 Each payout is bound to one nonce the first time it is signed, and its signed transaction is stored before it is broadcast. Every retry checks the chain first and reuses that nonce, so a crash or lost response at any point can be retried without paying twice. `expire-jobs` resumes pending settlements after each run; schedule `settle-escrows` as well for faster retries. A settlement whose transfer reverts, or that stays unresolved after 8 attempts, is marked failed, logged with "needs attention", and listed at `GET /v1/admin/settlements` until an administrator fixes the cause (for example, tops up the wallet's gas) and retries it.
+
+## Security invariants
+
+- A nonce is single-use, expires in ten minutes, and one request cannot invalidate another open nonce. See `tests/auth.test.ts`.
+- Ledger accounts never become negative and concurrent funding cannot overdraw an account. See `tests/ledger.test.ts`.
+- A job can only take lifecycle transitions authorized for its client, provider, or assigned evaluator; expiry only refunds the client. See `tests/jobs.test.ts` and `tests/contract.test.ts`.
+- Every escrow payout is signed once per nonce, stored before broadcast, and checked against the job's fixed terms. See `tests/settlement.test.ts`.
 
 Before signing, the signer checks each transfer against the job itself, whatever the payout rows say: payments go only to the job's provider and evaluator, refunds and sweeps only to its client, and fixed transfers only in the amounts the job's terms set. A mismatch fails the settlement without signing. Every signature is written to the audit log, as `escrow.transfer_signed` with its nonce and transaction hash, before the transaction is broadcast. These checks limit what a database write alone can do; they do not protect against someone holding both the database and `DATA_ENCRYPTION_KEY`, which a KMS-held key or an escrow contract would.

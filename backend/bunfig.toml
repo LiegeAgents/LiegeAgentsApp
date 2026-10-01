@@ -1,2 +1,7 @@
 [test]
 preload = ["./tests/setup.ts"]
+
+[install]
+minimumReleaseAge = 259200
+minimumReleaseAgeExcludes = ["@liege/api"]
+trustedDependencies = []

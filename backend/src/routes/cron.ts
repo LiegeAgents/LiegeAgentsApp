@@ -50,7 +50,9 @@ cronRouter.post(
       }>(`SELECT j.id, j.status, j.escrow_mode, ew.job_id IS NOT NULL AS has_wallet, j.client_id, c.wallet_address AS client_address, p.wallet_address AS provider_address, j.budget_usdg, j.evaluator_fee_usdg
       FROM jobs j JOIN users c ON c.id = j.client_id JOIN agents a ON a.id = j.agent_id JOIN users p ON p.id = a.owner_id
       LEFT JOIN escrow_wallets ew ON ew.job_id = j.id
-      WHERE j.status IN ('open', 'funded', 'submitted') AND j.expires_at <= now() FOR UPDATE OF j`);
+      WHERE j.status IN ('open', 'funded', 'submitted') AND j.expires_at <= now()
+        AND NOT (j.status = 'open' AND EXISTS (SELECT 1 FROM escrow_funding_quotes q WHERE q.job_id = j.id AND q.expires_at > now()))
+      FOR UPDATE OF j`);
       let refunded = 0;
       let settlements = 0;
       for (const job of due.rows) {

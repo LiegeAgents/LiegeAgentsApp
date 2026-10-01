@@ -19,3 +19,9 @@ We aim to acknowledge reports within 48 hours and address critical issues within
 - Cron endpoint abuse and request forgery against administrative operations.
 
 No deployed contract addresses are currently part of this repository.
+
+## Custody and accepted risks
+
+Until escrow moves to a contract, the service is a custodian: it holds encrypted per-job EOA keys and signs settlements. Production administrators must be a Safe/multisig, not individual wallets, and `DATA_ENCRYPTION_KEY` must live in a managed KMS with audited, least-privilege decrypt access. The database and KMS key must not share an administrator or credential boundary.
+
+The legacy internal ledger remains supported for migration and testing; new production funding should use the on-chain escrow mode. There is no deployed escrow contract or automatic slashing flow yet. A pause control and monitored incident runbook are required before material TVL.

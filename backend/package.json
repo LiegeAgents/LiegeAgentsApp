@@ -2,6 +2,11 @@
   "name": "@liege/api",
   "private": true,
   "type": "module",
+  "packageManager": "bun@1.4.2",
+  "engines": {
+    "bun": "1.4.2",
+    "node": ">=22 <25"
+  },
   "scripts": {
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
@@ -16,7 +21,7 @@
     "dotenv": "^16.6.1",
     "express": "^5.1.0",
     "pg": "^8.16.3",
-    "viem": "^2.37.6",
+    "viem": "2.37.6",
     "zod": "^3.25.76"
   },
   "devDependencies": {
