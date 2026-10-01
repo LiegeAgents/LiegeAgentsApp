@@ -113,6 +113,10 @@ export const api = {
   revokeMcpConnection: (token, id) =>
     request(`/v1/mcp/connections/${encodeURIComponent(id)}`, { token, method: "DELETE" }),
   agentAccounts: (token) => request("/v1/agent-accounts", { token }),
+  receipts: (token, limit = 25) => request(`/v1/receipts?limit=${limit}`, { token }),
+  receipt: (token, id) => request(`/v1/receipts/${encodeURIComponent(id)}`, { token }),
+  receiptExportUrl: (format) =>
+    `${API_URL}/v1/receipts?${format === "csv" ? "format=csv" : "download=1"}&limit=5000`,
   agentAccount: (token, agentId) =>
     request(`/v1/agent-accounts/${encodeURIComponent(agentId)}`, { token }),
   updateAgentPolicy: (token, agentId, input) =>

@@ -1458,6 +1458,33 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  /v1/receipts:
+    get:
+      operationId: listReceipts
+      summary: Itemized statement of every ledger transaction on the account, with a SHA-256 digest.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: format, in: query, schema: { enum: [json, csv], default: json } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 5000, default: 500 } }
+        - { name: download, in: query, description: Set to 1 to download JSON as a file., schema: { enum: ["1"] } }
+      responses:
+        "200":
+          description: Statement lines (JSON) or a CSV file whose digest is in the X-Liege-Statement-Digest header.
+          content:
+            application/json: { schema: { type: object, properties: { data: { type: array, items: { type: object } }, digest: { type: string }, generatedAt: { type: string, format: date-time } } } }
+            text/csv: { schema: { type: string } }
+
+  /v1/receipts/{transactionId}:
+    get:
+      operationId: getReceipt
+      summary: One receipt with its job or invoice and a SHA-256 digest of its contents.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: transactionId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Receipt, content: { application/json: { schema: { type: object, properties: { data: { type: object } } } } } }
+        "404": { description: No receipt with this ID on the account. }
+
   /v1/agent-accounts:
     post:
       operationId: createAgentAccount
