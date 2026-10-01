@@ -1316,6 +1316,8 @@ paths:
                 artifactPaths: { type: array, items: { type: string } }
                 timeoutMs: { type: integer, minimum: 100, maximum: 120000 }
                 maxOutputBytes: { type: integer, minimum: 1024, maximum: 1000000 }
+                actionId: { type: string, format: uuid, description: Required when the agent has an account. }
+                simulationId: { type: string, format: uuid, description: Required when the agent has an account. }
       responses:
         "201": { description: Completed, failed, or timed-out run with captured artifacts. }
         "400": { $ref: "#/components/responses/InvalidRequest" }
@@ -1529,6 +1531,32 @@ paths:
             schema: { $ref: "#/components/schemas/AgentActionInput" }
       responses:
         "200": { description: Deterministic policy decision, content: { application/json: { schema: { $ref: "#/components/schemas/AgentActionEnvelope" } } } }
+
+  /v1/agent-accounts/{agentId}/actions/simulate:
+    post:
+      operationId: simulateAgentAction
+      summary: Create a short-lived simulation bound to a normalized action and policy version.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: agentId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentActionInput" }
+      responses:
+        "201": { description: Simulation result and binding digest, content: { application/json: { schema: { $ref: "#/components/schemas/AgentSimulationEnvelope" } } } }
+
+  /v1/agent-accounts/{agentId}/actions/{actionId}/approve:
+    post:
+      operationId: approveAgentAction
+      summary: Approve a policy decision that is awaiting owner confirmation.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: agentId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: actionId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Approved action receipt, content: { application/json: { schema: { $ref: "#/components/schemas/AgentActionEnvelope" } } } }
 
   /v1/agent-accounts/{agentId}/mandates:
     post:
@@ -1917,6 +1945,11 @@ components:
       required: [data]
       properties:
         data: { type: object }
+    AgentSimulationEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { type: object }
     AgentMandateEnvelope:
       type: object
       required: [data]
@@ -1948,6 +1981,8 @@ components:
         asset: { type: string }
         venue: { type: string }
         counterparty: { type: string }
+        details: { type: object }
+        simulationId: { type: string, format: uuid }
         simulationDigest: { type: string }
         simulate: { type: boolean }
     AgentMandateInput:

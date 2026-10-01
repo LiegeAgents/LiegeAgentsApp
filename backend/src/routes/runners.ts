@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Router } from "express";
 import { z } from "zod";
 import { requireAuth } from "../auth.js";
@@ -8,6 +9,7 @@ import { ApiError, asyncRoute } from "../http.js";
 import { runSandboxed } from "../runner.js";
 import { env } from "../config.js";
 import { recordTrace } from "../observability.js";
+import { agentActionDigest, canonical, normalizeAgentAction } from "../agentActions.js";
 
 const input = z.object({
   agentId: z.string().uuid(),
@@ -22,6 +24,8 @@ const input = z.object({
   artifactPaths: z.array(z.string().max(200)).max(20).default([]),
   timeoutMs: z.coerce.number().int().min(100).max(120_000).default(30_000),
   maxOutputBytes: z.coerce.number().int().min(1_024).max(1_000_000).default(256_000),
+  actionId: z.string().uuid().optional(),
+  simulationId: z.string().uuid().optional(),
 });
 const traceMetadata = z
   .record(
@@ -76,18 +80,90 @@ runnersRouter.post(
       if (!job.rowCount)
         throw new ApiError(404, "job_not_found", "This job is not attached to the agent.");
     }
-    const created = await db.query<{ id: string }>(
-      "INSERT INTO execution_runs (owner_id, agent_id, job_id, command, args, status, timeout_ms, max_output_bytes, started_at) VALUES ($1,$2,$3,$4,$5,'running',$6,$7,now()) RETURNING id",
-      [
-        request.auth!.userId,
-        value.agentId,
-        value.jobId ?? null,
-        value.command,
-        JSON.stringify(value.args),
-        value.timeoutMs,
-        value.maxOutputBytes,
-      ],
-    );
+    let accountActionId: string | null = null;
+    if (account.rowCount) {
+      if (!value.actionId || !value.simulationId)
+        throw new ApiError(
+          400,
+          "simulation_required",
+          "An approved actionId and simulationId are required for this account.",
+        );
+      const details = {
+        command: value.command,
+        args: value.args,
+        jobId: value.jobId ?? null,
+        timeoutMs: value.timeoutMs,
+        maxOutputBytes: value.maxOutputBytes,
+        envDigest: createHash("sha256").update(canonical(value.env)).digest("hex"),
+        filesDigest: createHash("sha256").update(canonical(value.files)).digest("hex"),
+      };
+      const action = await db.query<{
+        id: string;
+        policy_version: number;
+        simulation_id: string;
+        normalized_action: Record<string, unknown>;
+      }>(
+        `SELECT a.id,a.policy_version,a.simulation_id,a.normalized_action FROM agent_account_actions a
+         JOIN agent_account_policies p ON p.agent_id=a.agent_id AND p.version=a.policy_version
+         WHERE a.id=$1 AND a.agent_id=$2 AND a.simulation_id=$3 AND a.decision='approved' AND a.execution_status='not_started'`,
+        [value.actionId, value.agentId, value.simulationId],
+      );
+      const expected = normalizeAgentAction({ action: "runner.execute", details });
+      if (!action.rowCount || action.rows[0].simulation_id !== value.simulationId)
+        throw new ApiError(
+          409,
+          "action_unavailable",
+          "This approved action is unavailable or already executed.",
+        );
+      const stored = action.rows[0].normalized_action;
+      if (
+        agentActionDigest(value.agentId, Number(action.rows[0].policy_version), expected) !==
+        agentActionDigest(
+          value.agentId,
+          Number(action.rows[0].policy_version),
+          stored as typeof expected,
+        )
+      )
+        throw new ApiError(
+          409,
+          "simulation_mismatch",
+          "The runner request does not match the approved simulation.",
+        );
+      const claimed = await db.query<{ id: string }>(
+        "UPDATE agent_account_actions SET execution_status='running' WHERE id=$1 AND execution_status='not_started' RETURNING id",
+        [value.actionId],
+      );
+      if (!claimed.rowCount)
+        throw new ApiError(
+          409,
+          "action_unavailable",
+          "This approved action is already running or complete.",
+        );
+      accountActionId = claimed.rows[0].id;
+    }
+    let created: { rows: { id: string }[] };
+    try {
+      created = await db.query<{ id: string }>(
+        "INSERT INTO execution_runs (owner_id, agent_id, job_id, command, args, status, timeout_ms, max_output_bytes, agent_account_action_id, started_at) VALUES ($1,$2,$3,$4,$5,'running',$6,$7,$8,now()) RETURNING id",
+        [
+          request.auth!.userId,
+          value.agentId,
+          value.jobId ?? null,
+          value.command,
+          JSON.stringify(value.args),
+          value.timeoutMs,
+          value.maxOutputBytes,
+          accountActionId,
+        ],
+      );
+    } catch (error) {
+      if (accountActionId)
+        await db.query(
+          "UPDATE agent_account_actions SET execution_status='failed', executed_at=now() WHERE id=$1",
+          [accountActionId],
+        );
+      throw error;
+    }
     const runId = created.rows[0].id;
     await recordTrace(db, runId, "runtime", {
       command: value.command,
@@ -133,12 +209,22 @@ runnersRouter.post(
         requestId: request.requestId,
         metadata: { error: message },
       });
+      if (accountActionId)
+        await db.query(
+          "UPDATE agent_account_actions SET execution_status='failed', executed_at=now() WHERE id=$1",
+          [accountActionId],
+        );
       throw error;
     }
     await db.query(
       "UPDATE execution_runs SET status=$2, exit_code=$3, stdout=$4, stderr=$5, error=$6, finished_at=now() WHERE id=$1",
       [runId, result.status, result.exitCode, result.stdout, result.stderr, result.error],
     );
+    if (accountActionId)
+      await db.query(
+        "UPDATE agent_account_actions SET execution_status='succeeded', executed_at=now() WHERE id=$1",
+        [accountActionId],
+      );
     for (const artifact of result.artifacts)
       await db.query(
         "INSERT INTO execution_artifacts (run_id,name,size_bytes,sha256,content_ciphertext) VALUES ($1,$2,$3,$4,$5)",

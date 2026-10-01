@@ -49,6 +49,27 @@ describe.skipIf(!databaseAvailable)("agent accounts and mandates", () => {
       .expect(200);
     expect(simulated.body.data.decision).toBe("simulation");
 
+    const simulation = await api()
+      .post(`/v1/agent-accounts/${agentId}/actions/simulate`)
+      .set(bearer(owner))
+      .send({ action: "rebalance", amount: 5, details: { venue: "paper" } })
+      .expect(201);
+    const pending = await api()
+      .post(`/v1/agent-accounts/${agentId}/actions/authorize`)
+      .set(bearer(owner))
+      .send({
+        action: "rebalance",
+        amount: 5,
+        details: { venue: "paper" },
+        simulationId: simulation.body.data.id,
+      })
+      .expect(200);
+    expect(pending.body.data.decision).toBe("approval_required");
+    await api()
+      .post(`/v1/agent-accounts/${agentId}/actions/${pending.body.data.actionId}/approve`)
+      .set(bearer(owner))
+      .expect(200);
+
     await api()
       .put(`/v1/agent-accounts/${agentId}/policy`)
       .set(bearer(owner))
