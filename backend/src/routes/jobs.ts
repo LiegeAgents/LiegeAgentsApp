@@ -371,7 +371,7 @@ jobsRouter.post(
       address: string;
       expires_at: Date;
     }>(
-      "SELECT j.client_id, j.status, j.escrow_mode, COALESCE(j.settlement_asset, 'usdg') AS settlement_asset, COALESCE(j.budget_amount, j.budget_usdg) AS budget_amount, COALESCE(j.evaluator_fee_amount, j.evaluator_fee_usdg, 0) AS evaluator_fee_amount, j.expires_at, ew.address FROM jobs j LEFT JOIN escrow_wallets ew ON ew.job_id = j.id WHERE j.id = $1",
+      "SELECT j.client_id, j.status, j.escrow_mode, COALESCE(j.settlement_asset, 'usdg') AS settlement_asset, COALESCE(j.budget_amount, j.budget_usdg) AS budget_amount, CASE WHEN COALESCE(j.settlement_asset, 'usdg') = 'usdg' THEN COALESCE(j.evaluator_fee_usdg, j.evaluator_fee_amount, 0) ELSE COALESCE(j.evaluator_fee_amount, 0) END AS evaluator_fee_amount, j.expires_at, ew.address FROM jobs j LEFT JOIN escrow_wallets ew ON ew.job_id = j.id WHERE j.id = $1",
       [id],
     );
     if (!job.rowCount || job.rows[0].client_id !== request.auth!.userId)
@@ -453,7 +453,7 @@ jobsRouter.post(
       budget_usdg: string;
       evaluator_fee_usdg: string;
     }>(
-      "SELECT client_id, status, escrow_mode, COALESCE(settlement_asset, 'usdg') AS settlement_asset, COALESCE(budget_amount, budget_usdg) AS budget_amount, COALESCE(evaluator_fee_amount, evaluator_fee_usdg, 0) AS evaluator_fee_amount, budget_usdg, evaluator_fee_usdg FROM jobs WHERE id = $1",
+      "SELECT client_id, status, escrow_mode, COALESCE(settlement_asset, 'usdg') AS settlement_asset, COALESCE(budget_amount, budget_usdg) AS budget_amount, CASE WHEN COALESCE(settlement_asset, 'usdg') = 'usdg' THEN COALESCE(evaluator_fee_usdg, evaluator_fee_amount, 0) ELSE COALESCE(evaluator_fee_amount, 0) END AS evaluator_fee_amount, budget_usdg, evaluator_fee_usdg FROM jobs WHERE id = $1",
       [id],
     );
     const verifying =
@@ -613,6 +613,10 @@ jobsRouter.post(
     try {
       await client.query("BEGIN");
       const job = await transition(client, request, target);
+      const jobEvaluatorFee =
+        job.settlement_asset === "usdg"
+          ? Number(job.evaluator_fee_usdg ?? job.evaluator_fee_amount ?? 0)
+          : Number(job.evaluator_fee_amount ?? 0);
       if (job.escrow_mode === "onchain") {
         const addresses = await client.query<{
           client_address: string;
@@ -638,12 +642,12 @@ jobsRouter.post(
           providerAddress: addresses.rows[0].provider_address,
           evaluatorAddress: addresses.rows[0].evaluator_address,
           budget: String(job.budget_amount),
-          evaluatorFee: String(job.evaluator_fee_amount),
+          evaluatorFee: String(jobEvaluatorFee),
           asset: job.settlement_asset,
         });
       } else {
         const escrow = await escrowAccount(client, job.id, job.settlement_asset);
-        const total = Number(job.budget_amount) + Number(job.evaluator_fee_amount);
+        const total = Number(job.budget_amount) + jobEvaluatorFee;
         if (target === "completed") {
           const provider = await userBalance(
             client,
@@ -667,13 +671,13 @@ jobsRouter.post(
             createdBy: request.auth!.userId,
             metadata: { jobId: job.id },
           });
-          if (Number(job.evaluator_fee_amount) > 0)
+          if (jobEvaluatorFee > 0)
             await transfer(client, {
               reference: `job-settle-evaluator:${job.id}`,
               type: "evaluator_fee",
               from: escrow,
               to: evaluator.accountId,
-              amount: Number(job.evaluator_fee_amount),
+              amount: jobEvaluatorFee,
               asset: job.settlement_asset,
               createdBy: request.auth!.userId,
               metadata: { jobId: job.id },

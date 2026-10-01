@@ -48,7 +48,7 @@ cronRouter.post(
         settlement_asset: "usdg" | "liege";
         budget_amount: string;
         evaluator_fee_amount: string;
-      }>(`SELECT j.id, j.status, j.escrow_mode, ew.job_id IS NOT NULL AS has_wallet, j.client_id, c.wallet_address AS client_address, p.wallet_address AS provider_address, COALESCE(j.settlement_asset, 'usdg') AS settlement_asset, COALESCE(j.budget_amount, j.budget_usdg) AS budget_amount, COALESCE(j.evaluator_fee_amount, j.evaluator_fee_usdg, 0) AS evaluator_fee_amount
+      }>(`SELECT j.id, j.status, j.escrow_mode, ew.job_id IS NOT NULL AS has_wallet, j.client_id, c.wallet_address AS client_address, p.wallet_address AS provider_address, COALESCE(j.settlement_asset, 'usdg') AS settlement_asset, COALESCE(j.budget_amount, j.budget_usdg) AS budget_amount, CASE WHEN COALESCE(j.settlement_asset, 'usdg') = 'usdg' THEN COALESCE(j.evaluator_fee_usdg, j.evaluator_fee_amount, 0) ELSE COALESCE(j.evaluator_fee_amount, 0) END AS evaluator_fee_amount
       FROM jobs j JOIN users c ON c.id = j.client_id JOIN agents a ON a.id = j.agent_id JOIN users p ON p.id = a.owner_id
       LEFT JOIN escrow_wallets ew ON ew.job_id = j.id
       WHERE j.status IN ('open', 'funded', 'submitted') AND j.expires_at <= now()
