@@ -72,7 +72,22 @@ export async function transfer(
   // under READ COMMITTED, it includes any debit committed while this one waited for the lock.
   const asset = input.asset ?? "usdg";
   const decimals = asset === "usdg" ? 6 : 18;
-  const amount = typeof input.amount === "number" ? String(input.amount) : input.amount.trim();
+  // JavaScript arithmetic can surface harmless binary tails such as
+  // `0.30000000000000004` for `0.1 + 0.2`. Normalize only when the value is
+  // within machine epsilon of the asset's supported precision; do not round a
+  // caller-supplied value that genuinely has too many decimal places.
+  const amount = (() => {
+    if (typeof input.amount === "string") return input.amount.trim();
+    const raw = String(input.amount);
+    const fraction = raw.split(".")[1]?.length ?? 0;
+    if (!raw.includes("e") && !raw.includes("E") && fraction <= decimals) return raw;
+    const fixed = input.amount
+      .toFixed(decimals)
+      .replace(/\.0+$/, "")
+      .replace(/(\.\d*?)0+$/, "$1");
+    const tolerance = Number.EPSILON * Math.max(1, Math.abs(input.amount)) * 16;
+    return Math.abs(input.amount - Number(fixed)) <= tolerance ? fixed : raw;
+  })();
   const amountPattern = new RegExp(`^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,${decimals}})?$`);
   if (!amountPattern.test(amount) || Number(amount) <= 0)
     throw new ApiError(422, "invalid_amount", "A ledger transfer amount must be positive.");

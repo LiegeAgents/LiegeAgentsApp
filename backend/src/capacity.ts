@@ -38,21 +38,15 @@ export async function evaluatorPosition(
     `WITH totals AS (
        SELECT COALESCE((SELECT sum(lp.amount_usdg) FROM ledger_accounts la JOIN ledger_postings lp ON lp.account_id = la.id
                         WHERE la.user_id = $1 AND la.kind = 'stake'), 0) AS stake_usdg,
-              -- Both settlement assets consume the same independent-review capacity unit until
-              -- an explicit, audited conversion policy is introduced. Never let LIEGE jobs
-              -- disappear from exposure simply because their legacy USDG column is NULL.
-              COALESCE((SELECT sum(CASE WHEN settlement_asset = 'liege' THEN COALESCE(budget_amount, 0)::numeric * $5::numeric ELSE COALESCE(budget_usdg, budget_amount) END) FROM jobs WHERE evaluator_id = $1 AND status IN ${ACTIVE_STATUSES}), 0) AS exposure_usdg
+              -- Both settlement assets consume the same independent-review capacity unit.
+              -- Never let LIEGE jobs disappear from exposure because their legacy USDG column
+              -- is NULL, and do not infer a token/USDG conversion here.
+              COALESCE((SELECT sum(COALESCE(budget_amount, budget_usdg)) FROM jobs WHERE evaluator_id = $1 AND status IN ${ACTIVE_STATUSES}), 0) AS exposure_usdg
      )
      SELECT stake_usdg, exposure_usdg,
        (exposure_usdg + $2::numeric) * $4 <= COALESCE($3::numeric, stake_usdg) AS covered
      FROM totals`,
-    [
-      userId,
-      change.addedExposureUsdg ?? 0,
-      change.stakeUsdg ?? null,
-      STAKE_COVERAGE,
-      env.LIEGE_EXPOSURE_RATE_USD,
-    ],
+    [userId, change.addedExposureUsdg ?? 0, change.stakeUsdg ?? null, STAKE_COVERAGE],
   );
   const row = result.rows[0];
   return {

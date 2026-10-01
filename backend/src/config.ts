@@ -40,7 +40,6 @@ const env = z
     MAX_ADMIN_CREDIT_USDG: z.coerce.number().positive().finite().default(10_000),
     MAX_ADMIN_CREDIT_DAILY_USDG: z.coerce.number().positive().finite().default(50_000),
     SELF_SETTLEMENT_LIMIT_LIEGE: z.coerce.number().positive().finite().default(50_000),
-    LIEGE_EXPOSURE_RATE_USD: z.coerce.number().positive().finite().default(0.01),
     AUTH_TOKEN_PEPPER: z.string().min(32).optional(),
     DATA_ENCRYPTION_KEY: z.string().min(32).optional(),
     DATA_ENCRYPTION_KEY_PREVIOUS: z.string().min(32).optional(),

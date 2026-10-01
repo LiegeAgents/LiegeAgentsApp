@@ -385,8 +385,7 @@ jobsRouter.post(
         const evaluator = await lockEvaluator(client, input.evaluatorId);
         const position = evaluator
           ? await evaluatorPosition(client, input.evaluatorId, {
-              addedExposureUsdg:
-                Number(budget) * (settlementAsset === "liege" ? env.LIEGE_EXPOSURE_RATE_USD : 1),
+              addedExposureUsdg: Number(budget),
             })
           : null;
         if (!evaluator?.active || position!.stakeUsdg < MINIMUM_EVALUATOR_STAKE_USDG)
@@ -518,10 +517,9 @@ jobsRouter.post(
         const evaluator = await lockEvaluator(client, input.evaluatorId);
         const position = evaluator
           ? await evaluatorPosition(client, input.evaluatorId, {
-              // Until token prices are introduced, LIEGE uses the same independent-review
-              // capacity unit as USDG. This keeps a token job from bypassing stake coverage.
-              addedExposureUsdg:
-                Number(budget) * (settlementAsset === "liege" ? env.LIEGE_EXPOSURE_RATE_USD : 1),
+              // Settlement assets are configured at job creation, but neither may bypass the
+              // same independent-review capacity boundary.
+              addedExposureUsdg: Number(budget),
             })
           : null;
         if (!evaluator?.active || position!.stakeUsdg < MINIMUM_EVALUATOR_STAKE_USDG)
