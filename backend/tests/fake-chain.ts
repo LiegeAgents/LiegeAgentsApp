@@ -35,7 +35,7 @@ export class FakeChain implements EscrowChain {
 
   balanceOf(address: string) {
     const key = address.toLowerCase();
-    if (!this.balances.has(key)) this.balances.set(key, { usdg: 0n, liege: 0n, eth: 0n });
+    if (!this.balances.has(key)) this.balances.set(key, { usdg: 0n, eth: 0n });
     return this.balances.get(key)!;
   }
 
