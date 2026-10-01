@@ -55,3 +55,34 @@ jobs:
           tags: |
             ${{ steps.image.outputs.name }}:latest
             ${{ steps.image.outputs.name }}:${{ github.sha }}
+
+  deploy:
+    if: github.event_name == 'push'
+    needs: build-push
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Deploy and verify runner service
+        env:
+          DEPLOY_HOOK: ${{ secrets.RUNNER_RENDER_DEPLOY_HOOK_URL }}
+          RUNNER_URL: ${{ vars.RUNNER_URL }}
+        run: |
+          if [ -z "$DEPLOY_HOOK" ]; then
+            echo "No runner deploy hook configured; skipping deployment."
+            exit 0
+          fi
+          curl --fail --silent --show-error --request POST "$DEPLOY_HOOK"
+          if [ -z "$RUNNER_URL" ]; then
+            echo "::warning::RUNNER_URL is not set, so the deployment was not verified."
+            exit 0
+          fi
+          for attempt in $(seq 1 60); do
+            status=$(curl --silent --max-time 5 "$RUNNER_URL/health" | jq -r '.status // empty' || true)
+            if [ "$status" = "ok" ]; then
+              echo "Runner service is healthy."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Runner service was not healthy at $RUNNER_URL within 10 minutes."
+          exit 1
