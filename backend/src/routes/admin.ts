@@ -32,6 +32,9 @@ adminRouter.post(
     const client = await db.connect();
     try {
       await client.query("BEGIN");
+      // Serialize the daily cap check with other admin credits. Without this lock two
+      // concurrent requests can both observe the same total and exceed the configured cap.
+      await client.query("SELECT pg_advisory_xact_lock(hashtext('liege:admin-credit-daily-cap'))");
       const creditedToday = await client.query<{ amount: string }>(
         `SELECT COALESCE(sum((metadata->>'amountUsdg')::numeric), 0) AS amount
          FROM audit_logs WHERE action = 'ledger.credited' AND created_at >= date_trunc('day', now())`,
