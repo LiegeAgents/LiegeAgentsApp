@@ -32,3 +32,9 @@ test("runner rejects workspace traversal", async () => {
     runSandboxed({ command: process.execPath, files: { "../escape.txt": "nope" } }),
   ).rejects.toThrow("Unsafe workspace path");
 });
+
+test("runner rejects environment variables that can alter the runtime loader", async () => {
+  await expect(
+    runSandboxed({ command: process.execPath, env: { NODE_OPTIONS: "--require /tmp/evil.js" } }),
+  ).rejects.toThrow("Unsafe runner environment variable");
+});

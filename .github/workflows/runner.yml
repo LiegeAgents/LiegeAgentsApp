@@ -28,8 +28,7 @@ jobs:
       - name: Validate hardened worker image definition
         run: |
           grep -q '^USER bun$' runner.Dockerfile
-          grep -q -- '--network=none' RUNNER-DEPLOYMENT.md
-          grep -q -- '--cap-drop=ALL' RUNNER-DEPLOYMENT.md
+          grep -q 'microVM or gVisor' RUNNER-DEPLOYMENT.md
 
   build-push:
     if: github.event_name == 'push'

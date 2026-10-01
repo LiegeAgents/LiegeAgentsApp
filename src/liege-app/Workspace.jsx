@@ -692,7 +692,7 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
         brief: v.brief.trim(),
         acceptanceCriteria,
         settlementAsset: v.settlementAsset,
-        ...(v.settlementAsset === "liege" ? { budgetLiege: +v.budget } : { budgetUsdg: +v.budget }),
+        ...(v.settlementAsset === "liege" ? { budgetLiege: v.budget } : { budgetUsdg: v.budget }),
         deadlineAt: deadline.toISOString(),
         expiresAt: expires.toISOString(),
       });

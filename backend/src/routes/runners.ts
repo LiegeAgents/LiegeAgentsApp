@@ -66,7 +66,20 @@ runnersRouter.post(
     });
     let result;
     try {
-      result = env.RUNNER_WORKER_URL ? await runRemote(value) : await runSandboxed(value);
+      if (env.NODE_ENV === "production") {
+        // Production execution must remain outside the API process. Configuration validation
+        // requires the worker URL/token; this guard prevents a future fallback from reintroducing
+        // secret exposure through /proc or the shared API container.
+        if (!env.RUNNER_WORKER_URL || !env.RUNNER_WORKER_TOKEN)
+          throw new ApiError(
+            503,
+            "runner_unavailable",
+            "The isolated runner worker is not configured.",
+          );
+        result = await runRemote(value);
+      } else {
+        result = env.RUNNER_WORKER_URL ? await runRemote(value) : await runSandboxed(value);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await db.query(

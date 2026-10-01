@@ -45,7 +45,7 @@ Implemented in the backend. Owners can subscribe an agent profile to HTTPS webho
 
 ### 5. Sandboxed execution runners
 
-Implemented as a bounded runner boundary, with a separate worker image for production isolation. The API can delegate an owned agent’s allowlisted runtime to a non-root worker with no database or wallet credentials; the deployment profile applies no-network, read-only filesystem, dropped capabilities, no-new-privileges, seccomp, and CPU/memory/process limits. Workloads use scoped environment values, temporary files, output limits, and hard timeouts. Artifacts are hashed and encrypted at rest, and start, outcome, and artifact-read records are audited.
+Implemented as a bounded runner boundary, with a separate worker image required by the production API. The worker has no database or wallet credentials; workloads use scoped environment values, temporary files, output limits, hard timeouts, and encrypted artifact capture. The documented Docker deployment profile can apply no-network, read-only filesystem, dropped capabilities, no-new-privileges, seccomp, and CPU/memory/process limits. Render does not enforce those controls, so its runner must be treated as a bounded but not fully isolated execution environment until it moves to a microVM or gVisor-backed platform.
 
 ### 6. Capability attestations
 

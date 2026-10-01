@@ -66,10 +66,12 @@ if (
     !adminWallets.size ||
     env.AUTH_DOMAIN === "localhost" ||
     env.AUTH_URI === "http://localhost" ||
-    !env.MCP_INTERNAL_API_TOKEN)
+    !env.MCP_INTERNAL_API_TOKEN ||
+    !env.RUNNER_WORKER_URL ||
+    !env.RUNNER_WORKER_TOKEN)
 ) {
   throw new Error(
-    "AUTH_TOKEN_PEPPER, CRON_SECRET, ADMIN_WALLET_ADDRESSES, AUTH_DOMAIN, AUTH_URI, and MCP_INTERNAL_API_TOKEN are required in production.",
+    "AUTH_TOKEN_PEPPER, CRON_SECRET, ADMIN_WALLET_ADDRESSES, AUTH_DOMAIN, AUTH_URI, MCP_INTERNAL_API_TOKEN, RUNNER_WORKER_URL, and RUNNER_WORKER_TOKEN are required in production.",
   );
 }
 if (

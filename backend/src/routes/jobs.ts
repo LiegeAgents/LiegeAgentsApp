@@ -23,6 +23,15 @@ import {
   STAKE_COVERAGE,
 } from "../capacity.js";
 
+const decimalAmount = (positive = false) =>
+  z
+    .union([z.string(), z.number().finite()])
+    .transform((value) => (typeof value === "number" ? String(value) : value.trim()))
+    .refine((value) => /^(?:0|[1-9]\d{0,11})(?:\.\d{1,18})?$/.test(value), {
+      message: "Amount must be a plain decimal with at most 18 fractional digits.",
+    })
+    .refine((value) => !positive || Number(value) > 0, "Amount must be positive.");
+
 const jobInput = z
   .object({
     agentId: z.string().uuid(),
@@ -35,10 +44,10 @@ const jobInput = z
     briefCiphertext: z.string().min(1).max(100_000).optional(),
     acceptanceCriteria: z.array(z.string().min(1).max(500)).min(1).max(20),
     settlementAsset: z.enum(["usdg", "liege"]).default("usdg"),
-    budgetUsdg: z.coerce.number().positive().optional(),
-    evaluatorFeeUsdg: z.coerce.number().min(0).default(0),
-    budgetLiege: z.coerce.number().positive().optional(),
-    evaluatorFeeLiege: z.coerce.number().min(0).default(0),
+    budgetUsdg: decimalAmount(true).optional(),
+    evaluatorFeeUsdg: decimalAmount().default("0"),
+    budgetLiege: decimalAmount(true).optional(),
+    evaluatorFeeLiege: decimalAmount().default("0"),
     deadlineAt: z.coerce.date(),
     expiresAt: z.coerce.date(),
     strategyPolicy: z.record(z.unknown()).optional(),
@@ -63,7 +72,7 @@ const jobInput = z
       ctx.addIssue({ code: "custom", message: "expiresAt cannot precede deadlineAt." });
     const fee =
       value.settlementAsset === "liege" ? value.evaluatorFeeLiege : value.evaluatorFeeUsdg;
-    if (!value.evaluatorId && fee > 0)
+    if (!value.evaluatorId && Number(fee) > 0)
       ctx.addIssue({
         code: "custom",
         path: [value.settlementAsset === "liege" ? "evaluatorFeeLiege" : "evaluatorFeeUsdg"],
@@ -201,7 +210,7 @@ jobsRouter.post(
         "An agent owner cannot evaluate their own job.",
       );
     const selfSettled = !input.evaluatorId || input.evaluatorId === request.auth!.userId;
-    if (selfSettled && settlementAsset === "usdg" && budget >= SELF_SETTLEMENT_LIMIT_USDG)
+    if (selfSettled && Number(budget) >= SELF_SETTLEMENT_LIMIT_USDG)
       throw new ApiError(
         422,
         "self_evaluation_limit",
@@ -217,7 +226,9 @@ jobsRouter.post(
         const evaluator = await lockEvaluator(client, input.evaluatorId);
         const position = evaluator
           ? await evaluatorPosition(client, input.evaluatorId, {
-              addedExposureUsdg: settlementAsset === "usdg" ? budget : 0,
+              // Until token prices are introduced, LIEGE uses the same independent-review
+              // capacity unit as USDG. This keeps a token job from bypassing stake coverage.
+              addedExposureUsdg: Number(budget),
             })
           : null;
         if (!evaluator?.active || position!.stakeUsdg < MINIMUM_EVALUATOR_STAKE_USDG)
@@ -626,8 +637,8 @@ jobsRouter.post(
       const job = await transition(client, request, target);
       const jobEvaluatorFee =
         job.settlement_asset === "usdg"
-          ? Number(job.evaluator_fee_usdg ?? job.evaluator_fee_amount ?? 0)
-          : Number(job.evaluator_fee_amount ?? 0);
+          ? String(job.evaluator_fee_usdg ?? job.evaluator_fee_amount ?? 0)
+          : String(job.evaluator_fee_amount ?? 0);
       if (job.escrow_mode === "onchain") {
         const addresses = await client.query<{
           client_address: string;
@@ -653,12 +664,12 @@ jobsRouter.post(
           providerAddress: addresses.rows[0].provider_address,
           evaluatorAddress: addresses.rows[0].evaluator_address,
           budget: String(job.budget_amount),
-          evaluatorFee: String(jobEvaluatorFee),
+          evaluatorFee: jobEvaluatorFee,
           asset: job.settlement_asset,
         });
       } else {
         const escrow = await escrowAccount(client, job.id, job.settlement_asset);
-        const total = Number(job.budget_amount) + jobEvaluatorFee;
+        const total = Number(job.budget_amount) + Number(jobEvaluatorFee);
         if (target === "completed") {
           const provider = await userBalance(
             client,
@@ -682,13 +693,13 @@ jobsRouter.post(
             createdBy: request.auth!.userId,
             metadata: { jobId: job.id },
           });
-          if (jobEvaluatorFee > 0)
+          if (Number(jobEvaluatorFee) > 0)
             await transfer(client, {
               reference: `job-settle-evaluator:${job.id}`,
               type: "evaluator_fee",
               from: escrow,
               to: evaluator.accountId,
-              amount: jobEvaluatorFee,
+              amount: Number(jobEvaluatorFee),
               asset: job.settlement_asset,
               createdBy: request.auth!.userId,
               metadata: { jobId: job.id },

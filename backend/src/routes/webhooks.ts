@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireAuth } from "../auth.js";
 import { db } from "../db/index.js";
 import { ApiError, asyncRoute } from "../http.js";
-import { createWebhookSubscription } from "../webhooks.js";
+import { assertSafeWebhookUrl, createWebhookSubscription } from "../webhooks.js";
 
 const eventTypes = z
   .array(
@@ -46,6 +46,15 @@ webhooksRouter.post(
     ]);
     if (!owned.rowCount)
       throw new ApiError(404, "agent_not_found", "This agent is not owned by your account.");
+    try {
+      await assertSafeWebhookUrl(value.url);
+    } catch (error) {
+      throw new ApiError(
+        422,
+        "unsafe_webhook_url",
+        error instanceof Error ? error.message : "Webhook URL is not allowed.",
+      );
+    }
     const created = await createWebhookSubscription(
       request.auth!.userId,
       value.agentId,

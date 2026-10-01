@@ -35,7 +35,10 @@ export async function evaluatorPosition(
     `WITH totals AS (
        SELECT COALESCE((SELECT sum(lp.amount_usdg) FROM ledger_accounts la JOIN ledger_postings lp ON lp.account_id = la.id
                         WHERE la.user_id = $1 AND la.kind = 'stake'), 0) AS stake_usdg,
-              COALESCE((SELECT sum(budget_usdg) FROM jobs WHERE evaluator_id = $1 AND status IN ${ACTIVE_STATUSES}), 0) AS exposure_usdg
+              -- Both settlement assets consume the same independent-review capacity unit until
+              -- an explicit, audited conversion policy is introduced. Never let LIEGE jobs
+              -- disappear from exposure simply because their legacy USDG column is NULL.
+              COALESCE((SELECT sum(COALESCE(budget_usdg, budget_amount)) FROM jobs WHERE evaluator_id = $1 AND status IN ${ACTIVE_STATUSES}), 0) AS exposure_usdg
      )
      SELECT stake_usdg, exposure_usdg,
        (exposure_usdg + $2::numeric) * $4 <= COALESCE($3::numeric, stake_usdg) AS covered

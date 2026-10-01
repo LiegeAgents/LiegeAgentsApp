@@ -13,4 +13,6 @@ docker run --rm --name liege-runner \
   -p 127.0.0.1:3200:3200 ghcr.io/liegeagents/liegeagentsapp-runner:latest
 ```
 
-The API remains responsible for ownership checks, persistence, encrypted artifacts, and audit records. The worker has no database, wallet, or deployment credentials. The local process fallback is intended for development only; production should use the worker image with the restrictions above (or equivalent VM isolation).
+The API remains responsible for ownership checks, persistence, encrypted artifacts, and audit records. The worker has no database, wallet, or deployment credentials. The local process fallback is development-only and the API refuses to start in production without the remote worker configuration.
+
+Render can deploy the image but does not enforce the Docker restrictions above. Treat a Render runner as bounded execution, not a safe host for untrusted code. Before accepting untrusted workloads, deploy the worker on a microVM or gVisor-backed platform and verify outbound network controls there.

@@ -31,10 +31,27 @@ case "$(uname -s):$(uname -m)" in
 esac
 
 URL="https://github.com/$REPO/releases/download/$VERSION/$TARGET"
+CHECKSUM_URL="https://github.com/$REPO/releases/download/$VERSION/checksums.txt"
 TMP_BIN="$(mktemp "${TMPDIR:-/tmp}/liege.XXXXXX")"
-trap 'rm -f "$TMP_BIN"' EXIT
+TMP_SUMS="$(mktemp "${TMPDIR:-/tmp}/liege-checksums.XXXXXX")"
+trap 'rm -f "$TMP_BIN" "$TMP_SUMS"' EXIT
 echo "Installing Liege CLI $VERSION for $TARGET..."
 curl -fsSL "$URL" -o "$TMP_BIN"
+curl -fsSL "$CHECKSUM_URL" -o "$TMP_SUMS"
+EXPECTED="$(awk -v file="$TARGET" '$2 == file { print $1 }' "$TMP_SUMS")"
+if [ -z "$EXPECTED" ]; then
+  echo "No checksum was published for $TARGET in $VERSION." >&2
+  exit 1
+fi
+if command -v sha256sum >/dev/null 2>&1; then
+  ACTUAL="$(sha256sum "$TMP_BIN" | awk '{print $1}')"
+else
+  ACTUAL="$(shasum -a 256 "$TMP_BIN" | awk '{print $1}')"
+fi
+if [ "$ACTUAL" != "$EXPECTED" ]; then
+  echo "Checksum verification failed for $TARGET." >&2
+  exit 1
+fi
 chmod +x "$TMP_BIN"
 
 if [ -e "$INSTALL_DIR/$BINARY" ] && ! "$INSTALL_DIR/$BINARY" --help 2>&1 | grep -q "Liege operator CLI"; then
