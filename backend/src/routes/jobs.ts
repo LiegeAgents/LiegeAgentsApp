@@ -13,6 +13,7 @@ import { env } from "../config.js";
 import { evidenceUrl, isSafeEvidenceUrl } from "../evidence.js";
 import { createFundingQuote, ensureEscrowWallet, verifyOnchainFunding } from "../escrow.js";
 import { planSettlement, processSettlement } from "../settlement.js";
+import { enqueueWebhookEvent } from "../webhooks.js";
 import type { SettlementAsset } from "../assets.js";
 import {
   evaluatorPosition,
@@ -532,6 +533,11 @@ jobsRouter.post(
         "INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,$3)",
         [job.id, request.auth!.userId, "job.funded"],
       );
+      await enqueueWebhookEvent(client, {
+        jobId: job.id,
+        eventType: "job.funded",
+        actorId: request.auth!.userId,
+      });
       await client.query("COMMIT");
       response.json({ data: publicJob(result.rows[0]) });
     } catch (error) {
@@ -581,6 +587,11 @@ jobsRouter.post(
         "INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,$3)",
         [job.id, request.auth!.userId, "job.submitted"],
       );
+      await enqueueWebhookEvent(client, {
+        jobId: job.id,
+        eventType: "job.submitted",
+        actorId: request.auth!.userId,
+      });
       await client.query("COMMIT");
       response.json({ data: publicJob(result.rows[0]) });
     } catch (error) {
@@ -719,6 +730,11 @@ jobsRouter.post(
         "INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,$3)",
         [job.id, request.auth!.userId, `job.${target}`],
       );
+      await enqueueWebhookEvent(client, {
+        jobId: job.id,
+        eventType: `job.${target}`,
+        actorId: request.auth!.userId,
+      });
       await client.query("COMMIT");
       response.json({ data: publicJob(result.rows[0]) });
       // Failures are recorded on the payout rows; the settle-escrows cron retries them.

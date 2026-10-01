@@ -11,6 +11,7 @@ import {
   type ReceiptStatus,
 } from "./escrow.js";
 import type { SettlementAsset } from "./assets.js";
+import { enqueueWebhookEvent } from "./webhooks.js";
 
 // On-chain settlement runs in two phases. Planning happens inside the caller's database
 // transaction and only writes rows: the outcome plus one pending payout per transfer. Processing
@@ -147,10 +148,11 @@ export async function processSettlement(jobId: string): Promise<SettlementStatus
         );
       return "pending";
     }
-    await db.query(
-      "UPDATE escrow_settlements SET status = 'complete', error = NULL, updated_at = now() WHERE job_id = $1 AND status = 'pending'",
+    const completed = await db.query<{ job_id: string }>(
+      "UPDATE escrow_settlements SET status = 'complete', error = NULL, updated_at = now() WHERE job_id = $1 AND status = 'pending' RETURNING job_id",
       [jobId],
     );
+    if (completed.rowCount) await enqueueWebhookEvent(db, { jobId, eventType: "job.settled" });
     return "complete";
   } catch (error) {
     // A database error outside a payout step; the next run resumes from the stored state.

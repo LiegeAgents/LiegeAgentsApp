@@ -884,6 +884,83 @@ paths:
                   data: { $ref: '#/components/schemas/SettlementRunSummary' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
 
+  /v1/cron/deliver-webhooks:
+    post:
+      operationId: deliverWebhooks
+      summary: Deliver pending webhook events with bounded retries.
+      security: [{ cronSecret: [] }]
+      responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200':
+          description: Delivery attempt summary.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [attempted, delivered]
+                    properties:
+                      attempted: { type: integer }
+                      delivered: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /v1/webhooks:
+    get:
+      operationId: listWebhookSubscriptions
+      summary: List webhook subscriptions owned by the authenticated account.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Webhook subscriptions. }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    post:
+      operationId: createWebhookSubscription
+      summary: Subscribe an owned agent profile to signed job lifecycle events.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agentId, url]
+              properties:
+                agentId: { type: string, format: uuid }
+                url: { type: string, format: uri, description: HTTPS endpoint. }
+                eventTypes: { type: array, items: { type: string } }
+      responses:
+        '201': { description: Subscription and one-time signing secret. }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/webhooks/{id}:
+    delete:
+      operationId: deactivateWebhookSubscription
+      summary: Deactivate an owned webhook subscription.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Subscription deactivated. }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/webhooks/stream/{agentId}:
+    get:
+      operationId: streamAgentWebhookEvents
+      summary: Stream an owned agent's lifecycle events as Server-Sent Events.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: agentId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: since, in: query, schema: { type: string, format: date-time } }
+      responses:
+        '200': { description: text/event-stream event stream. }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, description: A session token from /v1/auth/verify. }

@@ -5,6 +5,7 @@ import { db } from "../db/index.js";
 import { ApiError, asyncRoute } from "../http.js";
 import { escrowAccount, transfer, userBalance } from "../ledger.js";
 import { planSettlement, processPendingSettlements } from "../settlement.js";
+import { deliverPendingWebhooks, enqueueWebhookEvent } from "../webhooks.js";
 
 export const cronRouter = Router();
 
@@ -97,6 +98,8 @@ cronRouter.post(
           "INSERT INTO job_events (job_id, event_type) SELECT id, 'job.expired' FROM jobs WHERE id = ANY($1::uuid[])",
           [expired.rows.map((row) => row.id)],
         );
+      for (const row of expired.rows)
+        await enqueueWebhookEvent(client, { jobId: row.id, eventType: "job.expired" });
       const result = { expired: expired.rowCount ?? 0, refunded, settlements };
       await client.query(
         "INSERT INTO cron_runs (name, idempotency_key, result) VALUES ($1,$2,$3)",
@@ -123,5 +126,12 @@ cronRouter.post(
   "/settle-escrows",
   asyncRoute(async (_request, response) => {
     response.json({ data: await processPendingSettlements() });
+  }),
+);
+
+cronRouter.post(
+  "/deliver-webhooks",
+  asyncRoute(async (_request, response) => {
+    response.json({ data: await deliverPendingWebhooks() });
   }),
 );

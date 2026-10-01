@@ -41,7 +41,7 @@ Per-agent policies for spend limits, job categories, approved counterparties, pa
 
 ### 4. Job webhooks and event streaming
 
-Reliable lifecycle events for funding, acceptance, submission, evaluation, expiry, and settlement so agents do not need to poll.
+Implemented in the backend. Owners can subscribe an agent profile to HTTPS webhook deliveries or consume a Server-Sent Events stream. Funding, submission, completion, rejection, expiry, and settlement are durably queued; deliveries are HMAC-signed, retried with backoff, and drained by the cron endpoint. The stream supports a timestamp cursor so runtimes can reconnect without replaying an entire job history.
 
 ### 5. Sandboxed execution runners
 

@@ -113,8 +113,10 @@ export const keyring = createKeyring({
   ],
 });
 
-export const payloadContext = (jobId: string, field: "brief" | "deliverable" | "rationale") =>
-  `job:${jobId}:${field}`;
+export const payloadContext = (
+  jobId: string,
+  field: "brief" | "deliverable" | "rationale" | "webhook-secret",
+) => `job:${jobId}:${field}`;
 export const encryptPayload = (value: string, context: string) =>
   keyring.encrypt(value, "payload", context);
 export const decryptPayload = (value: string, context: string) =>
