@@ -493,7 +493,7 @@ export default function Workspace() {
 
 function McpConnections({ token, agents, ownerAddress, onNotice }) {
   const [connections, setConnections] = useState([]);
-  const [name, setName] = useState("Antigravity");
+  const [name, setName] = useState("My agent runtime");
   const [agentId, setAgentId] = useState("");
   const [newToken, setNewToken] = useState("");
   const [loading, setLoading] = useState(false);
@@ -519,7 +519,15 @@ function McpConnections({ token, agents, ownerAddress, onNotice }) {
     try {
       const result = await api.createMcpConnection(token, { agentId, name: name.trim() });
       setNewToken(result.data.token);
-      setConnections((items) => [result.data, ...items]);
+      setConnections((items) => [
+        {
+          ...result.data,
+          name: name.trim(),
+          agent_id: agentId,
+          created_at: new Date().toISOString(),
+        },
+        ...items,
+      ]);
       onNotice("MCP connection created. Copy the token now; it is shown only once.");
     } catch (error) {
       onNotice(error?.message || "Could not create MCP connection.");
@@ -530,51 +538,123 @@ function McpConnections({ token, agents, ownerAddress, onNotice }) {
   const revoke = async (id) => {
     try {
       await api.revokeMcpConnection(token, id);
-      setConnections((items) => items.map((item) => (item.id === id ? { ...item, revoked_at: new Date().toISOString() } : item)));
+      setConnections((items) =>
+        items.map((item) =>
+          item.id === id ? { ...item, revoked_at: new Date().toISOString() } : item,
+        ),
+      );
       onNotice("MCP connection revoked.");
     } catch (error) {
       onNotice(error?.message || "Could not revoke MCP connection.");
     }
   };
   const copy = async () => {
-    await navigator.clipboard?.writeText(newToken);
-    onNotice("MCP token copied.");
+    try {
+      await navigator.clipboard.writeText(newToken);
+      onNotice("MCP token copied.");
+    } catch {
+      onNotice("Copy failed. Select the token and copy it manually.");
+    }
   };
   return (
-    <div className="settings-panel">
-      <h2>MCP connections</h2>
-      <p>Create a connection for an external agent such as Antigravity. The token grants access only to the selected agent profile and expires after 30 days.</p>
+    <section className="settings-panel mcp-settings-panel">
+      <div className="mcp-settings-heading">
+        <div>
+          <span className="eyebrow">EXTERNAL AGENT ACCESS</span>
+          <h2>Connect an MCP client</h2>
+          <p>
+            Give one external runtime access to one of your agent profiles. Connections can inspect
+            scoped context and create proposals; they cannot bypass your approval.
+          </p>
+        </div>
+        <a href="/docs/mcp" className="mcp-guide-link">
+          Setup guide <ExternalLink size={14} />
+        </a>
+      </div>
       {newToken && (
-        <Notice>
-          <span className="mono">{newToken}</span>
-          <Button secondary onClick={copy}><Copy size={14} /> Copy token</Button>
-        </Notice>
+        <div className="mcp-token-card" role="status">
+          <div>
+            <span className="eyebrow">COPY THIS TOKEN NOW</span>
+            <strong>It will not be shown again.</strong>
+            <p>Paste it into this agent’s MCP configuration. It expires after 30 days.</p>
+          </div>
+          <div className="mcp-token-value">
+            <code>{newToken}</code>
+            <Button secondary onClick={copy}>
+              <Copy size={14} /> Copy
+            </Button>
+          </div>
+        </div>
       )}
-      <form onSubmit={create} className="form-grid">
+      <form onSubmit={create} className="mcp-create-form">
         <Field label="Agent profile">
-          <select value={agentId} onChange={(event) => setAgentId(event.target.value)} disabled={!ownedAgents.length}>
+          <select
+            value={agentId}
+            onChange={(event) => setAgentId(event.target.value)}
+            disabled={!ownedAgents.length}
+          >
             {!ownedAgents.length && <option>No owned profiles found</option>}
-            {ownedAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+            {ownedAgents.map((agent) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.name}
+              </option>
+            ))}
           </select>
         </Field>
         <Field label="Connection name">
-          <input value={name} onChange={(event) => setName(event.target.value)} minLength={2} maxLength={80} />
+          <input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="e.g. Research agent in Cursor"
+            minLength={2}
+            maxLength={80}
+          />
         </Field>
         <div className="form-actions">
-          <Button type="submit" disabled={loading || !ownedAgents.length}>{loading ? "Creating…" : "Create MCP connection"}</Button>
+          <Button type="submit" disabled={loading || !ownedAgents.length}>
+            {loading ? "Creating…" : "Create MCP connection"}
+          </Button>
         </div>
       </form>
+      {!ownedAgents.length && (
+        <div className="mcp-empty-note">
+          Launch an agent profile first, then return here to create its MCP connection.
+        </div>
+      )}
       {connections.length > 0 && (
-        <div className="key-values">
+        <div className="mcp-connection-list">
+          <div className="mcp-list-head">
+            <h3>Connections</h3>
+            <span>{connections.filter((connection) => !connection.revoked_at).length} active</span>
+          </div>
           {connections.map((connection) => (
-            <div key={connection.id}>
-              <span>{connection.name} · {ownedAgents.find((agent) => agent.id === connection.agent_id)?.name || "Agent profile"}<br /><small>Expires {new Date(connection.expires_at).toLocaleDateString()}</small></span>
-              {connection.revoked_at ? <b>Revoked</b> : <Button secondary onClick={() => revoke(connection.id)}>Revoke</Button>}
+            <div className="mcp-connection-row" key={connection.id}>
+              <div className="mcp-connection-name">
+                <span className={connection.revoked_at ? "mcp-status revoked" : "mcp-status"} />
+                <div>
+                  <strong>{connection.name || "MCP connection"}</strong>
+                  <small>
+                    {ownedAgents.find((agent) => agent.id === connection.agent_id)?.name ||
+                      "Agent profile"}{" "}
+                    ·{" "}
+                    {connection.revoked_at
+                      ? "Revoked"
+                      : `Expires ${new Date(connection.expires_at).toLocaleDateString()}`}
+                  </small>
+                </div>
+              </div>
+              {connection.revoked_at ? (
+                <span className="mcp-revoked-label">Revoked</span>
+              ) : (
+                <Button secondary small onClick={() => revoke(connection.id)}>
+                  Revoke
+                </Button>
+              )}
             </div>
           ))}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -947,8 +1027,9 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
           <Notice error={!simulation.ready}>
             <strong>{simulation.ready ? "Preflight passed" : "Preflight blocked"}</strong>
             <span>
-              {simulation.settlement.totalEscrow} {simulation.settlement.asset.toUpperCase()} escrow ·{" "}
-              {simulation.checks.filter((check) => check.status === "fail").length} blocking checks
+              {simulation.settlement.totalEscrow} {simulation.settlement.asset.toUpperCase()} escrow
+              · {simulation.checks.filter((check) => check.status === "fail").length} blocking
+              checks
             </span>
           </Notice>
         )}
@@ -997,7 +1078,10 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
         ...base,
         brief: brief?.content || "Private brief unavailable or expired.",
         submission: base.submission
-          ? { ...base.submission, deliverable: delivery?.content || "Delivery unavailable or expired." }
+          ? {
+              ...base.submission,
+              deliverable: delivery?.content || "Delivery unavailable or expired.",
+            }
           : null,
       });
     } catch (e) {
@@ -1117,7 +1201,9 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
                     <span>{event.action === "job.payload_accessed" ? "Allowed" : "Denied"}</span>
                     <span>{metadata.payload || "payload"}</span>
                     <span>{metadata.role || "—"}</span>
-                    <time dateTime={event.created_at}>{new Date(event.created_at).toLocaleString()}</time>
+                    <time dateTime={event.created_at}>
+                      {new Date(event.created_at).toLocaleString()}
+                    </time>
                   </li>
                 );
               })}
