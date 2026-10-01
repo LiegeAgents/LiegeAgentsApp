@@ -32,6 +32,19 @@ const decimalAmount = (positive = false) =>
     })
     .refine((value) => !positive || Number(value) > 0, "Amount must be positive.");
 
+const addDecimalStrings = (left: string, right: string) => {
+  const [leftWhole, leftFraction = ""] = left.split(".");
+  const [rightWhole, rightFraction = ""] = right.split(".");
+  const places = Math.max(leftFraction.length, rightFraction.length);
+  const scale = 10n ** BigInt(places);
+  const leftValue = BigInt(leftWhole) * scale + BigInt(leftFraction.padEnd(places, "0") || 0);
+  const rightValue = BigInt(rightWhole) * scale + BigInt(rightFraction.padEnd(places, "0") || 0);
+  const total = leftValue + rightValue;
+  const whole = total / scale;
+  const fraction = (total % scale).toString().padStart(places, "0").replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : whole.toString();
+};
+
 const jobInput = z
   .object({
     agentId: z.string().uuid(),
@@ -394,8 +407,21 @@ jobsRouter.post(
       }
     } else pass("evaluator_eligibility", "The client will evaluate this job directly.");
 
+    const policy = await db.query<{ allowed_actions: string[]; approval_mode: string }>(
+      "SELECT allowed_actions, approval_mode FROM agent_approval_policies WHERE agent_id = $1",
+      [input.agentId],
+    );
+    const allowedActions = policy.rows[0]?.allowed_actions ?? [
+      "accept_job",
+      "submit_deliverable",
+      "update_agent",
+    ];
+    if (!allowedActions.includes("submit_deliverable"))
+      fail("agent_policy", "The agent policy does not permit deliverable submission.");
+    else pass("agent_policy", "The agent policy permits deliverable submission.");
+
     const ready = checks.every((check) => check.status === "pass");
-    const total = (Number(budget) + Number(evaluatorFee)).toString();
+    const total = addDecimalStrings(String(budget), String(evaluatorFee));
     const evaluationActor = input.evaluatorId ? "assigned_evaluator" : "client";
     await audit(db, {
       actorId: request.auth!.userId,
@@ -426,8 +452,12 @@ jobsRouter.post(
           fund: "client",
           submit: "agent_owner",
           evaluate: evaluationActor,
-          settleAccepted: ["agent_owner", "evaluator"],
+          settleAccepted: evaluationActor,
           settleRejected: "client_refund",
+          agentPolicy: {
+            approvalMode: policy.rows[0]?.approval_mode ?? "always",
+            allowedActions,
+          },
         },
         expectedActions: [
           { action: "open", actor: "client", mutates: true },
