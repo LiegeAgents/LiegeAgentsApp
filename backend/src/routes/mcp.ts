@@ -8,12 +8,14 @@ import { decryptPayload, payloadContext } from "../crypto.js";
 import { db } from "../db/index.js";
 import { isSafeEvidenceUrl } from "../evidence.js";
 import { ApiError, asyncRoute } from "../http.js";
+import { agentActionDigest, normalizeAgentAction } from "../agentActions.js";
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const connectionInput = z.object({ agentId: z.string().uuid(), name: z.string().min(2).max(80) });
 const proposalInput = z.object({
   action: z.enum(["accept_job", "submit_deliverable", "update_agent"]),
   payload: z.record(z.unknown()),
+  simulationId: z.string().uuid().optional(),
 });
 const policyInput = z.object({
   maxSpendPerJob: z.coerce.number().positive().nullable().optional(),
@@ -407,6 +409,41 @@ mcpInternalRouter.post(
         "agent_account_paused",
         `This agent account is ${account.rows[0].status} and cannot create proposals.`,
       );
+    if (account.rowCount) {
+      if (!input.simulationId)
+        throw new ApiError(
+          400,
+          "simulation_required",
+          "Run a simulation and provide its simulationId before creating a proposal.",
+        );
+      const simulation = await db.query<{
+        action_digest: string;
+        policy_version: number;
+        expires_at: Date;
+      }>(
+        "SELECT action_digest,policy_version,expires_at FROM agent_account_simulations WHERE id=$1 AND agent_id=$2",
+        [input.simulationId, c.agent_id],
+      );
+      const policyVersion = (
+        await db.query<{ version: number }>(
+          "SELECT version FROM agent_account_policies WHERE agent_id=$1",
+          [c.agent_id],
+        )
+      ).rows[0]?.version;
+      const action = normalizeAgentAction({ action: input.action, details: input.payload });
+      if (
+        !simulation.rowCount ||
+        simulation.rows[0].expires_at <= new Date() ||
+        Number(simulation.rows[0].policy_version) !== Number(policyVersion) ||
+        simulation.rows[0].action_digest !==
+          agentActionDigest(c.agent_id, Number(policyVersion), action)
+      )
+        throw new ApiError(
+          409,
+          "simulation_mismatch",
+          "The proposal no longer matches its simulation and policy version.",
+        );
+    }
     const policy = await policyFor(c.agent_id);
     if (!policy.allowedActions.includes(input.action))
       throw new ApiError(
@@ -455,8 +492,15 @@ mcpInternalRouter.post(
     }
     if (violations.length) throw new ApiError(403, "policy_action_denied", violations.join(" "));
     const result = await db.query<{ id: string; expires_at: Date }>(
-      "INSERT INTO mcp_proposals (connection_id, user_id, agent_id, action, payload, expires_at) VALUES ($1,$2,$3,$4,$5,now() + interval '24 hours') RETURNING id, expires_at",
-      [c.id, c.user_id, c.agent_id, input.action, JSON.stringify(input.payload)],
+      "INSERT INTO mcp_proposals (connection_id, user_id, agent_id, action, payload, simulation_id, expires_at) VALUES ($1,$2,$3,$4,$5,$6,now() + interval '24 hours') RETURNING id, expires_at",
+      [
+        c.id,
+        c.user_id,
+        c.agent_id,
+        input.action,
+        JSON.stringify(input.payload),
+        input.simulationId ?? null,
+      ],
     );
     await audit(db, {
       actorId: c.user_id,
@@ -466,7 +510,12 @@ mcpInternalRouter.post(
       metadata: { action: input.action, agentId: c.agent_id },
     });
     response.status(201).json({
-      data: { id: result.rows[0].id, status: "pending", expiresAt: result.rows[0].expires_at },
+      data: {
+        id: result.rows[0].id,
+        status: "pending",
+        simulationId: input.simulationId ?? null,
+        expiresAt: result.rows[0].expires_at,
+      },
     });
   }),
 );

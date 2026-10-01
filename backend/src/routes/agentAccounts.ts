@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { Router } from "express";
 import { verifyMessage } from "viem";
 import { z } from "zod";
+import { agentActionDigest, canonical, normalizeAgentAction } from "../agentActions.js";
 import { requireAuth } from "../auth.js";
 import { audit } from "../audit.js";
 import { db } from "../db/index.js";
@@ -28,6 +29,8 @@ const actionInput = z.object({
   asset: z.string().min(1).max(80).optional(),
   venue: z.string().min(1).max(120).optional(),
   counterparty: z.string().min(1).max(120).optional(),
+  details: z.record(z.unknown()).default({}),
+  simulationId: z.string().uuid().optional(),
   simulationDigest: z
     .string()
     .regex(/^[a-zA-Z0-9:_-]{8,256}$/)
@@ -42,16 +45,6 @@ const mandateInput = z.object({
   parentMandateId: z.string().uuid().optional(),
 });
 
-const canonical = (value: unknown): string => {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value && typeof value === "object") {
-    return `{${Object.entries(value as Record<string, unknown>)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
-};
 const digest = (value: unknown) => createHash("sha256").update(canonical(value)).digest("hex");
 
 async function ownedAgent(agentId: string, userId: string) {
@@ -245,6 +238,104 @@ agentAccountsRouter.post(
 );
 
 agentAccountsRouter.post(
+  "/:agentId/actions/:actionId/approve",
+  asyncRoute(async (request, response) => {
+    const agentId = z.string().uuid().parse(request.params.agentId);
+    const actionId = z.string().uuid().parse(request.params.actionId);
+    await ensureAccount(agentId, request.auth!.userId);
+    const result = await db.query(
+      `UPDATE agent_account_actions SET decision='approved', approved_by=$3, approved_at=now(), receipt_digest=COALESCE(receipt_digest, simulation_digest)
+       WHERE id=$1 AND agent_id=$2 AND simulation_id IS NOT NULL AND decision='approval_required' AND execution_status='not_started'
+       RETURNING id,agent_id,decision,policy_version,simulation_id,simulation_digest,receipt_digest,approved_at`,
+      [actionId, agentId, request.auth!.userId],
+    );
+    if (!result.rowCount)
+      throw new ApiError(409, "action_unavailable", "This action is no longer awaiting approval.");
+    await audit(db, {
+      actorId: request.auth!.userId,
+      action: "agent_account.action_approved",
+      targetType: "agent_account_action",
+      targetId: actionId,
+      requestId: request.requestId,
+      metadata: { agentId },
+    });
+    response.json({ data: result.rows[0] });
+  }),
+);
+
+agentAccountsRouter.post(
+  "/:agentId/actions/simulate",
+  asyncRoute(async (request, response) => {
+    const agentId = z.string().uuid().parse(request.params.agentId);
+    await ensureAccount(agentId, request.auth!.userId);
+    const input = actionInput
+      .omit({ simulationId: true, simulationDigest: true, simulate: true })
+      .parse(request.body);
+    const state = await db.query(
+      "SELECT a.status, p.* FROM agent_accounts a JOIN agent_account_policies p ON p.agent_id=a.agent_id WHERE a.agent_id=$1",
+      [agentId],
+    );
+    const row = state.rows[0];
+    const action = normalizeAgentAction(input);
+    const violations: string[] = [];
+    if (row.status !== "active") violations.push(`account_${row.status}`);
+    if (row.allowed_actions.length && !row.allowed_actions.includes(action.action))
+      violations.push("action_not_allowed");
+    if (action.asset && row.allowed_assets.length && !row.allowed_assets.includes(action.asset))
+      violations.push("asset_not_allowed");
+    if (action.venue && row.allowed_venues.length && !row.allowed_venues.includes(action.venue))
+      violations.push("venue_not_allowed");
+    if (
+      action.counterparty &&
+      row.approved_counterparties.length &&
+      !row.approved_counterparties.includes(action.counterparty)
+    )
+      violations.push("counterparty_not_allowed");
+    const limits = await db.query<{
+      action_exceeded: boolean;
+      daily_exceeded: boolean;
+      monthly_exceeded: boolean;
+    }>(
+      `SELECT
+         ($2::numeric IS NOT NULL AND p.max_action_amount IS NOT NULL AND $2::numeric > p.max_action_amount) AS action_exceeded,
+         ($2::numeric IS NOT NULL AND p.daily_budget IS NOT NULL AND
+           COALESCE((SELECT SUM(amount) FROM agent_account_actions WHERE agent_id=$1
+             AND decision IN ('approved', 'approval_required') AND created_at >= date_trunc('day', now())), 0) + $2::numeric > p.daily_budget) AS daily_exceeded,
+         ($2::numeric IS NOT NULL AND p.monthly_budget IS NOT NULL AND
+           COALESCE((SELECT SUM(amount) FROM agent_account_actions WHERE agent_id=$1
+             AND decision IN ('approved', 'approval_required') AND created_at >= date_trunc('month', now())), 0) + $2::numeric > p.monthly_budget) AS monthly_exceeded
+       FROM agent_account_policies p WHERE p.agent_id=$1`,
+      [agentId, action.amount],
+    );
+    if (limits.rows[0]?.action_exceeded) violations.push("action_limit_exceeded");
+    if (limits.rows[0]?.daily_exceeded) violations.push("daily_budget_exceeded");
+    if (limits.rows[0]?.monthly_exceeded) violations.push("monthly_budget_exceeded");
+    const actionDigest = agentActionDigest(agentId, Number(row.version), action);
+    const result = {
+      eligible: violations.length === 0,
+      violations,
+      approvalRequired: row.approval_mode === "always",
+      policyVersion: Number(row.version),
+    };
+    const inserted = await db.query(
+      `INSERT INTO agent_account_simulations (agent_id,policy_version,action_digest,action,result,created_by,expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,now() + interval '15 minutes')
+       ON CONFLICT (action_digest) DO UPDATE SET result=EXCLUDED.result, expires_at=EXCLUDED.expires_at, created_at=now()
+       RETURNING id,action_digest,action,result,policy_version,expires_at,created_at`,
+      [
+        agentId,
+        row.version,
+        actionDigest,
+        JSON.stringify(action),
+        JSON.stringify(result),
+        request.auth!.userId,
+      ],
+    );
+    response.status(201).json({ data: inserted.rows[0] });
+  }),
+);
+
+agentAccountsRouter.post(
   "/:agentId/actions/authorize",
   asyncRoute(async (request, response) => {
     const agentId = z.string().uuid().parse(request.params.agentId);
@@ -258,6 +349,41 @@ agentAccountsRouter.post(
         [agentId],
       );
       const row = state.rows[0];
+      const normalizedAction = normalizeAgentAction(input);
+      let boundSimulationId: string | null = null;
+      let boundDigest: string | null = null;
+      if (!input.simulate && (row.simulation_required || input.simulationId)) {
+        if (!input.simulationId)
+          throw new ApiError(
+            400,
+            "simulation_required",
+            "Run a simulation and provide its simulationId before authorization.",
+          );
+        const simulation = await client.query<{
+          id: string;
+          action_digest: string;
+          action: Record<string, unknown>;
+          policy_version: number;
+          expires_at: Date;
+        }>(
+          "SELECT id,action_digest,action,policy_version,expires_at FROM agent_account_simulations WHERE id=$1 AND agent_id=$2 FOR UPDATE",
+          [input.simulationId, agentId],
+        );
+        if (!simulation.rowCount || simulation.rows[0].expires_at <= new Date())
+          throw new ApiError(409, "simulation_expired", "The simulation is missing or expired.");
+        const expectedDigest = agentActionDigest(agentId, Number(row.version), normalizedAction);
+        if (
+          simulation.rows[0].policy_version !== Number(row.version) ||
+          simulation.rows[0].action_digest !== expectedDigest
+        )
+          throw new ApiError(
+            409,
+            "simulation_mismatch",
+            "The action no longer matches its simulation and policy version.",
+          );
+        boundSimulationId = simulation.rows[0].id;
+        boundDigest = simulation.rows[0].action_digest;
+      }
       const reasons: string[] = [];
       if (row.status !== "active") reasons.push(`account_${row.status}`);
       if (row.allowed_actions.length && !row.allowed_actions.includes(input.action))
@@ -299,7 +425,7 @@ agentAccountsRouter.post(
       if (limits.rows[0]?.action_exceeded) reasons.push("action_limit_exceeded");
       if (limits.rows[0]?.daily_exceeded) reasons.push("daily_budget_exceeded");
       if (limits.rows[0]?.monthly_exceeded) reasons.push("monthly_budget_exceeded");
-      if (row.simulation_required && !input.simulationDigest && !input.simulate)
+      if (row.simulation_required && !boundDigest && !input.simulationDigest && !input.simulate)
         reasons.push("simulation_required");
       const hardReasons = reasons.filter((reason) => reason !== "simulation_required");
       const decision = input.simulate
@@ -310,7 +436,7 @@ agentAccountsRouter.post(
             ? "approval_required"
             : "approved";
       const recorded = await client.query(
-        "INSERT INTO agent_account_actions (agent_id,action,amount,asset,venue,counterparty,decision,reasons,policy_version,simulation_digest) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id,created_at",
+        "INSERT INTO agent_account_actions (agent_id,action,amount,asset,venue,counterparty,decision,reasons,policy_version,simulation_digest,simulation_id,normalized_action,receipt_digest) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (simulation_id) DO NOTHING RETURNING id,created_at",
         [
           agentId,
           input.action,
@@ -321,9 +447,18 @@ agentAccountsRouter.post(
           decision,
           reasons,
           row.version,
-          input.simulationDigest ?? null,
+          boundDigest ?? input.simulationDigest ?? null,
+          boundSimulationId,
+          JSON.stringify(normalizedAction),
+          boundDigest,
         ],
       );
+      if (!recorded.rowCount)
+        throw new ApiError(
+          409,
+          "simulation_already_authorized",
+          "This simulation has already been authorized.",
+        );
       await client.query("COMMIT");
       response.json({
         data: {
@@ -332,7 +467,7 @@ agentAccountsRouter.post(
           decision,
           reasons,
           policyVersion: row.version,
-          simulationDigest: input.simulationDigest ?? null,
+          simulationDigest: boundDigest ?? input.simulationDigest ?? null,
           createdAt: recorded.rows[0].created_at,
         },
       });
