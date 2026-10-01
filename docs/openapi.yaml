@@ -470,7 +470,7 @@ paths:
   /v1/jobs/{id}:
     get:
       operationId: getJob
-      summary: A job with its decrypted brief, delivery, and evaluation.
+      summary: A job with private payloads fetched through audited access endpoints.
       description: Visible to the job's client, provider, and evaluator only.
       security: [{ bearerAuth: [] }]
       parameters:
@@ -489,6 +489,44 @@ paths:
         '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/jobs/{id}/payload/{payload}:
+    get:
+      operationId: getJobPrivatePayload
+      summary: Retrieve an authorized private job payload.
+      description: |
+        Returns a brief or submitted deliverable only to the job's client, provider, or evaluator.
+        Access expires at the job expiry time. Every successful or denied retrieval is recorded in
+        the audit log; the payload policy for an external MCP connection is enforced separately.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - name: payload
+          in: path
+          required: true
+          schema: { type: string, enum: [brief, deliverable] }
+      responses:
+        '200':
+          description: The decrypted private payload.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [payload, content, role]
+                    properties:
+                      payload: { type: string, enum: [brief, deliverable] }
+                      content: { type: string }
+                      hash: { type: [string, 'null'] }
+                      createdAt: { type: [string, 'null'], format: date-time }
+                      role: { type: string, enum: [client, provider, evaluator] }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410': { description: Payload access has expired. }
 
   /v1/jobs/{id}/funding-quote:
     post:
@@ -1187,16 +1225,16 @@ components:
       allOf:
         - { $ref: '#/components/schemas/Job' }
         - type: object
-          required: [provider_id, agent_name, agent_slug, brief, submission, evaluation]
+          required: [provider_id, agent_name, agent_slug, submission, evaluation]
           properties:
             provider_id: { type: string, format: uuid }
             agent_name: { type: string }
             agent_slug: { type: string }
-            brief: { type: string }
+            brief: { type: string, description: Deprecated in the general response; retrieve via the audited payload endpoint. }
             submission:
               oneOf:
                 - type: object
-                  required: [deliverable, evidence, createdAt]
+                  required: [evidence, createdAt]
                   properties:
                     deliverable: { type: string }
                     evidence: { type: array, items: { type: string } }

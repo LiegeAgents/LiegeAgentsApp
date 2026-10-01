@@ -82,8 +82,82 @@ const jobInput = z
 
 export const jobsRouter = Router();
 
-// The encrypted brief is only useful to the server; clients receive it decrypted on GET /:id.
+// Ciphertext never leaves the API. Private fields are retrieved through the audited payload route.
 const publicJob = ({ brief_ciphertext: _ciphertext, ...job }: Record<string, unknown>) => job;
+
+type PrivatePayload = "brief" | "deliverable";
+const payloadColumn = {
+  brief: "j.brief_ciphertext",
+  deliverable: "s.deliverable_ciphertext",
+} as const;
+
+async function privatePayload(
+  request: { auth?: { userId: string }; requestId?: string },
+  jobId: string,
+  payload: PrivatePayload,
+) {
+  const result = await db.query<{
+    id: string;
+    client_id: string;
+    provider_id: string;
+    evaluator_id: string | null;
+    agent_id: string;
+    status: string;
+    expires_at: Date;
+    ciphertext: string | null;
+    hash: string | null;
+    created_at: Date | null;
+  }>(
+    `SELECT j.id, j.client_id, a.owner_id AS provider_id, j.evaluator_id, j.agent_id, j.status,
+       j.expires_at, ${payloadColumn[payload]} AS ciphertext,
+       ${payload === "brief" ? "j.brief_hash" : "s.deliverable_hash"} AS hash,
+       ${payload === "brief" ? "j.created_at" : "s.created_at"} AS created_at
+     FROM jobs j JOIN agents a ON a.id = j.agent_id
+     LEFT JOIN submissions s ON s.job_id = j.id
+     WHERE j.id = $1`,
+    [jobId],
+  );
+  const row = result.rows[0];
+  const role = row
+    ? row.client_id === request.auth?.userId
+      ? "client"
+      : row.provider_id === request.auth?.userId
+        ? "provider"
+        : row.evaluator_id === request.auth?.userId
+          ? "evaluator"
+          : null
+    : null;
+  const deny = async (code: string, message: string): Promise<never> => {
+    await audit(db, {
+      actorId: request.auth?.userId,
+      action: "job.payload_access_denied",
+      targetType: "job",
+      targetId: jobId,
+      requestId: request.requestId,
+      metadata: { payload, code, role },
+    });
+    throw new ApiError(code === "payload_expired" ? 410 : 403, code, message);
+  };
+  if (!row) return deny("job_not_found", "This job does not exist.");
+  if (!role) return deny("payload_forbidden", "You are not a party to this job.");
+  if (new Date(row.expires_at) <= new Date())
+    return deny("payload_expired", "Private payload access for this job has expired.");
+  if (!row.ciphertext)
+    return deny(
+      "payload_unavailable",
+      payload === "brief" ? "This job has no brief." : "This job has no submitted deliverable.",
+    );
+  const content = decryptPayload(row.ciphertext, payloadContext(jobId, payload));
+  await audit(db, {
+    actorId: request.auth!.userId,
+    action: "job.payload_accessed",
+    targetType: "job",
+    targetId: jobId,
+    requestId: request.requestId,
+    metadata: { payload, role, status: row.status, hash: row.hash },
+  });
+  return { payload, content, hash: row.hash, createdAt: row.created_at, role };
+}
 
 jobsRouter.get(
   "/",
@@ -151,14 +225,11 @@ jobsRouter.get(
     response.json({
       data: {
         ...job,
-        brief: decryptPayload(job.brief_ciphertext, payloadContext(id, "brief")),
+        brief: undefined,
         brief_ciphertext: undefined,
         submission: job.deliverable_ciphertext
           ? {
-              deliverable: decryptPayload(
-                job.deliverable_ciphertext,
-                payloadContext(id, "deliverable"),
-              ),
+              deliverable: undefined,
               // Rows written before https-only validation may hold other schemes.
               evidence: (job.submission_evidence ?? []).filter(isSafeEvidenceUrl),
               createdAt: job.delivery_created_at,
@@ -179,6 +250,16 @@ jobsRouter.get(
         evaluation_created_at: undefined,
       },
     });
+  }),
+);
+
+jobsRouter.get(
+  "/:id/payload/:payload",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const id = z.string().uuid().parse(request.params.id);
+    const payload = z.enum(["brief", "deliverable"]).parse(request.params.payload);
+    response.json({ data: await privatePayload(request, id, payload) });
   }),
 );
 
