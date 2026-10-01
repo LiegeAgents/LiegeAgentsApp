@@ -243,6 +243,17 @@ invoicesRouter.get(
             ...terms,
           });
       }
+      if (
+        settlement.network !== terms.accepts[0].network ||
+        (settlement.payer && settlement.payer.toLowerCase() !== verification.payer.toLowerCase())
+      ) {
+        await client.query("ROLLBACK");
+        throw new ApiError(
+          502,
+          "x402_facilitator_mismatch",
+          "The facilitator returned a settlement for a different network or payer.",
+        );
+      }
       const payerWallet = verification.payer.toLowerCase();
       const payer = await client.query<{ id: string }>(
         "SELECT id FROM users WHERE lower(wallet_address)=lower($1)",
