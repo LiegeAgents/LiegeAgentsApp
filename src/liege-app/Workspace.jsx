@@ -408,6 +408,14 @@ export default function Workspace() {
                   </Button>
                 )}
               </div>
+              {wallet.apiSession && (
+                <McpConnections
+                  token="cookie"
+                  agents={allAgents}
+                  ownerAddress={wallet.session.address}
+                  onNotice={notify}
+                />
+              )}
               {wallet.apiSession && <EvaluatorSetup token="cookie" />}
               {new URLSearchParams(location.search).get("operator") === "1" &&
                 wallet.apiSession && (
@@ -482,6 +490,94 @@ export default function Workspace() {
     </div>
   );
 }
+
+function McpConnections({ token, agents, ownerAddress, onNotice }) {
+  const [connections, setConnections] = useState([]);
+  const [name, setName] = useState("Antigravity");
+  const [agentId, setAgentId] = useState("");
+  const [newToken, setNewToken] = useState("");
+  const [loading, setLoading] = useState(false);
+  const ownedAgents = agents.filter(
+    (agent) => agent.owner_wallet?.toLowerCase() === ownerAddress?.toLowerCase(),
+  );
+  const load = async () => {
+    try {
+      const result = await api.mcpConnections(token);
+      setConnections(result.data || []);
+      setAgentId((current) => current || ownedAgents[0]?.id || "");
+    } catch (error) {
+      onNotice(error?.message || "Could not load MCP connections.");
+    }
+  };
+  useEffect(() => {
+    load();
+  }, [token, ownedAgents.length]);
+  const create = async (event) => {
+    event.preventDefault();
+    if (!agentId || name.trim().length < 2) return;
+    setLoading(true);
+    try {
+      const result = await api.createMcpConnection(token, { agentId, name: name.trim() });
+      setNewToken(result.data.token);
+      setConnections((items) => [result.data, ...items]);
+      onNotice("MCP connection created. Copy the token now; it is shown only once.");
+    } catch (error) {
+      onNotice(error?.message || "Could not create MCP connection.");
+    } finally {
+      setLoading(false);
+    }
+  };
+  const revoke = async (id) => {
+    try {
+      await api.revokeMcpConnection(token, id);
+      setConnections((items) => items.map((item) => (item.id === id ? { ...item, revoked_at: new Date().toISOString() } : item)));
+      onNotice("MCP connection revoked.");
+    } catch (error) {
+      onNotice(error?.message || "Could not revoke MCP connection.");
+    }
+  };
+  const copy = async () => {
+    await navigator.clipboard?.writeText(newToken);
+    onNotice("MCP token copied.");
+  };
+  return (
+    <div className="settings-panel">
+      <h2>MCP connections</h2>
+      <p>Create a connection for an external agent such as Antigravity. The token grants access only to the selected agent profile and expires after 30 days.</p>
+      {newToken && (
+        <Notice>
+          <span className="mono">{newToken}</span>
+          <Button secondary onClick={copy}><Copy size={14} /> Copy token</Button>
+        </Notice>
+      )}
+      <form onSubmit={create} className="form-grid">
+        <Field label="Agent profile">
+          <select value={agentId} onChange={(event) => setAgentId(event.target.value)} disabled={!ownedAgents.length}>
+            {!ownedAgents.length && <option>No owned profiles found</option>}
+            {ownedAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Connection name">
+          <input value={name} onChange={(event) => setName(event.target.value)} minLength={2} maxLength={80} />
+        </Field>
+        <div className="form-actions">
+          <Button type="submit" disabled={loading || !ownedAgents.length}>{loading ? "Creating…" : "Create MCP connection"}</Button>
+        </div>
+      </form>
+      {connections.length > 0 && (
+        <div className="key-values">
+          {connections.map((connection) => (
+            <div key={connection.id}>
+              <span>{connection.name} · {ownedAgents.find((agent) => agent.id === connection.agent_id)?.name || "Agent profile"}<br /><small>Expires {new Date(connection.expires_at).toLocaleDateString()}</small></span>
+              {connection.revoked_at ? <b>Revoked</b> : <Button secondary onClick={() => revoke(connection.id)}>Revoke</Button>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SearchField({ value, onChange, label }) {
   return (
     <label className="search-field">

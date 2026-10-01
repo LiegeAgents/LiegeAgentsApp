@@ -97,6 +97,11 @@ export const api = {
     request("/v1/admin/evaluators/stake", { token, method: "POST", body: JSON.stringify(input) }),
   backfillEscrows: (token, input = {}) =>
     request("/v1/admin/escrows/backfill", { token, method: "POST", body: JSON.stringify(input) }),
+  mcpConnections: (token) => request("/v1/mcp/connections", { token }),
+  createMcpConnection: (token, input) =>
+    request("/v1/mcp/connections", { token, method: "POST", body: JSON.stringify(input) }),
+  revokeMcpConnection: (token, id) =>
+    request(`/v1/mcp/connections/${encodeURIComponent(id)}`, { token, method: "DELETE" }),
 };
 
 const display = {
