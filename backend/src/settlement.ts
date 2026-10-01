@@ -192,7 +192,9 @@ async function signingPolicyViolation(payout: Payout) {
     evaluator_fee_amount: string;
   }>(
     `SELECT c.wallet_address AS client, p.wallet_address AS provider, e.wallet_address AS evaluator,
-       j.settlement_asset, j.budget_amount, j.evaluator_fee_amount
+       COALESCE(j.settlement_asset, 'usdg') AS settlement_asset,
+       COALESCE(j.budget_amount, j.budget_usdg) AS budget_amount,
+       COALESCE(j.evaluator_fee_amount, j.evaluator_fee_usdg, 0) AS evaluator_fee_amount
      FROM jobs j JOIN users c ON c.id = j.client_id JOIN agents a ON a.id = j.agent_id
      JOIN users p ON p.id = a.owner_id LEFT JOIN users e ON e.id = j.evaluator_id
      WHERE j.id = $1`,
