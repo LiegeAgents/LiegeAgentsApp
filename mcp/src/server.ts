@@ -4,7 +4,11 @@ Bun.serve({
   port,
   fetch(request) {
     if (new URL(request.url).pathname === "/health")
-      return Response.json({ status: "ok", service: "liege-mcp" });
+      return Response.json({
+        status: "ok",
+        service: "liege-mcp",
+        commit: process.env.GIT_SHA || undefined,
+      });
     return new Response("Not found", { status: 404 });
   },
 });
