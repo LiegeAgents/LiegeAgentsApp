@@ -3,7 +3,13 @@ import { z } from "zod";
 import { requireAuth } from "../auth.js";
 import { db } from "../db/index.js";
 import { ApiError, asyncRoute } from "../http.js";
-import { assertSafeWebhookUrl, createWebhookSubscription } from "../webhooks.js";
+import {
+  assertSafeWebhookUrl,
+  createWebhookSubscription,
+  formatWebhookSseEvent,
+  replayWebhookEvents,
+  requestedWebhookCursor,
+} from "../webhooks.js";
 
 const eventTypes = z
   .array(
@@ -103,12 +109,19 @@ webhooksRouter.get(
     ]);
     if (!owned.rowCount)
       throw new ApiError(404, "agent_not_found", "This agent is not owned by your account.");
-    const requestedSince =
-      typeof request.query.since === "string" ? request.query.since : undefined;
-    let cursor =
-      requestedSince && !Number.isNaN(Date.parse(requestedSince))
-        ? requestedSince
-        : "1970-01-01T00:00:00.000Z";
+    let cursor: bigint;
+    try {
+      cursor = requestedWebhookCursor(
+        request.query.after,
+        request.get("last-event-id") || undefined,
+      );
+    } catch (error) {
+      throw new ApiError(
+        400,
+        "invalid_event_cursor",
+        error instanceof Error ? error.message : "Webhook event cursor is invalid.",
+      );
+    }
     response
       .status(200)
       .set({
@@ -120,21 +133,15 @@ webhooksRouter.get(
     let closed = false;
     const send = async () => {
       if (closed) return;
-      const events = await db.query<{
-        id: string;
-        event_type: string;
-        payload: Record<string, unknown>;
-        created_at: Date;
-      }>(
-        `SELECT e.id, e.event_type, e.payload, e.created_at FROM webhook_events e JOIN jobs j ON j.id = e.job_id
-       WHERE j.agent_id = $1 AND e.created_at > $2 ORDER BY e.created_at LIMIT 100`,
-        [agentId, cursor],
-      );
-      for (const event of events.rows)
-        response.write(
-          `id: ${event.id}\nevent: ${event.event_type}\ndata: ${JSON.stringify(event.payload)}\n\n`,
-        );
-      if (events.rowCount) cursor = events.rows[events.rows.length - 1].created_at.toISOString();
+      let count = 0;
+      do {
+        const events = await replayWebhookEvents(db, agentId, cursor);
+        count = events.length;
+        for (const event of events) {
+          response.write(formatWebhookSseEvent(event));
+          cursor = BigInt(event.cursor);
+        }
+      } while (count === 100 && !closed);
       response.write(`: keep-alive ${Date.now()}\n\n`);
     };
     await send();

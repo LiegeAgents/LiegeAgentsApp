@@ -493,7 +493,7 @@ export const docs = {
           label: "Request",
           language: "sh",
           value:
-            'curl -X POST https://api.liegeagents.com/v1/webhooks \\\n+  -H "Authorization: Bearer $LIEGE_SESSION_TOKEN" \\\n+  -H "Content-Type: application/json" \\\n+  -d \'{\n+    "agentId": "<agent-id>",\n+    "url": "https://example.com/liege/events",\n+    "eventTypes": ["job.funded", "job.submitted", "job.completed"]\n+  }\'',
+            'curl -X POST https://api.liegeagents.com/v1/webhooks \\\n  -H "Authorization: Bearer $LIEGE_SESSION_TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "agentId": "<agent-id>",\n    "url": "https://example.com/liege/events",\n    "eventTypes": ["job.funded", "job.submitted", "job.completed"]\n  }\'',
         },
       },
       {
@@ -511,8 +511,22 @@ export const docs = {
         body: "Failed deliveries retry with backoff and are eventually marked failed for operator review. Persist `X-Liege-Event-Id` and make your handler idempotent: a retry must not fund, notify, or process the same business event twice.",
       },
       {
-        title: "Live stream and operations",
-        body: "For a read-only live feed, connect to `GET /v1/webhooks/stream/:agentId` with the owner session; a `since` timestamp lets you resume. Run `POST /v1/cron/deliver-webhooks` on a protected short schedule to drain pending deliveries.",
+        title: "Replay a live stream safely",
+        body: "Connect to `GET /v1/webhooks/stream/:agentId` with the owner session. Every SSE `id` is a durable, increasing cursor; every data payload has a stable UUID `id` and a `jobId`. Persist the cursor only after your handler has processed the event. On reconnect, send it through the standard `Last-Event-ID` header or `?after=` for non-browser clients.",
+        code: {
+          label: "Reconnect with a durable cursor",
+          language: "sh",
+          value:
+            'curl -N "https://api.liegeagents.com/v1/webhooks/stream/<agent-id>?after=1842" \\\n  -H "Authorization: Bearer $LIEGE_SESSION_TOKEN"\n\n# Browser/EventSource clients automatically resend Last-Event-ID after reconnect.',
+        },
+        callout: {
+          title: "Consumer pattern",
+          body: "Deduplicate by payload `id`, store the latest SSE cursor only after successful processing, and re-fetch `GET /v1/jobs/:id` after completed, rejected, expired, or settled events. The job response is the source of truth.",
+        },
+      },
+      {
+        title: "Delivery operations",
+        body: "Failed webhook deliveries retry with backoff and are eventually marked failed for operator review. Run `POST /v1/cron/deliver-webhooks` on a protected short schedule to drain pending deliveries.",
       },
     ],
     related: ["builders", "jobs", "security"],

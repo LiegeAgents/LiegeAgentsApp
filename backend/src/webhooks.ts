@@ -9,6 +9,57 @@ import { encryptPayload, decryptPayload, payloadContext } from "./crypto.js";
 export const webhookSecret = () => `whsec_${randomBytes(32).toString("hex")}`;
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 
+export type WebhookEvent = {
+  id: string;
+  cursor: string;
+  eventType: string;
+  payload: Record<string, unknown>;
+};
+
+export function parseWebhookCursor(value: unknown) {
+  if (typeof value !== "string" || !/^(?:0|[1-9]\d*)$/.test(value))
+    throw new Error("Webhook event cursor must be a non-negative integer.");
+  return BigInt(value);
+}
+
+export function requestedWebhookCursor(after: unknown, lastEventId: string | undefined) {
+  if (after !== undefined) return parseWebhookCursor(after);
+  return lastEventId ? parseWebhookCursor(lastEventId) : 0n;
+}
+
+export function formatWebhookSseEvent(event: WebhookEvent) {
+  return `id: ${event.cursor}\nevent: ${event.eventType}\ndata: ${JSON.stringify(event.payload)}\n\n`;
+}
+
+export async function replayWebhookEvents(
+  client: Pool | PoolClient,
+  agentId: string,
+  after: bigint,
+  limit = 100,
+) {
+  const result = await client.query<{
+    id: string;
+    cursor: string;
+    event_type: string;
+    payload: Record<string, unknown>;
+  }>(
+    `SELECT e.id, e.cursor, e.event_type, e.payload
+     FROM webhook_events e JOIN jobs j ON j.id = e.job_id
+     WHERE j.agent_id = $1 AND e.cursor > $2::bigint
+     ORDER BY e.cursor ASC LIMIT $3`,
+    [agentId, after.toString(), limit],
+  );
+  return result.rows.map(
+    (event) =>
+      ({
+        id: event.id,
+        cursor: event.cursor,
+        eventType: event.event_type,
+        payload: event.payload,
+      }) satisfies WebhookEvent,
+  );
+}
+
 function privateAddress(address: string) {
   try {
     // `process` reduces IPv4-mapped IPv6 addresses before classifying them.
@@ -42,16 +93,17 @@ export async function enqueueWebhookEvent(
   client: Pool | PoolClient,
   input: { jobId: string; eventType: string; actorId?: string; data?: Record<string, unknown> },
 ) {
+  const eventId = crypto.randomUUID();
   const payload = {
-    id: crypto.randomUUID(),
+    id: eventId,
     type: input.eventType,
     createdAt: new Date().toISOString(),
     jobId: input.jobId,
     data: { ...(input.data ?? {}), ...(input.actorId ? { actorId: input.actorId } : {}) },
   };
-  const event = await client.query<{ id: string }>(
-    "INSERT INTO webhook_events (job_id, event_type, payload) VALUES ($1,$2,$3) RETURNING id",
-    [input.jobId, input.eventType, JSON.stringify(payload)],
+  const event = await client.query<{ id: string; cursor: string }>(
+    "INSERT INTO webhook_events (id, job_id, event_type, payload) VALUES ($1,$2,$3,$4) RETURNING id, cursor",
+    [eventId, input.jobId, input.eventType, JSON.stringify(payload)],
   );
   await client.query(
     `INSERT INTO webhook_deliveries (event_id, subscription_id)
