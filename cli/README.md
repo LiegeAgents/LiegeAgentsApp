@@ -2,6 +2,16 @@
 
 The CLI gives a human operator a terminal interface for inspecting their Liege account and deciding MCP proposals. It never bypasses Liege authentication or executes an agent action without an explicit operator command.
 
+## Install
+
+Beacon-style prebuilt binaries are published for macOS, Linux, and Windows through GitHub Releases. On macOS or Linux:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/LiegeAgents/LiegeAgentsApp/main/cli/install.sh | sh
+```
+
+The installer places `liege` in `~/.local/bin`. Set `LIEGE_INSTALL_DIR` to change that location, or pass a release version such as `1.0.0` to install `cli-v1.0.0`.
+
 ## Setup
 
 ```sh
