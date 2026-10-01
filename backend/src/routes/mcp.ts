@@ -397,6 +397,16 @@ mcpInternalRouter.post(
   asyncRoute(async (request, response) => {
     const c = await connection(request);
     const input = proposalInput.parse(request.body);
+    const account = await db.query<{ status: string }>(
+      "SELECT status FROM agent_accounts WHERE agent_id=$1",
+      [c.agent_id],
+    );
+    if (account.rowCount && account.rows[0].status !== "active")
+      throw new ApiError(
+        403,
+        "agent_account_paused",
+        `This agent account is ${account.rows[0].status} and cannot create proposals.`,
+      );
     const policy = await policyFor(c.agent_id);
     if (!policy.allowedActions.includes(input.action))
       throw new ApiError(
