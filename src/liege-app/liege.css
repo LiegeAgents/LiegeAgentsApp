@@ -2938,6 +2938,104 @@ section[id] {
     monospace;
   color: var(--l-muted);
 }
+.agent-rulebook-panel .mcp-settings-heading {
+  align-items: flex-start;
+}
+.rulebook-version {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border: 1px solid var(--l-border);
+  border-radius: 4px;
+  font:
+    10px var(--font-paper-mono),
+    monospace;
+  color: var(--l-muted);
+}
+.rulebook-form {
+  display: grid;
+  gap: 22px;
+  padding: 25px 28px 26px;
+}
+.rulebook-form > .field {
+  max-width: 320px;
+  margin: 0;
+}
+.rulebook-section {
+  display: grid;
+  gap: 13px;
+  padding-top: 20px;
+  border-top: 1px solid var(--l-border);
+}
+.rulebook-section h3 {
+  margin: 0;
+  font-size: 13px;
+}
+.rulebook-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.rulebook-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--l-muted);
+  cursor: pointer;
+}
+.rulebook-toggle input {
+  accent-color: var(--l-green);
+}
+.rulebook-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.rulebook-grid .field {
+  margin: 0;
+}
+.rulebook-days {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+.rulebook-days button {
+  min-width: 46px;
+  padding: 7px 10px;
+  border: 1px solid var(--l-border);
+  border-radius: 4px;
+  background: var(--l-bg);
+  color: var(--l-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+.rulebook-days button.active {
+  border-color: color-mix(in srgb, var(--l-green) 55%, var(--l-border));
+  background: color-mix(in srgb, var(--l-green) 10%, var(--l-bg));
+  color: var(--l-text);
+}
+.rulebook-days small {
+  margin-left: 4px;
+  font-size: 11px;
+  color: var(--l-muted);
+}
+.rulebook-form .form-actions {
+  padding: 0;
+}
+@media (max-width: 800px) {
+  .rulebook-form {
+    padding: 21px 20px;
+  }
+  .rulebook-grid {
+    grid-template-columns: 1fr;
+  }
+  .rulebook-section-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
 .agent-kill-panel {
   --l-kill: #c2412d;
 }

@@ -1972,6 +1972,20 @@ components:
         allowedActions: { type: array, items: { type: string } }
         approvalMode: { enum: [always, within_policy] }
         simulationRequired: { type: boolean }
+        requireHumanAbove:
+          type: [number, "null"]
+          description: Actions above this amount wait for owner approval instead of being denied.
+        activeHours:
+          type: [object, "null"]
+          description: Local hours (end exclusive) when the agent may act; a start after the end spans midnight.
+          properties:
+            start: { type: integer, minimum: 0, maximum: 23 }
+            end: { type: integer, minimum: 0, maximum: 23 }
+        activeDays:
+          type: array
+          description: Allowed local weekdays, 0 = Sunday. Empty means every day.
+          items: { type: integer, minimum: 0, maximum: 6 }
+        timezone: { type: string, description: IANA time zone for active hours, default UTC. }
     AgentActionInput:
       type: object
       required: [action]
