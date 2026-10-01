@@ -29,7 +29,7 @@ export class FakeChain implements EscrowChain {
   credit(address: string, amounts: Partial<Balances>) {
     const balance = this.balanceOf(address);
     balance.usdg += amounts.usdg ?? 0n;
-    balance.liege = (balance.liege ?? 0n) + (amounts.liege ?? 0n);
+    if (amounts.liege !== undefined) balance.liege = (balance.liege ?? 0n) + amounts.liege;
     balance.eth += amounts.eth ?? 0n;
   }
 
