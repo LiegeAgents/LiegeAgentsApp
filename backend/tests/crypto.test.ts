@@ -96,8 +96,11 @@ describe.skipIf(!databaseAvailable)("re-encryption", () => {
     );
     expect(keyring.isCurrent(stored.rows[0].brief_ciphertext)).toBe(true);
     expect(keyring.isCurrent(stored.rows[0].encrypted_private_key)).toBe(true);
-    const job = await api().get(`/v1/jobs/${jobId}`).set(bearer(client)).expect(200);
-    expect(job.body.data.brief).toBe("Legacy brief.");
+    const brief = await api()
+      .get(`/v1/jobs/${jobId}/payload/brief`)
+      .set(bearer(client))
+      .expect(200);
+    expect(brief.body.data.content).toBe("Legacy brief.");
     expect((await escrowSigner(db, jobId)).address).toBe(privateKeyToAccount(escrowKey).address);
     expect(Object.values(await reencrypt()).every((count) => count === 0)).toBe(true);
   });
