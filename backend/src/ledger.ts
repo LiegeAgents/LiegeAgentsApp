@@ -12,12 +12,12 @@ async function account(
 ) {
   const asset = options.asset ?? "usdg";
   const existing = await client.query<{ id: string }>(
-    "SELECT id FROM ledger_accounts WHERE kind = $1 AND asset = $4 AND user_id IS NOT DISTINCT FROM $2 AND job_id IS NOT DISTINCT FROM $3",
+    "SELECT id FROM ledger_accounts WHERE kind = $1 AND asset = $4::text AND user_id IS NOT DISTINCT FROM $2::uuid AND job_id IS NOT DISTINCT FROM $3::uuid",
     [kind, options.userId ?? null, options.jobId ?? null, asset],
   );
   if (existing.rowCount) return existing.rows[0].id;
   const created = await client.query<{ id: string }>(
-    "INSERT INTO ledger_accounts (kind, user_id, job_id, asset) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING RETURNING id",
+    "INSERT INTO ledger_accounts (kind, user_id, job_id, asset) VALUES ($1, $2::uuid, $3::uuid, $4::text) ON CONFLICT DO NOTHING RETURNING id",
     [kind, options.userId ?? null, options.jobId ?? null, asset],
   );
   if (created.rowCount) return created.rows[0].id;
@@ -98,7 +98,7 @@ export async function transfer(
     ],
   );
   await client.query(
-    "INSERT INTO ledger_postings (transaction_id, account_id, amount, amount_usdg) VALUES ($1,$2,$3,CASE WHEN $6 = 'usdg' THEN $3 ELSE NULL END),($1,$4,$5,CASE WHEN $6 = 'usdg' THEN $5 ELSE NULL END)",
+    "INSERT INTO ledger_postings (transaction_id, account_id, amount, amount_usdg) VALUES ($1,$2,$3::numeric,CASE WHEN $6::text = 'usdg' THEN $3::numeric ELSE NULL END),($1,$4,$5::numeric,CASE WHEN $6::text = 'usdg' THEN $5::numeric ELSE NULL END)",
     [transaction.rows[0].id, input.from, -input.amount, input.to, input.amount, asset],
   );
   return transaction.rows[0].id;
