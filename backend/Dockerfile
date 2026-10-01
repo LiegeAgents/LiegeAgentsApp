@@ -16,6 +16,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json tsconfig.json ./
 COPY src ./src
 COPY db ./db
+COPY install.sh ./install.sh
 EXPOSE 3001
 USER bun
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s \

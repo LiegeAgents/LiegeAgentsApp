@@ -20,6 +20,7 @@ export const healthPayload = () => ({
   // Set in the container image; lets a deployment confirm which commit is serving.
   commit: process.env.GIT_SHA || undefined,
 });
+const cliInstaller = await Bun.file(new URL("../install.sh", import.meta.url)).text();
 app.disable("x-powered-by");
 app.set("trust proxy", parseTrustProxy(env.TRUST_PROXY));
 // Before body parsing, so even a malformed-body error carries a request id.
@@ -27,6 +28,9 @@ app.use(requestContext);
 app.use(express.json({ limit: "128kb" }));
 app.use(rateLimit);
 app.get("/health", (_request, response) => response.json(healthPayload()));
+app.get("/install.sh", (_request, response) => {
+  response.type("application/x-sh").set("cache-control", "no-store").send(cliInstaller);
+});
 app.get("/health/config", (_request, response) =>
   response.json({
     chainId: env.RHC_ID,
