@@ -49,6 +49,7 @@ const tabs = [
   ["overview", "Overview", LayoutGrid],
   ["agents", "Agent market", Globe],
   ["jobs", "Your jobs", BriefcaseBusiness],
+  ["evaluations", "Evaluations", Activity],
   ["launch", "Launch an agent", Plus],
   ["settings", "Workspace settings", Settings2],
 ];
@@ -364,6 +365,16 @@ export default function Workspace() {
                 </Notice>
               )}
             </>
+          )}
+          {view === "evaluations" && (
+            <EvaluationCenter
+              token={wallet.apiSession ? "cookie" : null}
+              address={wallet.session.address}
+              accountId={wallet.apiSession?.id}
+              agents={allAgents}
+              signMessage={wallet.signMessage}
+              onNotice={notify}
+            />
           )}
           {view === "launch" && (
             <LaunchForm token={wallet.apiSession ? "cookie" : null} onSave={saveLaunchedAgent} />
@@ -766,7 +777,10 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
             </select>
           </Field>
           <Field label="Settlement asset">
-            <select value={v.settlementAsset} onChange={(e) => change("settlementAsset", e.target.value)}>
+            <select
+              value={v.settlementAsset}
+              onChange={(e) => change("settlementAsset", e.target.value)}
+            >
               <option value="usdg">USDG</option>
               <option value="liege">LIEGE</option>
             </select>
@@ -874,7 +888,10 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
           </div>
           <div>
             <span>Budget</span>
-            <b>{money(Number(current.budget_amount ?? current.budget_usdg ?? current.budget))} {(current.settlement_asset || current.asset || "usdg").toUpperCase()}</b>
+            <b>
+              {money(Number(current.budget_amount ?? current.budget_usdg ?? current.budget))}{" "}
+              {(current.settlement_asset || current.asset || "usdg").toUpperCase()}
+            </b>
           </div>
           <div>
             <span>Deadline</span>
@@ -1062,6 +1079,274 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
         )}
       </div>
     </Modal>
+  );
+}
+function EvaluationCenter({ token, address, accountId, agents, signMessage, onNotice }) {
+  const [tasks, setTasks] = useState([]),
+    [evaluators, setEvaluators] = useState([]),
+    [title, setTitle] = useState("Research quality review"),
+    [instructions, setInstructions] = useState(
+      "Review the work against each criterion and provide evidence.",
+    ),
+    [agentId, setAgentId] = useState(""),
+    [evaluatorId, setEvaluatorId] = useState(""),
+    [criteria, setCriteria] = useState([
+      { id: "accuracy", prompt: "Are the claims accurate?", weight: "60", maxScore: "10" },
+      { id: "evidence", prompt: "Is the evidence sufficient?", weight: "40", maxScore: "10" },
+    ]),
+    [dueAt, setDueAt] = useState(() => new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 16)),
+    [scores, setScores] = useState({}),
+    [rationales, setRationales] = useState({}),
+    [evidence, setEvidence] = useState({}),
+    [outcomes, setOutcomes] = useState({}),
+    [busy, setBusy] = useState(""),
+    [error, setError] = useState("");
+  const ownedAgents = agents.filter(
+    (agent) => address && agent.owner_wallet?.toLowerCase() === address.toLowerCase(),
+  );
+  const load = async () => {
+    if (!token) return;
+    try {
+      const [taskResult, evaluatorResult] = await Promise.all([
+        api.evaluationTasks(token),
+        api.evaluators(),
+      ]);
+      setTasks(taskResult.data || []);
+      setEvaluators(evaluatorResult.data || []);
+      if (!agentId && ownedAgents[0]) setAgentId(ownedAgents[0].id);
+      if (!evaluatorId && evaluatorResult.data?.[0])
+        setEvaluatorId(evaluatorResult.data[0].user_id);
+    } catch (e) {
+      setError(e?.message || "Could not load evaluation tasks.");
+    }
+  };
+  useEffect(() => {
+    load();
+  }, [token, address, agents.length]);
+  const updateCriterion = (index, key, value) =>
+    setCriteria((items) =>
+      items.map((item, i) => (i === index ? { ...item, [key]: value } : item)),
+    );
+  const create = async (event) => {
+    event.preventDefault();
+    setBusy("create");
+    setError("");
+    try {
+      await api.createEvaluationTask(token, {
+        agentId,
+        evaluatorId,
+        title,
+        instructions,
+        dueAt: new Date(dueAt).toISOString(),
+        criteria: criteria.map((item) => ({
+          ...item,
+          weight: Number(item.weight),
+          maxScore: Number(item.maxScore),
+        })),
+      });
+      onNotice("Evaluation task assigned.");
+      await load();
+    } catch (e) {
+      setError(e?.message || "Could not create evaluation task.");
+    } finally {
+      setBusy("");
+    }
+  };
+  const submit = async (task) => {
+    setBusy(task.id);
+    setError("");
+    const taskScores = scores[task.id] || {};
+    if ((task.criteria || []).some((item) => taskScores[item.id] === undefined)) {
+      setBusy("");
+      setError("Score every criterion before submitting the decision.");
+      return;
+    }
+    const payload = {
+      outcome: outcomes[task.id] || "accepted",
+      scores: taskScores,
+      rationale: rationales[task.id] || "",
+      evidence: (evidence[task.id] || "")
+        .split("\n")
+        .map((x) => x.trim())
+        .filter(Boolean),
+    };
+    try {
+      const preview = await api.evaluationDecisionMessage(token, task.id, payload);
+      if (!signMessage) throw new Error("Connect a wallet to sign the evaluation decision.");
+      const signature = await signMessage(preview.data.message);
+      await api.submitEvaluationDecision(token, task.id, { ...payload, signature });
+      onNotice("Signed evaluation decision submitted.");
+      await load();
+    } catch (e) {
+      setError(e?.message || "Could not submit signed decision.");
+    } finally {
+      setBusy("");
+    }
+  };
+  if (!token)
+    return (
+      <Empty title="Sign in to use evaluations">
+        Connect your wallet and sign in to create or review structured evaluation tasks.
+      </Empty>
+    );
+  return (
+    <>
+      <SectionHeading eyebrow="STRUCTURED REVIEW" title="Evaluation service.">
+        Create review tasks or sign decisions assigned to your wallet. These records do not settle
+        marketplace escrow.
+      </SectionHeading>
+      <div className="settings-panel">
+        <h2>Create an evaluation task</h2>
+        {!ownedAgents.length && (
+          <Notice error>Publish an agent first; task creation is limited to agents you own.</Notice>
+        )}
+        <form onSubmit={create}>
+          <Field label="Agent">
+            <select value={agentId} onChange={(e) => setAgentId(e.target.value)} required>
+              <option value="">Select an owned agent</option>
+              {ownedAgents.map((agent) => (
+                <option key={agent.id} value={agent.id}>
+                  {agent.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Evaluator">
+            <select value={evaluatorId} onChange={(e) => setEvaluatorId(e.target.value)} required>
+              <option value="">Select an eligible evaluator</option>
+              {evaluators.map((item) => (
+                <option key={item.user_id} value={item.user_id}>
+                  {item.wallet_address.slice(0, 8)}…{item.wallet_address.slice(-6)} ·{" "}
+                  {Number(item.stake_usdg || 0).toLocaleString()} USDG
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Title">
+            <input value={title} onChange={(e) => setTitle(e.target.value)} required />
+          </Field>
+          <Field label="Instructions">
+            <textarea
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              required
+            />
+          </Field>
+          <Field label="Due">
+            <input
+              type="datetime-local"
+              value={dueAt}
+              onChange={(e) => setDueAt(e.target.value)}
+              required
+            />
+          </Field>
+          <div className="evaluation-criteria">
+            {criteria.map((item, index) => (
+              <div className="evaluation-criterion" key={index}>
+                <input
+                  aria-label="Criterion id"
+                  value={item.id}
+                  onChange={(e) => updateCriterion(index, "id", e.target.value)}
+                />
+                <input
+                  aria-label="Criterion prompt"
+                  value={item.prompt}
+                  onChange={(e) => updateCriterion(index, "prompt", e.target.value)}
+                />
+                <input
+                  aria-label="Criterion weight"
+                  type="number"
+                  value={item.weight}
+                  onChange={(e) => updateCriterion(index, "weight", e.target.value)}
+                />
+                <input
+                  aria-label="Criterion max score"
+                  type="number"
+                  value={item.maxScore}
+                  onChange={(e) => updateCriterion(index, "maxScore", e.target.value)}
+                />
+              </div>
+            ))}
+          </div>
+          <Button type="submit" disabled={busy === "create" || !ownedAgents.length}>
+            {busy === "create" ? "Creating…" : "Assign evaluation task"}
+          </Button>
+        </form>
+      </div>
+      <div className="evaluation-task-list">
+        <h2>Your evaluation tasks</h2>
+        {!tasks.length && (
+          <Empty title="No evaluation tasks">Assigned and created tasks will appear here.</Empty>
+        )}
+        {tasks.map((task) => {
+          const assigned = task.evaluator_id === accountId && task.status === "assigned";
+          return (
+            <div className="settings-panel" key={task.id}>
+              <div className="task-heading">
+                <div>
+                  <span className="eyebrow">{task.status}</span>
+                  <h2>{task.title}</h2>
+                </div>
+                <span className="mono muted">{task.id.slice(0, 8)}…</span>
+              </div>
+              <p>{task.instructions}</p>
+              {assigned && (
+                <div>
+                  <label className="field-label">
+                    Outcome
+                    <select
+                      value={outcomes[task.id] || "accepted"}
+                      onChange={(e) => setOutcomes((v) => ({ ...v, [task.id]: e.target.value }))}
+                    >
+                      <option value="accepted">Accepted</option>
+                      <option value="rejected">Rejected</option>
+                    </select>
+                  </label>
+                  {(task.criteria || []).map((item) => (
+                    <label className="field-label" key={item.id}>
+                      {item.prompt}
+                      <input
+                        type="number"
+                        min="0"
+                        max={item.maxScore}
+                        value={scores[task.id]?.[item.id] ?? ""}
+                        onChange={(e) =>
+                          setScores((v) => ({
+                            ...v,
+                            [task.id]: { ...(v[task.id] || {}), [item.id]: Number(e.target.value) },
+                          }))
+                        }
+                      />
+                    </label>
+                  ))}
+                  <label className="field-label">
+                    Rationale
+                    <textarea
+                      value={rationales[task.id] || ""}
+                      onChange={(e) => setRationales((v) => ({ ...v, [task.id]: e.target.value }))}
+                      placeholder="Explain the decision…"
+                    />
+                  </label>
+                  <label className="field-label">
+                    Evidence links
+                    <textarea
+                      value={evidence[task.id] || ""}
+                      onChange={(e) => setEvidence((v) => ({ ...v, [task.id]: e.target.value }))}
+                      placeholder="One HTTPS link per line"
+                    />
+                  </label>
+                  <Button onClick={() => submit(task)} disabled={busy === task.id}>
+                    {busy === task.id ? "Waiting for wallet…" : "Sign and submit decision"}
+                  </Button>
+                </div>
+              )}
+              {task.status === "submitted" && <Status value="Submitted" />}
+            </div>
+          );
+        })}
+      </div>
+      {error && <Notice error>{error}</Notice>}
+    </>
   );
 }
 function EvaluatorSetup({ token }) {
