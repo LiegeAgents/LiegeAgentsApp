@@ -27,7 +27,7 @@ const env = z
       .regex(/^0x[0-9a-fA-F]{40}$/)
       .optional(),
     USDG_DECIMALS: z.coerce.number().int().min(0).max(18).default(6),
-    USDG_TOKEN_NAME: z.string().min(1).default("USDG"),
+    USDG_TOKEN_NAME: z.string().min(1).default("Global Dollar"),
     USDG_TOKEN_VERSION: z.string().min(1).default("1"),
     X402_FACILITATOR_URL: z.string().url().optional(),
     X402_MAX_TIMEOUT_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
