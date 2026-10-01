@@ -27,7 +27,8 @@ export const loginMessage = (address: string, nonce: string, issuedAt: Date) =>
 
 export async function issueNonce(address: string) {
   const walletAddress = normalizeAddress(address);
-  const nonce = randomBytes(24).toString("base64url");
+  // EIP-4361 requires an alphanumeric nonce. Hex preserves 192 bits of entropy.
+  const nonce = randomBytes(24).toString("hex");
   const issuedAt = new Date();
   const expiresAt = new Date(issuedAt.getTime() + 10 * 60_000);
   await db.query(
