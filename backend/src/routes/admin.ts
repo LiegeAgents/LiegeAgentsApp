@@ -23,9 +23,25 @@ adminRouter.post(
   "/ledger/credit",
   asyncRoute(async (request, response) => {
     const input = transferInput.parse(request.body);
+    if (input.amountUsdg > env.MAX_ADMIN_CREDIT_USDG)
+      throw new ApiError(
+        422,
+        "admin_credit_call_limit",
+        `A single admin credit may not exceed ${env.MAX_ADMIN_CREDIT_USDG} USDG.`,
+      );
     const client = await db.connect();
     try {
       await client.query("BEGIN");
+      const creditedToday = await client.query<{ amount: string }>(
+        `SELECT COALESCE(sum((metadata->>'amountUsdg')::numeric), 0) AS amount
+         FROM audit_logs WHERE action = 'ledger.credited' AND created_at >= date_trunc('day', now())`,
+      );
+      if (Number(creditedToday.rows[0].amount) + input.amountUsdg > env.MAX_ADMIN_CREDIT_DAILY_USDG)
+        throw new ApiError(
+          422,
+          "admin_credit_daily_limit",
+          `Admin credits may not exceed ${env.MAX_ADMIN_CREDIT_DAILY_USDG} USDG per day.`,
+        );
       await creditUser(
         client,
         input.userId,
@@ -204,6 +220,29 @@ adminRouter.post(
     } finally {
       client.release();
     }
+    response.json({ data: { jobId, status: await processSettlement(jobId) } });
+  }),
+);
+
+// A late deposit can arrive after an earlier empty sweep completed. Reopen only the two
+// client-only sweep rows; fixed provider/evaluator payouts are never recreated here.
+adminRouter.post(
+  "/settlements/:jobId/resweep",
+  asyncRoute(async (request, response) => {
+    const jobId = z.string().uuid().parse(request.params.jobId);
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const reopened = await client.query(
+        `UPDATE escrow_payouts SET status = 'pending', nonce = NULL, signed_tx = NULL, tx_hashes = '{}', amount_raw = NULL, attempts = 0, last_error = NULL, updated_at = now()
+         WHERE job_id = $1 AND purpose IN ('usdg_sweep', 'eth_sweep') AND status IN ('skipped', 'confirmed') RETURNING purpose`,
+        [jobId],
+      );
+      if (!reopened.rowCount) throw new ApiError(409, "resweep_unavailable", "No completed client sweep is available to reopen.");
+      await client.query("UPDATE escrow_settlements SET status = 'pending', error = NULL, lease_until = NULL, updated_at = now() WHERE job_id = $1", [jobId]);
+      await audit(client, { actorId: request.auth!.userId, action: "escrow_settlement.reswept", targetType: "job", targetId: jobId, requestId: request.requestId, metadata: { payouts: reopened.rows } });
+      await client.query("COMMIT");
+    } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
     response.json({ data: { jobId, status: await processSettlement(jobId) } });
   }),
 );

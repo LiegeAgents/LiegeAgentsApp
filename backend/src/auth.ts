@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { verifyMessage } from "viem";
+import { createSiweMessage } from "viem/siwe";
 import { db } from "./db/index.js";
 import { env } from "./config.js";
 import { ApiError, asyncRoute } from "./http.js";
@@ -13,17 +14,22 @@ const digest = (value: string) =>
     .digest("hex");
 
 export const loginMessage = (address: string, nonce: string, issuedAt: Date) =>
-  `Liege wants you to sign in with your wallet:\n${address}\n\nNonce: ${nonce}\nIssued At: ${issuedAt.toISOString()}\nChain ID: ${env.RHC_ID}`;
+  createSiweMessage({
+    address: address as `0x${string}`,
+    chainId: env.RHC_ID,
+    domain: env.AUTH_DOMAIN,
+    nonce,
+    statement: "Sign in to Liege.",
+    uri: env.AUTH_URI,
+    version: "1",
+    issuedAt,
+  });
 
 export async function issueNonce(address: string) {
   const walletAddress = normalizeAddress(address);
   const nonce = randomBytes(24).toString("base64url");
   const issuedAt = new Date();
   const expiresAt = new Date(issuedAt.getTime() + 10 * 60_000);
-  await db.query(
-    "UPDATE auth_nonces SET consumed_at = now() WHERE wallet_address = $1 AND consumed_at IS NULL",
-    [walletAddress],
-  );
   await db.query(
     "INSERT INTO auth_nonces (wallet_address, nonce, issued_at, expires_at) VALUES ($1, $2, $3, $4)",
     [walletAddress, nonce, issuedAt, expiresAt],

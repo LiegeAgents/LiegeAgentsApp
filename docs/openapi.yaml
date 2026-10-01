@@ -55,11 +55,31 @@ paths:
                   timestamp: { type: string, format: date-time }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /health/config:
+    get:
+      operationId: healthConfig
+      summary: Non-secret deployment configuration used to verify the served environment.
+      responses:
+        '200':
+          description: Chain and escrow configuration for deployment verification.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [chainId, escrowMode, usdgTokenAddress]
+                properties:
+                  chainId: { type: integer }
+                  escrowMode: { enum: [ledger, onchain] }
+                  usdgTokenAddress:
+                    oneOf:
+                      - { $ref: '#/components/schemas/Address' }
+                      - { type: 'null' }
+
   /v1/auth/nonce:
     post:
       operationId: issueNonce
       summary: Issue a one-time sign-in message for a wallet.
-      description: The message expires after 10 minutes; issuing a new one voids earlier ones.
+      description: The SIWE message is bound to the configured domain and URI, expires after 10 minutes, and is single-use.
       requestBody:
         required: true
         content:
@@ -758,6 +778,35 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/admin/settlements/{jobId}/resweep:
+    post:
+      operationId: resweepSettlement
+      summary: Return a late or stray on-chain deposit to the job client. Administrators only.
+      description: Reopens client-only USDG and ETH sweep rows; provider and evaluator payouts are never recreated.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '200':
+          description: The settlement's status after one processing run.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [jobId, status]
+                    properties:
+                      jobId: { type: string, format: uuid }
+                      status: { $ref: '#/components/schemas/SettlementRunStatus' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
 
   /v1/cron/expire-jobs:

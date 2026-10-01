@@ -100,8 +100,8 @@ jobsRouter.get(
     const id = z.string().uuid().parse(request.params.id);
     if (env.ESCROW_MODE === "onchain") {
       const migrated = await db.query<{ id: string }>(
-        "UPDATE jobs SET escrow_mode = 'onchain', updated_at = now() WHERE id = $1 AND client_id = $2 AND status = 'open' AND escrow_mode = 'ledger' RETURNING id",
-        [id, request.auth!.userId],
+        "UPDATE jobs SET escrow_mode = 'onchain', updated_at = now() WHERE id = $1 AND client_id = $2 AND status = 'open' AND escrow_mode = 'ledger' AND expires_at > now() + ($3::int * interval '1 second') RETURNING id",
+        [id, request.auth!.userId, env.ESCROW_QUOTE_TTL_SECONDS],
       );
       if (migrated.rowCount) await ensureEscrowWallet(db, id);
     }
@@ -348,8 +348,9 @@ jobsRouter.post(
       address: string;
       budget_usdg: string;
       evaluator_fee_usdg: string;
+      expires_at: Date;
     }>(
-      "SELECT j.client_id, j.status, j.escrow_mode, j.budget_usdg, j.evaluator_fee_usdg, ew.address FROM jobs j LEFT JOIN escrow_wallets ew ON ew.job_id = j.id WHERE j.id = $1",
+      "SELECT j.client_id, j.status, j.escrow_mode, j.budget_usdg, j.evaluator_fee_usdg, j.expires_at, ew.address FROM jobs j LEFT JOIN escrow_wallets ew ON ew.job_id = j.id WHERE j.id = $1",
       [id],
     );
     if (!job.rowCount || job.rows[0].client_id !== request.auth!.userId)
@@ -364,6 +365,8 @@ jobsRouter.post(
         "onchain_funding_unavailable",
         "This job is not ready for on-chain funding.",
       );
+    if (job.rows[0].expires_at.getTime() <= Date.now() + env.ESCROW_QUOTE_TTL_SECONDS * 1000)
+      throw new ApiError(409, "funding_quote_near_expiry", "This job expires too soon to safely fund.");
     response.json({
       data: {
         escrowAddress: job.rows[0].address,
