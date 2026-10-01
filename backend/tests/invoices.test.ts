@@ -95,12 +95,15 @@ describe.skipIf(!databaseAvailable)("USDG invoices", () => {
     await db.query("UPDATE invoices SET expires_at=now() - interval '1 second' WHERE id=$1", [
       issued.body.data.id,
     ]);
-    const cron = await api()
+    await api()
       .post("/v1/cron/expire-jobs")
       .set({ "x-cron-secret": process.env.CRON_SECRET! })
       .send({ idempotencyKey: "invoice-expiry-test" })
       .expect(200);
-    expect(cron.body.data.invoicesExpired).toBe(1);
+    expect(
+      (await db.query("SELECT status FROM invoices WHERE id=$1", [issued.body.data.id])).rows[0]
+        .status,
+    ).toBe("expired");
     const event = await db.query<{ event_type: string }>(
       "SELECT event_type FROM webhook_events WHERE invoice_id=$1",
       [issued.body.data.id],
