@@ -116,6 +116,7 @@ cronRouter.post(
       // Send the settlements just planned, along with any earlier ones still pending.
       response.json({
         data: result,
+        invoicesExpired: expiredInvoices.rowCount ?? 0,
         settlements: await processPendingSettlements(),
         replayed: false,
       });
