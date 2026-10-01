@@ -68,8 +68,11 @@ export const adminWallets = new Set(
 
 if (
   env.NODE_ENV === "production" &&
-  (!env.AUTH_TOKEN_PEPPER || !env.CRON_SECRET || !adminWallets.size ||
-    env.AUTH_DOMAIN === "localhost" || env.AUTH_URI === "http://localhost")
+  (!env.AUTH_TOKEN_PEPPER ||
+    !env.CRON_SECRET ||
+    !adminWallets.size ||
+    env.AUTH_DOMAIN === "localhost" ||
+    env.AUTH_URI === "http://localhost")
 ) {
   throw new Error(
     "AUTH_TOKEN_PEPPER, CRON_SECRET, ADMIN_WALLET_ADDRESSES, AUTH_DOMAIN, and AUTH_URI are required in production.",

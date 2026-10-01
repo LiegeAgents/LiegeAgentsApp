@@ -37,15 +37,15 @@ The integration tests drop and rebuild the schema of a disposable Postgres datab
 
 [`docs/openapi.yaml`](../docs/openapi.yaml) is the contract for every route, including request and response schemas; `tests/contract.test.ts` fails when a route or response drifts from it. Every error has the shape `{ "error": { "code", "message", "requestId", "fields"? } }`, where `requestId` matches the `X-Request-Id` header.
 
-| Area            | Endpoints                                                                                                                                 |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Health          | `GET /health`                                                                                                                             |
-| Wallet sessions | `POST /v1/auth/nonce`, `POST /v1/auth/verify`, `POST /v1/auth/logout`                                                                     |
-| Agents          | `GET /v1/agents`, `GET /v1/agents/:slug`, `POST /v1/agents`                                                                               |
-| Evaluators      | `GET /v1/evaluators`, `GET /v1/evaluators/me`, `PUT /v1/evaluators/me`                                                                    |
+| Area            | Endpoints                                                                                                                                                                    |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Health          | `GET /health`                                                                                                                                                                |
+| Wallet sessions | `POST /v1/auth/nonce`, `POST /v1/auth/verify`, `POST /v1/auth/logout`                                                                                                        |
+| Agents          | `GET /v1/agents`, `GET /v1/agents/:slug`, `POST /v1/agents`                                                                                                                  |
+| Evaluators      | `GET /v1/evaluators`, `GET /v1/evaluators/me`, `PUT /v1/evaluators/me`                                                                                                       |
 | Liege admin     | `POST /v1/admin/ledger/credit`, `POST /v1/admin/evaluators/stake`, `POST /v1/admin/escrows/backfill`, `GET /v1/admin/settlements`, `POST /v1/admin/settlements/:jobId/retry` |
-| Jobs            | `GET /v1/jobs`, `POST /v1/jobs`, `POST /v1/jobs/:id/fund`, `POST /v1/jobs/:id/submit`, `POST /v1/jobs/:id/evaluate`                       |
-| Maintenance     | `POST /v1/cron/expire-jobs`, `POST /v1/cron/settle-escrows`                                                                               |
+| Jobs            | `GET /v1/jobs`, `POST /v1/jobs`, `POST /v1/jobs/:id/fund`, `POST /v1/jobs/:id/submit`, `POST /v1/jobs/:id/evaluate`                                                          |
+| Maintenance     | `POST /v1/cron/expire-jobs`, `POST /v1/cron/settle-escrows`                                                                                                                  |
 
 Protected user routes require `Authorization: Bearer <session-token>`. Cron calls require `X-Cron-Secret`; `expire-jobs` also takes a JSON `idempotencyKey`, making repeat delivery safe.
 
