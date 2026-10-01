@@ -1,4 +1,14 @@
-import { LiegeAPIError, type Invoice, type Job, type JobEvent, type Session, type Signer } from "./types.js";
+import {
+  LiegeAPIError,
+  type Invoice,
+  type Job,
+  type JobEvent,
+  type Session,
+  type Signer,
+  type X402PaymentPayload,
+  type X402PaymentRequired,
+  type X402Signer,
+} from "./types.js";
 
 export interface LiegeClientOptions { baseUrl?: string; token?: string; fetch?: typeof globalThis.fetch; }
 
@@ -35,6 +45,20 @@ export class LiegeClient {
   refundInvoice(id: string): Promise<Invoice> { return this.call(`/v1/invoices/${encodeURIComponent(id)}/refund`, { method: "POST" }); }
   cancelInvoice(id: string): Promise<Invoice> { return this.call(`/v1/invoices/${encodeURIComponent(id)}/cancel`, { method: "POST" }); }
 
+  /** Fetch an x402 resource, asking the application-provided signer to approve a 402 challenge. */
+  async requestX402(input: string | URL, signer: X402Signer, init: RequestInit = {}): Promise<Response> {
+    const first = await this.request(input, init);
+    if (first.status !== 402) return first;
+    const encoded = first.headers.get("PAYMENT-REQUIRED") ?? first.headers.get("X-PAYMENT-REQUIRED");
+    if (!encoded) throw new LiegeAPIError("The x402 response did not include PAYMENT-REQUIRED", 502, "x402_invalid_challenge");
+    const challenge = decodeX402PaymentRequired(encoded);
+    const signed = await signer(challenge);
+    const paymentSignature = typeof signed === "string" ? signed : encodeX402Json(signed);
+    const headers = new Headers(init.headers);
+    headers.set("PAYMENT-SIGNATURE", paymentSignature);
+    return this.request(input, { ...init, headers });
+  }
+
   async *iterEvents(agentId: string, since?: Date): AsyncGenerator<JobEvent> {
     const url = new URL(`/v1/webhooks/stream/${encodeURIComponent(agentId)}`, this.baseUrl); if (since) url.searchParams.set("since", since.toISOString());
     const response = await this.request(url, { headers: this.headers() }); if (!response.ok || !response.body) throw new LiegeAPIError("Unable to open the event stream", response.status);
@@ -51,5 +75,31 @@ export class LiegeClient {
     const response = await this.request(`${this.baseUrl}${path}`, { method: options.method ?? "GET", headers: { ...this.headers(), ...(options.body ? { "content-type": "application/json" } : {}) }, body: options.body ? JSON.stringify(options.body) : undefined });
     const body = await response.json().catch(() => ({})); if (!response.ok) { const error = body?.error ?? {}; throw new LiegeAPIError(error.message ?? response.statusText, response.status, error.code); }
     return body?.data ?? body;
+  }
+}
+
+export function encodeX402Json(value: X402PaymentPayload): string {
+  const json = JSON.stringify(value);
+  return typeof btoa === "function" ? btoa(json) : Buffer.from(json).toString("base64");
+}
+
+export function decodeX402PaymentRequired(value: string): X402PaymentRequired {
+  try {
+    const json = typeof atob === "function" ? atob(value) : Buffer.from(value, "base64").toString("utf8");
+    const parsed = JSON.parse(json) as X402PaymentRequired;
+    if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.accepts) || parsed.accepts.length === 0)
+      throw new Error("invalid challenge");
+    return parsed;
+  } catch {
+    throw new LiegeAPIError("The x402 PAYMENT-REQUIRED header is invalid", 502, "x402_invalid_challenge");
+  }
+}
+
+export function decodeX402PaymentResponse(value: string): Record<string, unknown> {
+  try {
+    const json = typeof atob === "function" ? atob(value) : Buffer.from(value, "base64").toString("utf8");
+    return JSON.parse(json) as Record<string, unknown>;
+  } catch {
+    throw new LiegeAPIError("The x402 PAYMENT-RESPONSE header is invalid", 502, "x402_invalid_response");
   }
 }
