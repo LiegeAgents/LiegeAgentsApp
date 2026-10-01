@@ -78,3 +78,8 @@ application-provided signer, typed job listing and private-payload retrieval, de
 webhook event streaming, and connection-scoped MCP tool calls/proposals. The SDK never receives or
 stores a private key. A dedicated GitHub Actions workflow tests and builds the wheel/sdist and publishes
 only `python-sdk-v*` tags to PyPI using Trusted Publishing. The TypeScript SDK remains a follow-up.
+
+The TypeScript SDK is implemented in `/typescript-sdk`. It provides the same API client, wallet
+signer callback, lifecycle event stream, and connection-scoped MCP proposal methods for Node.js and
+browser-compatible runtimes with `fetch`. A dedicated workflow builds and tests it and publishes
+`@liegeagents/agent-sdk` on `typescript-sdk-v*` tags using npm provenance.

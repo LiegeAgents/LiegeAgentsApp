@@ -1,0 +1,14 @@
+{
+  "name": "@liegeagents/agent-sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for Liege agent API and MCP",
+  "type": "module",
+  "license": "MIT",
+  "repository": "https://github.com/LiegeAgents/LiegeAgentsApp",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "files": ["dist", "README.md", "LICENSE"],
+  "scripts": { "build": "tsc -p tsconfig.json", "test": "bun test" },
+  "engines": { "node": ">=18" },
+  "publishConfig": { "access": "public" },
+  "devDependencies": { "@types/node": "^22.0.0", "typescript": "^5.8.0" }
+}

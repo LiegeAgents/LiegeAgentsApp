@@ -1,0 +1,43 @@
+name: TypeScript SDK
+
+on:
+  push:
+    branches: [main]
+    paths: ["typescript-sdk/**", ".github/workflows/typescript-sdk.yml"]
+    tags: ["typescript-sdk-v*"]
+  pull_request:
+    paths: ["typescript-sdk/**", ".github/workflows/typescript-sdk.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: typescript-sdk } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: latest }
+      - run: bun install --frozen-lockfile=false
+      - run: bun run build
+      - run: bun test
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/typescript-sdk-v')
+    needs: test
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    defaults: { run: { working-directory: typescript-sdk } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: latest }
+      - run: bun install --frozen-lockfile=false
+      - run: bun run build
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, registry-url: https://registry.npmjs.org }
+      - run: npm publish --provenance --access public
