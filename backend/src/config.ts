@@ -38,6 +38,9 @@ const env = z
     DATA_ENCRYPTION_KEY: z.string().min(32).optional(),
     DATA_ENCRYPTION_KEY_PREVIOUS: z.string().min(32).optional(),
     CRON_SECRET: z.string().min(24).optional(),
+    // Shared only with the separately deployed MCP service. It authenticates
+    // service-to-service calls; it never authenticates an end user or wallet.
+    MCP_INTERNAL_API_TOKEN: z.string().min(32).optional(),
     ADMIN_WALLET_ADDRESSES: z.string().optional(),
   })
   .parse(source);
@@ -55,10 +58,11 @@ if (
     !env.CRON_SECRET ||
     !adminWallets.size ||
     env.AUTH_DOMAIN === "localhost" ||
-    env.AUTH_URI === "http://localhost")
+    env.AUTH_URI === "http://localhost" ||
+    !env.MCP_INTERNAL_API_TOKEN)
 ) {
   throw new Error(
-    "AUTH_TOKEN_PEPPER, CRON_SECRET, ADMIN_WALLET_ADDRESSES, AUTH_DOMAIN, and AUTH_URI are required in production.",
+    "AUTH_TOKEN_PEPPER, CRON_SECRET, ADMIN_WALLET_ADDRESSES, AUTH_DOMAIN, AUTH_URI, and MCP_INTERNAL_API_TOKEN are required in production.",
   );
 }
 if (
