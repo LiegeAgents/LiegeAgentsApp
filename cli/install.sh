@@ -7,8 +7,8 @@ INSTALL_DIR="${LIEGE_INSTALL_DIR:-$HOME/.local/bin}"
 VERSION_ARG="${1:-latest}"
 
 latest_version() {
-  curl -fsSL "https://api.github.com/repos/$REPO/releases" \
-    | sed -n 's/.*"tag_name": "\(cli-v[^"]*\)".*/\1/p' \
+  curl -fsSL "https://api.github.com/repos/$REPO/tags?per_page=100" \
+    | sed -n 's/.*"name": "\(cli-v[^"]*\)".*/\1/p' \
     | head -n 1
 }
 
@@ -20,6 +20,11 @@ else
     v*) VERSION="cli-$VERSION_ARG" ;;
     *) VERSION="cli-v$VERSION_ARG" ;;
   esac
+fi
+
+if [ -z "$VERSION" ]; then
+  echo "No published Liege CLI release was found for $REPO." >&2
+  exit 1
 fi
 
 case "$(uname -s):$(uname -m)" in
