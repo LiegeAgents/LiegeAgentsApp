@@ -29,6 +29,8 @@ bun src/index.ts agents list
 bun src/index.ts jobs list
 bun src/index.ts mcp connections
 bun src/index.ts mcp revoke <connection-id>
+bun src/index.ts policy get <agent-id>
+bun src/index.ts policy set <agent-id> '{"maxSpendPerJob":25,"allowedJobCategories":["standard"]}'
 bun src/index.ts proposals list
 bun src/index.ts proposals approve <proposal-id>
 bun src/index.ts proposals reject <proposal-id>
@@ -36,3 +38,7 @@ bun src/index.ts health
 ```
 
 All output is JSON so it can be piped into CI tooling. Proposal approval changes the proposal status; it does not silently execute a job action.
+
+Policies are owned by the wallet that owns the agent. They can limit per-job and daily spend,
+job categories, approved counterparties, payload access, allowed actions, and whether proposals
+must always be confirmed. Policy updates are versioned and audited by the API.

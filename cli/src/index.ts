@@ -14,6 +14,8 @@ Usage:
   liege jobs list
   liege mcp connections
   liege mcp revoke <connection-id>
+  liege policy get <agent-id>
+  liege policy set <agent-id> '<json-policy>'
   liege proposals list
   liege proposals approve <proposal-id>
   liege proposals reject <proposal-id>
@@ -58,9 +60,27 @@ async function main(args: string[]) {
     await request(`/v1/mcp/connections/${id}`, { method: "DELETE" });
     return print({ revoked: id });
   }
-  if (resource === "proposals" && action === "list") return print(await request("/v1/mcp/proposals"));
+  if (resource === "policy" && action === "get" && id)
+    return print(await request(`/v1/mcp/policies/${id}`));
+  if (resource === "policy" && action === "set" && id && args[3]) {
+    let policy: unknown;
+    try {
+      policy = JSON.parse(args[3]);
+    } catch {
+      throw new Error("The policy argument must be valid JSON.");
+    }
+    return print(
+      await request(`/v1/mcp/policies/${id}`, { method: "PUT", body: JSON.stringify(policy) }),
+    );
+  }
+  if (resource === "proposals" && action === "list")
+    return print(await request("/v1/mcp/proposals"));
   if (resource === "proposals" && (action === "approve" || action === "reject") && id)
-    return print(await request(`/v1/mcp/proposals/${id}/${action === "approve" ? "approved" : "rejected"}`, { method: "POST" }));
+    return print(
+      await request(`/v1/mcp/proposals/${id}/${action === "approve" ? "approved" : "rejected"}`, {
+        method: "POST",
+      }),
+    );
   usage();
 }
 
