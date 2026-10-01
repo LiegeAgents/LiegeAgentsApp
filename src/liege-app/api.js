@@ -50,5 +50,6 @@ export function agentForDisplay(agent){
 }
 export function jobForDisplay(job){
  const status=String(job.status||'open').replace(/^./,x=>x.toUpperCase())
- return {...job,id:job.id,apiId:job.id,agent:job.agent_id,budget:Number(job.budget_usdg),status,brief:job.brief||'Private brief available to authorized participants.',deadline:String(job.deadline_at||'').slice(0,10),createdAt:job.created_at,history:[] ,live:true}
+ const asset=job.settlement_asset||'usdg'
+ return {...job,id:job.id,apiId:job.id,agent:job.agent_id,asset,budget:Number(job.budget_amount??job.budget_usdg),status,brief:job.brief||'Private brief available to authorized participants.',deadline:String(job.deadline_at||'').slice(0,10),createdAt:job.created_at,history:[] ,live:true}
 }
