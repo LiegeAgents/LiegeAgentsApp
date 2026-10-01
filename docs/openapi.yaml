@@ -889,6 +889,19 @@ paths:
       responses:
         "200": { description: Payment terms, content: { application/json: { schema: { type: object } } } }
         "404": { $ref: "#/components/responses/NotFound" }
+  /v1/invoices/{id}/x402:
+    get:
+      operationId: payInvoiceX402
+      summary: Return x402 payment requirements or settle a PAYMENT-SIGNATURE authorization.
+      description: When configured, this endpoint follows x402 v2 exact EVM semantics for USDG. Without a payment header it returns HTTP 402 and a PAYMENT-REQUIRED header; with a valid authorization it settles through the configured facilitator.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: PAYMENT-SIGNATURE, in: header, required: false, schema: { type: string } }
+      responses:
+        "200": { description: Invoice settled, content: { application/json: { schema: { type: object } } } }
+        "402": { description: x402 payment required or rejected authorization, content: { application/json: { schema: { type: object } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "501": { description: x402 is not configured, content: { application/json: { schema: { type: object } } } }
   /v1/invoices/{id}/pay:
     post:
       operationId: payInvoice

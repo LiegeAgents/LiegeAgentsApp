@@ -98,7 +98,18 @@ so it does not require a second scheduler. Per-agent approval policies can optio
 invoice amount with `maxInvoiceAmount`.
 
 The Python SDK, TypeScript SDK, operator CLI, website workspace, OpenAPI contract, and docs all
-expose the invoice workflow. The public payment endpoint explicitly reports `x402:
-not_configured`; a USDG/Robinhood Chain token authorization and facilitator compatibility check
-remains the gate for a future actual HTTP 402 payment adapter. Streaming pay, subscriptions,
-payroll, and fleet treasuries remain later work built on this invoice/ledger foundation.
+expose the invoice workflow. The public payment endpoint reports whether the opt-in x402 adapter is
+available; without a compatible USDG/Robinhood Chain facilitator it remains `not_configured`.
+Streaming pay, subscriptions, payroll, and fleet treasuries remain later work built on this
+invoice/ledger foundation.
+
+### 14. x402 invoice adapter
+
+The first x402 adapter is implemented as an opt-in HTTP payment surface over USDG invoices.
+`GET /v1/invoices/:id/x402` returns an x402 v2 `PAYMENT-REQUIRED` response when no payment is
+supplied, accepts a base64-encoded `PAYMENT-SIGNATURE`, verifies it with the configured facilitator,
+and settles the exact EVM authorization before marking the invoice paid. The facilitator receipt,
+payer wallet, network, audit record, and `invoice.paid` event are retained. It requires a compatible
+`X402_FACILITATOR_URL` and `USDG_TOKEN_ADDRESS`; without both values it remains disabled. Ledger
+invoices continue to work unchanged, while x402 refunds remain explicitly unavailable until a
+refund-capable flow is configured.

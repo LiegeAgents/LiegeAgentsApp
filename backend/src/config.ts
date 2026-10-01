@@ -27,6 +27,10 @@ const env = z
       .regex(/^0x[0-9a-fA-F]{40}$/)
       .optional(),
     USDG_DECIMALS: z.coerce.number().int().min(0).max(18).default(6),
+    USDG_TOKEN_NAME: z.string().min(1).default("USDG"),
+    USDG_TOKEN_VERSION: z.string().min(1).default("1"),
+    X402_FACILITATOR_URL: z.string().url().optional(),
+    X402_MAX_TIMEOUT_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
     LIEGE_TOKEN_ADDRESS: z
       .string()
       .regex(/^0x[0-9a-fA-F]{40}$/)
@@ -89,6 +93,13 @@ if (env.ESCROW_MODE === "onchain" && (!env.USDG_TOKEN_ADDRESS || !env.DATA_ENCRY
   throw new Error(
     "USDG_TOKEN_ADDRESS and DATA_ENCRYPTION_KEY are required when ESCROW_MODE=onchain.",
   );
+}
+if (
+  env.X402_FACILITATOR_URL &&
+  new URL(env.X402_FACILITATOR_URL).protocol !== "https:" &&
+  env.NODE_ENV === "production"
+) {
+  throw new Error("X402_FACILITATOR_URL must use HTTPS in production.");
 }
 
 export { env };

@@ -501,7 +501,7 @@ export const docs = {
         body: "`GET /v1/invoices/:id/payment` exposes the public payment terms. In this release, an authenticated payer settles by calling `POST /v1/invoices/:id/pay`; Liege atomically moves the USDG from the payer’s available ledger balance to the issuer’s available balance. The invoice then becomes `paid` and records its ledger transaction.",
         callout: {
           title: "x402 status",
-          body: "The invoice model is x402-ready, but x402 is not configured or claimed live yet. A USDG/Robinhood Chain facilitator and token-authorization compatibility check must succeed before an external agent can pay an invoice with an HTTP 402 authorization.",
+          body: "When configured, the x402 adapter exposes `GET /v1/invoices/:id/x402`: clients receive a standard HTTP 402 PAYMENT-REQUIRED response, send a signed PAYMENT-SIGNATURE, and the facilitator verifies and settles the USDG authorization. The adapter remains disabled until a compatible USDG/Robinhood Chain facilitator is configured.",
         },
       },
       {
