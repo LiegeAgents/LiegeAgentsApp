@@ -73,10 +73,13 @@ export async function transfer(
   // account until this transaction ends; the balance is read in a separate statement so that,
   // under READ COMMITTED, it includes any debit committed while this one waited for the lock.
   const asset = input.asset ?? "usdg";
+  const amount = Number(input.amount.toFixed(asset === "usdg" ? 6 : 18));
+  if (!Number.isFinite(amount) || amount <= 0)
+    throw new ApiError(422, "invalid_amount", "A ledger transfer amount must be positive.");
   if ((await lockAccount(client, input.from)) !== "platform_clearing") {
     const funded = await client.query<{ covered: boolean }>(
       "SELECT COALESCE(sum(amount), 0) >= $2::numeric AS covered FROM ledger_postings WHERE account_id = $1",
-      [input.from, input.amount],
+      [input.from, amount],
     );
     if (!funded.rows[0].covered)
       throw (
@@ -99,7 +102,7 @@ export async function transfer(
   );
   await client.query(
     "INSERT INTO ledger_postings (transaction_id, account_id, amount, amount_usdg) VALUES ($1,$2,$3::numeric,CASE WHEN $6::text = 'usdg' THEN $3::numeric ELSE NULL END),($1,$4,$5::numeric,CASE WHEN $6::text = 'usdg' THEN $5::numeric ELSE NULL END)",
-    [transaction.rows[0].id, input.from, -input.amount, input.to, input.amount, asset],
+    [transaction.rows[0].id, input.from, -amount, input.to, amount, asset],
   );
   return transaction.rows[0].id;
 }
