@@ -243,10 +243,28 @@ mcpRouter.post(
   asyncRoute(async (request, response) => {
     const id = z.string().uuid().parse(request.params.id);
     const decision = z.enum(["approved", "rejected"]).parse(request.params.decision);
+    // Approval is refused while the agent's account is paused or killed; rejection always works.
     const result = await db.query(
-      "UPDATE mcp_proposals SET status = $3, decided_at = now() WHERE id = $1 AND user_id = $2 AND status = 'pending' AND expires_at > now() RETURNING id, status",
+      `UPDATE mcp_proposals p SET status = $3, decided_at = now()
+       WHERE p.id = $1 AND p.user_id = $2 AND p.status = 'pending' AND p.expires_at > now()
+         AND ($3 = 'rejected' OR NOT EXISTS (
+           SELECT 1 FROM agent_accounts a WHERE a.agent_id = p.agent_id AND a.status <> 'active'))
+       RETURNING p.id, p.status`,
       [id, request.auth!.userId, decision],
     );
+    if (!result.rowCount && decision === "approved") {
+      const account = await db.query<{ status: string }>(
+        `SELECT a.status FROM mcp_proposals p JOIN agent_accounts a ON a.agent_id = p.agent_id
+         WHERE p.id = $1 AND p.user_id = $2 AND a.status <> 'active'`,
+        [id, request.auth!.userId],
+      );
+      if (account.rowCount)
+        throw new ApiError(
+          403,
+          "agent_account_paused",
+          `This agent account is ${account.rows[0].status}; resume it before approving proposals.`,
+        );
+    }
     if (!result.rowCount)
       throw new ApiError(
         409,

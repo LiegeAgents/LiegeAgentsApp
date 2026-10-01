@@ -112,6 +112,13 @@ export const api = {
     request("/v1/mcp/connections", { token, method: "POST", body: JSON.stringify(input) }),
   revokeMcpConnection: (token, id) =>
     request(`/v1/mcp/connections/${encodeURIComponent(id)}`, { token, method: "DELETE" }),
+  agentAccounts: (token) => request("/v1/agent-accounts", { token }),
+  controlAgentAccount: (token, agentId, input) =>
+    request(`/v1/agent-accounts/${encodeURIComponent(agentId)}/control`, {
+      token,
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
 };
 
 const display = {

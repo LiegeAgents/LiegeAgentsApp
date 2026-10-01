@@ -2938,6 +2938,104 @@ section[id] {
     monospace;
   color: var(--l-muted);
 }
+.agent-kill-panel {
+  --l-kill: #c2412d;
+}
+.agent-kill-row .mcp-connection-row {
+  border-bottom: 0;
+}
+.agent-kill-row {
+  border-bottom: 1px solid var(--l-border);
+}
+.mcp-status.agent-status-paused {
+  background: #c08a2c;
+  box-shadow: 0 0 0 4px color-mix(in srgb, #c08a2c 14%, transparent);
+}
+.mcp-status.agent-status-killed {
+  background: var(--l-kill);
+  box-shadow: none;
+}
+.agent-kill-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.agent-kill-actions .status {
+  font-size: 10px;
+  padding: 3px 7px;
+}
+.status-killed {
+  color: var(--l-kill);
+  background: color-mix(in srgb, var(--l-kill) 7%, transparent);
+}
+.agent-kill-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 11px;
+  border: 1px solid color-mix(in srgb, var(--l-kill) 45%, var(--l-border));
+  border-radius: 4px;
+  background: transparent;
+  color: var(--l-kill);
+  font: 500 11px var(--font-inter, inherit);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.agent-kill-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--l-kill) 9%, transparent);
+}
+.agent-kill-button.solid {
+  background: var(--l-kill);
+  border-color: var(--l-kill);
+  color: #fff;
+}
+.agent-kill-button.solid:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--l-kill) 85%, #000);
+}
+.agent-kill-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.agent-kill-confirm {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 15px 17px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--l-kill) 35%, var(--l-border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--l-kill) 5%, var(--l-panel));
+}
+.agent-kill-confirm p {
+  margin: 0;
+  font-size: 12px;
+}
+.agent-kill-confirm input {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--l-border);
+  border-radius: 4px;
+  background: var(--l-bg);
+  color: var(--l-text);
+  font-size: 12px;
+}
+.agent-kill-confirm > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+@media (max-width: 800px) {
+  .agent-kill-row .mcp-connection-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .agent-kill-actions {
+    flex-wrap: wrap;
+  }
+  .agent-kill-confirm {
+    margin-left: 0;
+  }
+}
 @media (max-width: 800px) {
   .doc-quickstart {
     grid-template-columns: 1fr;
