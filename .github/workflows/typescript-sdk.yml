@@ -19,7 +19,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with: { bun-version: latest }
-      - run: bun install --frozen-lockfile=false
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install --ignore-scripts
       - run: bun run build
       - run: bun test
 
@@ -36,8 +38,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with: { bun-version: latest }
-      - run: bun install --frozen-lockfile=false
-      - run: bun run build
       - uses: actions/setup-node@v4
         with: { node-version: 22, registry-url: https://registry.npmjs.org }
+      - run: npm install --ignore-scripts
+      - run: npm run build
       - run: npm publish --provenance --access public
