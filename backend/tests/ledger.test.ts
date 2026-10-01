@@ -87,6 +87,10 @@ describe.skipIf(!databaseAvailable)("ledger debits", () => {
       await expect(
         transfer(client, { type: "test", from, to, amount: 0.300001 }),
       ).rejects.toMatchObject({ code: "insufficient_balance" });
+      // A real seventh decimal must not be silently rounded into a valid debit.
+      await expect(
+        transfer(client, { type: "test", from, to, amount: 0.3000009 }),
+      ).rejects.toMatchObject({ code: "invalid_amount" });
       // 0.1 + 0.2 is 0.30000000000000004 as a float; the ledger stores six decimals.
       await transfer(client, { type: "test", from, to, amount: 0.1 + 0.2 });
     });
