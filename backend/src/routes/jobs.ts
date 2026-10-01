@@ -366,7 +366,11 @@ jobsRouter.post(
         "This job is not ready for on-chain funding.",
       );
     if (job.rows[0].expires_at.getTime() <= Date.now() + env.ESCROW_QUOTE_TTL_SECONDS * 1000)
-      throw new ApiError(409, "funding_quote_near_expiry", "This job expires too soon to safely fund.");
+      throw new ApiError(
+        409,
+        "funding_quote_near_expiry",
+        "This job expires too soon to safely fund.",
+      );
     response.json({
       data: {
         escrowAddress: job.rows[0].address,

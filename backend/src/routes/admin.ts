@@ -238,11 +238,31 @@ adminRouter.post(
          WHERE job_id = $1 AND purpose IN ('usdg_sweep', 'eth_sweep') AND status IN ('skipped', 'confirmed') RETURNING purpose`,
         [jobId],
       );
-      if (!reopened.rowCount) throw new ApiError(409, "resweep_unavailable", "No completed client sweep is available to reopen.");
-      await client.query("UPDATE escrow_settlements SET status = 'pending', error = NULL, lease_until = NULL, updated_at = now() WHERE job_id = $1", [jobId]);
-      await audit(client, { actorId: request.auth!.userId, action: "escrow_settlement.reswept", targetType: "job", targetId: jobId, requestId: request.requestId, metadata: { payouts: reopened.rows } });
+      if (!reopened.rowCount)
+        throw new ApiError(
+          409,
+          "resweep_unavailable",
+          "No completed client sweep is available to reopen.",
+        );
+      await client.query(
+        "UPDATE escrow_settlements SET status = 'pending', error = NULL, lease_until = NULL, updated_at = now() WHERE job_id = $1",
+        [jobId],
+      );
+      await audit(client, {
+        actorId: request.auth!.userId,
+        action: "escrow_settlement.reswept",
+        targetType: "job",
+        targetId: jobId,
+        requestId: request.requestId,
+        metadata: { payouts: reopened.rows },
+      });
       await client.query("COMMIT");
-    } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
     response.json({ data: { jobId, status: await processSettlement(jobId) } });
   }),
 );
