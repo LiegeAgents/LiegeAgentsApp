@@ -24,9 +24,10 @@ const payload = (
   table: string,
   column: string,
   field: "brief" | "deliverable" | "rationale" | "artifact",
+  id = table === "jobs" ? "id" : "job_id",
 ) => ({
   table,
-  id: table === "jobs" ? "id" : "job_id",
+  id,
   column,
   decrypt: (value: string, id: string) => decryptPayload(value, payloadContext(id, field)),
   encrypt: (value: string, id: string) => encryptPayload(value, payloadContext(id, field)),
@@ -36,7 +37,7 @@ const targets: Target[] = [
   payload("jobs", "brief_ciphertext", "brief"),
   payload("submissions", "deliverable_ciphertext", "deliverable"),
   payload("evaluations", "rationale_ciphertext", "rationale"),
-  payload("evaluation_decisions", "rationale_ciphertext", "rationale"),
+  payload("evaluation_decisions", "rationale_ciphertext", "rationale", "task_id"),
   {
     table: "escrow_wallets",
     id: "job_id",
