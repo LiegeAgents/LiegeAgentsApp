@@ -315,6 +315,19 @@ mcpInternalRouter.get(
     }
     const policy = await policyFor(c.agent_id);
     if (policy.payloadAccess === "none") {
+      await audit(db, {
+        actorId: c.user_id,
+        action: "job.payload_access_denied",
+        targetType: "job",
+        targetId: id,
+        metadata: {
+          payload: "brief_and_deliverable",
+          role: "provider",
+          code: "payload_policy_denied",
+          policyVersion: policy.version,
+          agentId: c.agent_id,
+        },
+      });
       response.json({
         data: {
           id: job.id,
@@ -335,7 +348,12 @@ mcpInternalRouter.get(
       targetType: "job",
       targetId: id,
       metadata: {
-        payload: policy.payloadAccess === "metadata" ? "metadata" : "brief_and_deliverable",
+        payload:
+          policy.payloadAccess === "metadata"
+            ? "metadata"
+            : policy.payloadAccess === "brief"
+              ? "brief"
+              : "brief_and_deliverable",
         role: "provider",
         policyVersion: policy.version,
         agentId: c.agent_id,
@@ -350,7 +368,7 @@ mcpInternalRouter.get(
             : decryptPayload(job.brief_ciphertext, payloadContext(id, "brief")),
         brief_ciphertext: undefined,
         submission:
-          policy.payloadAccess === "metadata"
+          policy.payloadAccess === "metadata" || policy.payloadAccess === "brief"
             ? null
             : job.deliverable_ciphertext
               ? {

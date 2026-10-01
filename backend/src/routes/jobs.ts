@@ -280,7 +280,7 @@ jobsRouter.get(
         "This job does not exist or is not available to this account.",
       );
     const result = await db.query(
-      `SELECT id, action, metadata, request_id, created_at
+      `SELECT id, actor_id, action, metadata, request_id, created_at
        FROM audit_logs
        WHERE target_type = 'job' AND target_id = $1
          AND action IN ('job.payload_accessed', 'job.payload_access_denied')

@@ -549,9 +549,10 @@ paths:
                     type: array
                     items:
                       type: object
-                      required: [id, action, metadata, created_at]
+                      required: [id, actor_id, action, metadata, created_at]
                       properties:
                         id: { type: string }
+                        actor_id: { type: [string, 'null'], format: uuid }
                         action: { type: string, enum: [job.payload_accessed, job.payload_access_denied] }
                         metadata: { type: object }
                         request_id: { type: [string, 'null'], format: uuid }

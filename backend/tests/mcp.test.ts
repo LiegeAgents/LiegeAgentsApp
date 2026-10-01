@@ -3,9 +3,11 @@ import {
   api,
   bearer,
   clearData,
+  credit,
   createAgent,
   createJob,
   databaseAvailable,
+  db,
   rebuildSchema,
   signIn,
   type User,
@@ -74,6 +76,46 @@ describe.skipIf(!databaseAvailable)("MCP connections", () => {
 
     await api().delete(`/v1/mcp/connections/${connection.id}`).set(bearer(owner)).expect(204);
     await api().get("/v1/internal/mcp/session").set(internalHeaders(connection.token)).expect(401);
+  });
+
+  test("enforces brief-only access and audits a denied none policy", async () => {
+    await credit(client.userId, 100);
+    const jobId = await createJob(client, agentId, 25);
+    await api().post(`/v1/jobs/${jobId}/fund`).set(bearer(client)).send({}).expect(200);
+    await api()
+      .post(`/v1/jobs/${jobId}/submit`)
+      .set(bearer(owner))
+      .send({ deliverable: "Private report" })
+      .expect(200);
+    await api()
+      .put(`/v1/mcp/policies/${agentId}`)
+      .set(bearer(owner))
+      .send({ payloadAccess: "brief" })
+      .expect(200);
+    const connection = await connect();
+    const briefOnly = await api()
+      .get(`/v1/internal/mcp/jobs/${jobId}`)
+      .set(internalHeaders(connection.token))
+      .expect(200);
+    expect(briefOnly.body.data.brief).toBe("Summarize this week's market moves.");
+    expect(briefOnly.body.data.submission).toBeNull();
+
+    await api()
+      .put(`/v1/mcp/policies/${agentId}`)
+      .set(bearer(owner))
+      .send({ payloadAccess: "none" })
+      .expect(200);
+    await api()
+      .get(`/v1/internal/mcp/jobs/${jobId}`)
+      .set(internalHeaders(connection.token))
+      .expect(200);
+    const denied = await db.query(
+      `SELECT metadata->>'code' AS code FROM audit_logs
+       WHERE action = 'job.payload_access_denied' AND target_id = $1
+       ORDER BY created_at DESC LIMIT 1`,
+      [jobId],
+    );
+    expect(denied.rows[0].code).toBe("payload_policy_denied");
   });
 
   test("creates a website approval proposal without performing an action", async () => {
