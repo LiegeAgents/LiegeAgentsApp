@@ -4,6 +4,7 @@
   "type": "module",
   "packageManager": "bun@1.4.2",
   "engines": { "bun": "1.4.2", "node": ">=22 <25" },
-  "scripts": { "check": "tsc --noEmit", "start": "bun src/index.ts", "dev": "bun --watch src/index.ts" },
+  "bin": { "liege": "src/index.ts" },
+  "scripts": { "check": "tsc --noEmit", "start": "bun src/index.ts", "dev": "bun --watch src/index.ts", "compile": "bun build --compile src/index.ts --outfile liege" },
   "devDependencies": { "bun-types": "1.4.2", "typescript": "5.8.3" }
 }
