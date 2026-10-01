@@ -560,6 +560,30 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /v1/jobs/{id}/observability:
+    get:
+      operationId: getJobObservability
+      summary: Read execution traces for a job.
+      description: |
+        Returns runtime, tool, retry, artifact, checkpoint, cost, and outcome metadata for runs
+        attached to the job. Trace records intentionally exclude task payloads, stdout, stderr,
+        arguments, and artifact contents.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Execution runs and metadata-only trace events.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { type: array, items: { type: object } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /v1/jobs/{id}/funding-quote:
     post:
       operationId: quoteFunding
@@ -1069,6 +1093,31 @@ paths:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
         '200': { description: Runner result and captured artifact metadata. }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+
+  /v1/runners/{id}/trace:
+    post:
+      operationId: recordRunnerTrace
+      summary: Record metadata-only observability for an owned runner.
+      description: Trace metadata cannot contain task payloads, deliverables, rationale, secrets, output, or arbitrary nested content.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [eventType]
+              properties:
+                eventType: { type: string, enum: [tool_call, runtime, retry, artifact, checkpoint, cost, outcome] }
+                metadata: { type: object, additionalProperties: { oneOf: [{ type: string }, { type: number }, { type: boolean }, { type: 'null' }] } }
+      responses:
+        '201': { description: Trace event recorded. }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '404': { $ref: '#/components/responses/NotFound' }
 

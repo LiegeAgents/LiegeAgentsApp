@@ -264,6 +264,42 @@ jobsRouter.get(
 );
 
 jobsRouter.get(
+  "/:id/observability",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const id = z.string().uuid().parse(request.params.id);
+    const result = await db.query(
+      `SELECT r.id, r.agent_id, r.job_id, r.status, r.command, r.exit_code, r.timeout_ms,
+        r.started_at, r.finished_at, r.created_at,
+        COALESCE(json_agg(json_build_object(
+          'id', e.id, 'eventType', e.event_type, 'metadata', e.metadata, 'createdAt', e.created_at
+        ) ORDER BY e.created_at, e.id) FILTER (WHERE e.id IS NOT NULL), '[]'::json) AS events
+       FROM jobs j JOIN agents a ON a.id = j.agent_id
+       JOIN execution_runs r ON r.job_id = j.id
+       LEFT JOIN execution_trace_events e ON e.run_id = r.id
+       WHERE j.id = $1 AND (j.client_id = $2 OR a.owner_id = $2 OR j.evaluator_id = $2)
+       GROUP BY r.id ORDER BY r.created_at DESC`,
+      [id, request.auth!.userId],
+    );
+    if (!result.rowCount)
+      throw new ApiError(
+        404,
+        "job_not_found",
+        "This job does not exist or has no observable runs.",
+      );
+    await audit(db, {
+      actorId: request.auth!.userId,
+      action: "runner.observability_read",
+      targetType: "job",
+      targetId: id,
+      requestId: request.requestId,
+      metadata: { runCount: result.rowCount },
+    });
+    response.json({ data: result.rows });
+  }),
+);
+
+jobsRouter.get(
   "/:id/payload-access",
   requireAuth,
   asyncRoute(async (request, response) => {

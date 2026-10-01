@@ -827,6 +827,7 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
 function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
   const [detail, setDetail] = useState(null),
     [payloadAccess, setPayloadAccess] = useState([]),
+    [observability, setObservability] = useState([]),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(""),
     [deliverable, setDeliverable] = useState(""),
@@ -842,10 +843,12 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
         api.jobPayload(token, job.id, "brief"),
         base.submission ? api.jobPayload(token, job.id, "deliverable") : Promise.resolve(null),
         api.jobPayloadAccess(token, job.id),
+        api.jobObservability(token, job.id),
       ]);
       const brief = payloads[0].status === "fulfilled" ? payloads[0].value?.data : null;
       const delivery = payloads[1].status === "fulfilled" ? payloads[1].value?.data : null;
       setPayloadAccess(payloads[2].status === "fulfilled" ? payloads[2].value?.data || [] : []);
+      setObservability(payloads[3].status === "fulfilled" ? payloads[3].value?.data || [] : []);
       setDetail({
         ...base,
         brief: brief?.content || "Private brief unavailable or expired.",
@@ -977,6 +980,23 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
             </ul>
           ) : (
             <p>No payload retrievals recorded yet.</p>
+          )}
+        </details>
+        <details className="payload-access-history">
+          <summary>Execution observability</summary>
+          {observability.length ? (
+            <ul>
+              {observability.map((run) => (
+                <li key={run.id}>
+                  <span>{run.command}</span>
+                  <span>{run.status}</span>
+                  <span>{run.events?.length || 0} trace events</span>
+                  <time dateTime={run.created_at}>{new Date(run.created_at).toLocaleString()}</time>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>No execution traces recorded yet.</p>
           )}
         </details>
         {error && <Notice error>{error}</Notice>}
