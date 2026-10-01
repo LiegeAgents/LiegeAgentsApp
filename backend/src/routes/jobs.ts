@@ -19,7 +19,7 @@ import {
   evaluatorPosition,
   lockEvaluator,
   MINIMUM_EVALUATOR_STAKE_USDG,
-  SELF_SETTLEMENT_LIMIT_USDG,
+  selfSettlementLimit,
   STAKE_COVERAGE,
 } from "../capacity.js";
 
@@ -366,10 +366,11 @@ jobsRouter.post(
       fail("evaluator_independence", "An agent owner cannot evaluate their own job.");
     else pass("evaluator_independence", "The evaluator is independent of the provider.");
     const selfSettled = !input.evaluatorId || input.evaluatorId === request.auth!.userId;
-    if (selfSettled && Number(budget) >= SELF_SETTLEMENT_LIMIT_USDG)
+    const selfSettlementCap = selfSettlementLimit(settlementAsset);
+    if (selfSettled && Number(budget) >= selfSettlementCap)
       fail(
         "self_evaluation_limit",
-        `Jobs of ${SELF_SETTLEMENT_LIMIT_USDG} USDG or more need an independent evaluator.`,
+        `Jobs of ${selfSettlementCap} ${settlementAsset.toUpperCase()} or more need an independent evaluator.`,
       );
     else
       pass(
@@ -384,7 +385,8 @@ jobsRouter.post(
         const evaluator = await lockEvaluator(client, input.evaluatorId);
         const position = evaluator
           ? await evaluatorPosition(client, input.evaluatorId, {
-              addedExposureUsdg: Number(budget),
+              addedExposureUsdg:
+                Number(budget) * (settlementAsset === "liege" ? env.LIEGE_EXPOSURE_RATE_USD : 1),
             })
           : null;
         if (!evaluator?.active || position!.stakeUsdg < MINIMUM_EVALUATOR_STAKE_USDG)
@@ -499,11 +501,12 @@ jobsRouter.post(
         "An agent owner cannot evaluate their own job.",
       );
     const selfSettled = !input.evaluatorId || input.evaluatorId === request.auth!.userId;
-    if (selfSettled && Number(budget) >= SELF_SETTLEMENT_LIMIT_USDG)
+    const selfSettlementCap = selfSettlementLimit(settlementAsset);
+    if (selfSettled && Number(budget) >= selfSettlementCap)
       throw new ApiError(
         422,
         "self_evaluation_limit",
-        `Jobs of ${SELF_SETTLEMENT_LIMIT_USDG} USDG or more need an independent evaluator.`,
+        `Jobs of ${selfSettlementCap} ${settlementAsset.toUpperCase()} or more need an independent evaluator.`,
       );
     const privateBrief = input.brief ?? input.briefCiphertext!;
     // Chosen here so the encrypted brief can be bound to its job.
@@ -517,7 +520,8 @@ jobsRouter.post(
           ? await evaluatorPosition(client, input.evaluatorId, {
               // Until token prices are introduced, LIEGE uses the same independent-review
               // capacity unit as USDG. This keeps a token job from bypassing stake coverage.
-              addedExposureUsdg: Number(budget),
+              addedExposureUsdg:
+                Number(budget) * (settlementAsset === "liege" ? env.LIEGE_EXPOSURE_RATE_USD : 1),
             })
           : null;
         if (!evaluator?.active || position!.stakeUsdg < MINIMUM_EVALUATOR_STAKE_USDG)
