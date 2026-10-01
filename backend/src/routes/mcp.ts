@@ -18,6 +18,7 @@ const proposalInput = z.object({
 const policyInput = z.object({
   maxSpendPerJob: z.coerce.number().positive().nullable().optional(),
   maxDailySpend: z.coerce.number().positive().nullable().optional(),
+  maxInvoiceAmount: z.coerce.number().positive().nullable().optional(),
   allowedJobCategories: z.array(z.string().min(1).max(80)).max(50).default([]),
   approvedCounterparties: z.array(z.string().min(1).max(120)).max(100).default([]),
   payloadAccess: z.enum(["none", "metadata", "brief", "full"]).default("full"),
@@ -33,6 +34,7 @@ type AgentPolicy = {
   version: number;
   maxSpendPerJob: number | null;
   maxDailySpend: number | null;
+  maxInvoiceAmount: number | null;
   allowedJobCategories: string[];
   approvedCounterparties: string[];
   payloadAccess: "none" | "metadata" | "brief" | "full";
@@ -45,6 +47,7 @@ const publicPolicy = (row: Record<string, unknown> | undefined, agentId: string)
   version: Number(row?.version ?? 1),
   maxSpendPerJob: row?.max_spend_per_job == null ? null : Number(row.max_spend_per_job),
   maxDailySpend: row?.max_daily_spend == null ? null : Number(row.max_daily_spend),
+  maxInvoiceAmount: row?.max_invoice_amount == null ? null : Number(row.max_invoice_amount),
   allowedJobCategories: (row?.allowed_job_categories as string[] | undefined) ?? [],
   approvedCounterparties: (row?.approved_counterparties as string[] | undefined) ?? [],
   payloadAccess: (row?.payload_access as AgentPolicy["payloadAccess"] | undefined) ?? "full",
@@ -161,12 +164,13 @@ mcpRouter.put(
     const input = policyInput.parse(request.body);
     const result = await db.query(
       `INSERT INTO agent_approval_policies
-       (agent_id, version, max_spend_per_job, max_daily_spend, allowed_job_categories, approved_counterparties, payload_access, approval_mode, allowed_actions, updated_by)
-       VALUES ($1, 1, $2, $3, $4, $5, $6, $7, $8, $9)
+       (agent_id, version, max_spend_per_job, max_daily_spend, max_invoice_amount, allowed_job_categories, approved_counterparties, payload_access, approval_mode, allowed_actions, updated_by)
+       VALUES ($1, 1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        ON CONFLICT (agent_id) DO UPDATE SET
          version = agent_approval_policies.version + 1,
          max_spend_per_job = EXCLUDED.max_spend_per_job,
          max_daily_spend = EXCLUDED.max_daily_spend,
+         max_invoice_amount = EXCLUDED.max_invoice_amount,
          allowed_job_categories = EXCLUDED.allowed_job_categories,
          approved_counterparties = EXCLUDED.approved_counterparties,
          payload_access = EXCLUDED.payload_access,
@@ -179,6 +183,7 @@ mcpRouter.put(
         agentId,
         input.maxSpendPerJob ?? null,
         input.maxDailySpend ?? null,
+        input.maxInvoiceAmount ?? null,
         input.allowedJobCategories,
         input.approvedCounterparties.map((value) => value.toLowerCase()),
         input.payloadAccess,

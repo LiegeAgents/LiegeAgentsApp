@@ -20,6 +20,11 @@ const eventTypes = z
       "job.rejected",
       "job.expired",
       "job.settled",
+      "invoice.created",
+      "invoice.paid",
+      "invoice.refunded",
+      "invoice.cancelled",
+      "invoice.expired",
     ]),
   )
   .min(1)
@@ -30,6 +35,11 @@ const eventTypes = z
     "job.rejected",
     "job.expired",
     "job.settled",
+    "invoice.created",
+    "invoice.paid",
+    "invoice.refunded",
+    "invoice.cancelled",
+    "invoice.expired",
   ]);
 const input = z.object({
   agentId: z.string().uuid(),

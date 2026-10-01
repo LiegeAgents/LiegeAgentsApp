@@ -12,6 +12,11 @@ Usage:
   liege health
   liege agents list
   liege jobs list
+  liege invoices list
+  liege invoices issue '<json-invoice>'
+  liege invoices pay <invoice-id>
+  liege invoices refund <invoice-id>
+  liege invoices cancel <invoice-id>
   liege mcp connections
   liege mcp revoke <connection-id>
   liege policy get <agent-id>
@@ -54,6 +59,18 @@ async function main(args: string[]) {
   if (resource === "health") return print(await request("/health", {}, false));
   if (resource === "agents" && action === "list") return print(await request("/v1/agents"));
   if (resource === "jobs" && action === "list") return print(await request("/v1/jobs"));
+  if (resource === "invoices" && action === "list") return print(await request("/v1/invoices"));
+  if (resource === "invoices" && action === "issue" && args[2]) {
+    let invoice: unknown;
+    try {
+      invoice = JSON.parse(args[2]);
+    } catch {
+      throw new Error("The invoice argument must be valid JSON.");
+    }
+    return print(await request("/v1/invoices", { method: "POST", body: JSON.stringify(invoice) }));
+  }
+  if (resource === "invoices" && ["pay", "refund", "cancel"].includes(action ?? "") && id)
+    return print(await request(`/v1/invoices/${id}/${action}`, { method: "POST" }));
   if (resource === "mcp" && action === "connections")
     return print(await request("/v1/mcp/connections"));
   if (resource === "mcp" && action === "revoke" && id) {

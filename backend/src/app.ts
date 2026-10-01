@@ -12,6 +12,7 @@ import { mcpInternalRouter, mcpRouter } from "./routes/mcp.js";
 import { webhooksRouter } from "./routes/webhooks.js";
 import { runnersRouter } from "./routes/runners.js";
 import { evaluationRouter } from "./routes/evaluation.js";
+import { invoicesRouter } from "./routes/invoices.js";
 import { ApiError, asyncRoute, errorHandler } from "./http.js";
 import { parseTrustProxy, rateLimit, requestContext } from "./operations.js";
 
@@ -82,6 +83,7 @@ export const routers = [
   ["/v1/webhooks", webhooksRouter],
   ["/v1/runners", runnersRouter],
   ["/v1/evaluations", evaluationRouter],
+  ["/v1/invoices", invoicesRouter],
 ] as const;
 for (const [path, router] of routers) app.use(path, router);
 // MCP's internal service routes are intentionally outside the public OpenAPI contract.

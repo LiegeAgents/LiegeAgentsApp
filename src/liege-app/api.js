@@ -55,6 +55,16 @@ export const api = {
   jobPayload: (token, id, payload) => request(`/v1/jobs/${id}/payload/${payload}`, { token }),
   jobPayloadAccess: (token, id) => request(`/v1/jobs/${id}/payload-access`, { token }),
   jobObservability: (token, id) => request(`/v1/jobs/${id}/observability`, { token }),
+  invoices: (token) => request("/v1/invoices", { token }),
+  invoicePayment: (id) => request(`/v1/invoices/${encodeURIComponent(id)}/payment`),
+  createInvoice: (token, input) =>
+    request("/v1/invoices", { token, method: "POST", body: JSON.stringify(input) }),
+  payInvoice: (token, id) =>
+    request(`/v1/invoices/${encodeURIComponent(id)}/pay`, { token, method: "POST" }),
+  refundInvoice: (token, id) =>
+    request(`/v1/invoices/${encodeURIComponent(id)}/refund`, { token, method: "POST" }),
+  cancelInvoice: (token, id) =>
+    request(`/v1/invoices/${encodeURIComponent(id)}/cancel`, { token, method: "POST" }),
   evaluators: () => request("/v1/evaluators"),
   evaluatorProfile: (token) => request("/v1/evaluators/me", { token }),
   updateEvaluatorProfile: (token, input) =>
