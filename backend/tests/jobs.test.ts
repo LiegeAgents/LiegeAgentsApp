@@ -56,6 +56,30 @@ describe.skipIf(!databaseAvailable)("job lifecycle", () => {
     await credit(client.userId, 100);
   });
 
+  test("simulation validates the workflow without creating or funding a job", async () => {
+    const before = await db.query<{ count: string }>("SELECT count(*) FROM jobs");
+    const response = await api()
+      .post("/v1/jobs/simulate")
+      .set(bearer(client))
+      .send({
+        agentId,
+        title: "Preflight market summary",
+        brief: "Simulate this week's market summary without storing the private brief.",
+        acceptanceCriteria: ["Delivered as a written report"],
+        budgetUsdg: 40,
+        deadlineAt: new Date(Date.now() + 86_400_000).toISOString(),
+        expiresAt: new Date(Date.now() + 2 * 86_400_000).toISOString(),
+      })
+      .expect(200);
+    expect(response.body.data.mode).toBe("simulation");
+    expect(response.body.data.ready).toBe(true);
+    expect(response.body.data.settlement.totalEscrow).toBe("40");
+    expect(response.body.data).not.toHaveProperty("brief");
+    const after = await db.query<{ count: string }>("SELECT count(*) FROM jobs");
+    expect(after.rows[0].count).toBe(before.rows[0].count);
+    expect(await availableBalance(client.userId)).toBe(100);
+  });
+
   describe("expiry", () => {
     test("refunds a funded ledger job exactly once", async () => {
       const jobId = await createJob(client, agentId, 40);

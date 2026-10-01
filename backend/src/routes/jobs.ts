@@ -328,6 +328,120 @@ jobsRouter.get(
 );
 
 jobsRouter.post(
+  "/simulate",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const input = jobInput.parse(request.body);
+    const settlementAsset = input.settlementAsset as SettlementAsset;
+    const budget = settlementAsset === "liege" ? input.budgetLiege! : input.budgetUsdg!;
+    const evaluatorFee =
+      settlementAsset === "liege" ? input.evaluatorFeeLiege : input.evaluatorFeeUsdg;
+    const agent = await db.query<{ owner_id: string }>(
+      "SELECT owner_id FROM agents WHERE id = $1 AND active",
+      [input.agentId],
+    );
+    if (!agent.rowCount)
+      throw new ApiError(404, "agent_not_found", "The selected agent is unavailable.");
+
+    const checks: Array<{ name: string; status: "pass" | "fail"; message: string }> = [];
+    const fail = (name: string, message: string) => checks.push({ name, status: "fail", message });
+    const pass = (name: string, message: string) => checks.push({ name, status: "pass", message });
+    if (agent.rows[0].owner_id === request.auth!.userId)
+      fail("agent_ownership", "An owner cannot open a job for their own agent.");
+    else pass("agent_ownership", "The selected agent is owned by another account.");
+    if (input.evaluatorId && input.evaluatorId === agent.rows[0].owner_id)
+      fail("evaluator_independence", "An agent owner cannot evaluate their own job.");
+    else pass("evaluator_independence", "The evaluator is independent of the provider.");
+    const selfSettled = !input.evaluatorId || input.evaluatorId === request.auth!.userId;
+    if (selfSettled && Number(budget) >= SELF_SETTLEMENT_LIMIT_USDG)
+      fail(
+        "self_evaluation_limit",
+        `Jobs of ${SELF_SETTLEMENT_LIMIT_USDG} USDG or more need an independent evaluator.`,
+      );
+    else
+      pass(
+        "self_evaluation_limit",
+        "The settlement arrangement is within the self-evaluation limit.",
+      );
+
+    if (input.evaluatorId) {
+      const client = await db.connect();
+      try {
+        await client.query("BEGIN");
+        const evaluator = await lockEvaluator(client, input.evaluatorId);
+        const position = evaluator
+          ? await evaluatorPosition(client, input.evaluatorId, {
+              addedExposureUsdg: Number(budget),
+            })
+          : null;
+        if (!evaluator?.active || position!.stakeUsdg < MINIMUM_EVALUATOR_STAKE_USDG)
+          fail(
+            "evaluator_eligibility",
+            `The selected evaluator must have an active profile with at least ${MINIMUM_EVALUATOR_STAKE_USDG.toLocaleString("en-US")} USDG staked.`,
+          );
+        else if (!position!.covered)
+          fail(
+            "evaluator_capacity",
+            `The evaluator's stake must cover ${STAKE_COVERAGE} times the budgets of all open jobs, including this one.`,
+          );
+        else pass("evaluator_capacity", "The evaluator has enough active stake capacity.");
+        await client.query("ROLLBACK");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    } else pass("evaluator_eligibility", "The client will evaluate this job directly.");
+
+    const ready = checks.every((check) => check.status === "pass");
+    const total = (Number(budget) + Number(evaluatorFee)).toString();
+    const evaluationActor = input.evaluatorId ? "assigned_evaluator" : "client";
+    await audit(db, {
+      actorId: request.auth!.userId,
+      action: "job.simulated",
+      targetType: "job_simulation",
+      targetId: randomUUID(),
+      requestId: request.requestId,
+      metadata: {
+        agentId: input.agentId,
+        settlementAsset,
+        ready,
+        checkCount: checks.length,
+      },
+    });
+    response.json({
+      data: {
+        mode: "simulation",
+        ready,
+        checks,
+        settlement: {
+          asset: settlementAsset,
+          budget: String(budget),
+          evaluatorFee: String(evaluatorFee),
+          totalEscrow: total,
+          escrowMode: env.ESCROW_MODE,
+        },
+        permissions: {
+          fund: "client",
+          submit: "agent_owner",
+          evaluate: evaluationActor,
+          settleAccepted: ["agent_owner", "evaluator"],
+          settleRejected: "client_refund",
+        },
+        expectedActions: [
+          { action: "open", actor: "client", mutates: true },
+          { action: "fund", actor: "client", amount: total, asset: settlementAsset, mutates: true },
+          { action: "submit", actor: "agent_owner", mutates: true },
+          { action: "evaluate", actor: evaluationActor, mutates: true },
+          { action: "expire", actor: "system", at: input.expiresAt.toISOString(), mutates: true },
+        ],
+      },
+    });
+  }),
+);
+
+jobsRouter.post(
   "/",
   requireAuth,
   asyncRoute(async (request, response) => {
