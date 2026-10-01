@@ -88,4 +88,20 @@ describe.skipIf(!databaseAvailable)("evaluator capacity", () => {
     expect(selfAssigned.status).toBe(422);
     expect(selfAssigned.body.error.code).toBe("self_evaluation_limit");
   });
+
+  test("LIEGE jobs use the same independent-review and stake-capacity controls", async () => {
+    const base = {
+      settlementAsset: "liege",
+      budgetLiege: "600",
+      evaluatorId: evaluator.userId,
+    };
+    await openJob(client, agentId, 1, base).expect(201);
+    const overCapacity = await openJob(client, agentId, 1, base).expect(422);
+    expect(overCapacity.body.error.code).toBe("evaluator_capacity_exceeded");
+    const selfSettled = await openJob(client, agentId, 1, {
+      settlementAsset: "liege",
+      budgetLiege: "50",
+    }).expect(422);
+    expect(selfSettled.body.error.code).toBe("self_evaluation_limit");
+  });
 });

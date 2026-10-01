@@ -1,10 +1,42 @@
 import { createHmac, createHash, randomBytes } from "node:crypto";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
+import * as ipaddr from "ipaddr.js";
 import type { Pool, PoolClient } from "pg";
 import { db } from "./db/index.js";
 import { encryptPayload, decryptPayload, payloadContext } from "./crypto.js";
 
 export const webhookSecret = () => `whsec_${randomBytes(32).toString("hex")}`;
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+
+function privateAddress(address: string) {
+  try {
+    // `process` reduces IPv4-mapped IPv6 addresses before classifying them.
+    return ipaddr.process(address).range() !== "unicast";
+  } catch {
+    return true;
+  }
+}
+
+export async function assertSafeWebhookUrl(value: string) {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error("Webhook URL is invalid.");
+  }
+  if (url.protocol !== "https:" || url.username || url.password)
+    throw new Error("Webhook URLs must use HTTPS without embedded credentials.");
+  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local"))
+    throw new Error("Webhook URLs may not target local hostnames.");
+  const addresses = isIP(hostname)
+    ? [hostname]
+    : (await lookup(hostname, { all: true })).map((item) => item.address);
+  if (!addresses.length || addresses.some(privateAddress))
+    throw new Error("Webhook URLs may not target private or link-local addresses.");
+  return url.toString();
+}
 
 export async function enqueueWebhookEvent(
   client: Pool | PoolClient,
@@ -87,6 +119,7 @@ export async function deliverPendingWebhooks(limit = 50) {
     const body = JSON.stringify(item.payload);
     const signature = createHmac("sha256", secret).update(body).digest("hex");
     try {
+      await assertSafeWebhookUrl(item.url);
       const response = await fetch(item.url, {
         method: "POST",
         headers: {

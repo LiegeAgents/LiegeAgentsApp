@@ -13,11 +13,9 @@ bun run migrate
 bun run dev
 ```
 
-`DATABASE_URL`, `RHC_RPC_URL`, `AUTH_TOKEN_PEPPER`, `DATA_ENCRYPTION_KEY`, `CRON_SECRET`, and `ADMIN_WALLET_ADDRESSES` are required for a production deployment, and `DATA_ENCRYPTION_KEY` must differ from `AUTH_TOKEN_PEPPER`. `CRON_SECRET` protects maintenance endpoints.
+`DATABASE_URL`, `RHC_RPC_URL`, `AUTH_TOKEN_PEPPER`, `DATA_ENCRYPTION_KEY`, `CRON_SECRET`, `ADMIN_WALLET_ADDRESSES`, `MCP_INTERNAL_API_TOKEN`, `RUNNER_WORKER_URL`, and `RUNNER_WORKER_TOKEN` are required for a production deployment, and `DATA_ENCRYPTION_KEY` must differ from `AUTH_TOKEN_PEPPER`. `CRON_SECRET` protects maintenance endpoints. Production never executes runner workloads inside the API process.
 
 Briefs, deliverables, rationales, and escrow wallet keys are encrypted at rest with keys derived from `DATA_ENCRYPTION_KEY`, each bound to its record and purpose. The server holds the key and can read them, so this is not end-to-end encryption. To rotate the key, move the old one to `DATA_ENCRYPTION_KEY_PREVIOUS`, set the new one, deploy, run `bun run reencrypt`, then remove the previous key. The same command upgrades rows written in the older format, which stay readable until then.
-
-In production, a remote `DATABASE_URL` must set `sslmode=verify-full` (or `verify-ca` with `sslrootcert`), or the service refuses to start. Set `DATABASE_ALLOW_INSECURE_TRANSPORT=true` only when the database is reachable solely over a private network.
 
 Each client IP gets 120 requests a minute, with separate budgets of 20 for sign-in and 20 for the on-chain funding routes. Client IPs come from `X-Forwarded-For` as allowed by `TRUST_PROXY` (default `1`, one proxy hop); set it to the address or CIDR range of the proxy in front of the service, and accept traffic only from that proxy, or clients can pick their own rate limit bucket.
 
@@ -37,15 +35,19 @@ The integration tests drop and rebuild the schema of a disposable Postgres datab
 
 [`docs/openapi.yaml`](../docs/openapi.yaml) is the contract for every route, including request and response schemas; `tests/contract.test.ts` fails when a route or response drifts from it. Every error has the shape `{ "error": { "code", "message", "requestId", "fields"? } }`, where `requestId` matches the `X-Request-Id` header.
 
-| Area            | Endpoints                                                                                                                                                                    |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Health          | `GET /health`                                                                                                                                                                |
-| Wallet sessions | `POST /v1/auth/nonce`, `POST /v1/auth/verify`, `POST /v1/auth/logout`                                                                                                        |
-| Agents          | `GET /v1/agents`, `GET /v1/agents/:slug`, `POST /v1/agents`                                                                                                                  |
-| Evaluators      | `GET /v1/evaluators`, `GET /v1/evaluators/me`, `PUT /v1/evaluators/me`                                                                                                       |
-| Liege admin     | `POST /v1/admin/ledger/credit`, `POST /v1/admin/evaluators/stake`, `POST /v1/admin/escrows/backfill`, `GET /v1/admin/settlements`, `POST /v1/admin/settlements/:jobId/retry` |
-| Jobs            | `GET /v1/jobs`, `POST /v1/jobs`, `POST /v1/jobs/:id/fund`, `POST /v1/jobs/:id/submit`, `POST /v1/jobs/:id/evaluate`                                                          |
-| Maintenance     | `POST /v1/cron/expire-jobs`, `POST /v1/cron/settle-escrows`                                                                                                                  |
+| Area            | Endpoints                                                                                                                                                                                                                 |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Health          | `GET /health`                                                                                                                                                                                                             |
+| Wallet sessions | `POST /v1/auth/nonce`, `POST /v1/auth/verify`, `POST /v1/auth/logout`                                                                                                                                                     |
+| Agents          | `GET /v1/agents`, `GET /v1/agents/:slug`, `POST /v1/agents`                                                                                                                                                               |
+| Evaluators      | `GET /v1/evaluators`, `GET /v1/evaluators/me`, `PUT /v1/evaluators/me`                                                                                                                                                    |
+| Liege admin     | `POST /v1/admin/ledger/credit`, `POST /v1/admin/evaluators/stake`, `POST /v1/admin/escrows/backfill`, `GET /v1/admin/settlements`, `POST /v1/admin/settlements/:jobId/retry`, `POST /v1/admin/settlements/:jobId/resweep` |
+| Jobs            | `GET /v1/jobs`, `POST /v1/jobs`, `POST /v1/jobs/:id/fund`, `POST /v1/jobs/:id/submit`, `POST /v1/jobs/:id/evaluate`                                                                                                       |
+| Webhooks & SSE  | `POST/GET /v1/webhooks`, `DELETE /v1/webhooks/:id`, `GET /v1/webhooks/stream/:agentId`, `POST /v1/cron/deliver-webhooks`                                                                                                  |
+| Runners         | `POST /v1/runners`, `GET /v1/runners`, `GET /v1/runners/:id`                                                                                                                                                              |
+| Evaluation      | `POST/GET /v1/evaluations/tasks`, `GET /v1/evaluations/tasks/:id`, `POST /v1/evaluations/tasks/:id/decision-message`, `POST /v1/evaluations/tasks/:id/submit`                                                             |
+| MCP             | User-scoped `/v1/mcp/*` connections and proposals; service-only `/v1/internal/mcp/*` context and proposal routes                                                                                                          |
+| Maintenance     | `POST /v1/cron/expire-jobs`, `POST /v1/cron/settle-escrows`, `POST /v1/cron/deliver-webhooks`                                                                                                                             |
 
 Protected user routes require `Authorization: Bearer <session-token>`. Cron calls require `X-Cron-Secret`; `expire-jobs` also takes a JSON `idempotencyKey`, making repeat delivery safe.
 

@@ -112,6 +112,31 @@ describe.skipIf(!databaseAvailable)("on-chain escrow settlement", () => {
     expect(job.body.data.settlement_status).toBe("complete");
   });
 
+  test("LIEGE settlement preserves tiny and 18-decimal fees without Number rounding", async () => {
+    const budget = "0.123456789012345678";
+    const fee = "0.0000005";
+    const jobId = await createJob(client, agentId, 1);
+    await db.query(
+      "UPDATE jobs SET escrow_mode = 'onchain', status = 'funded', settlement_asset = 'liege', budget_amount = $2, evaluator_fee_amount = $3, budget_usdg = NULL, evaluator_fee_usdg = NULL, evaluator_id = $4 WHERE id = $1",
+      [jobId, budget, fee, evaluator.userId],
+    );
+    const { address: wallet } = await ensureEscrowWallet(db, jobId);
+    chain.credit(wallet, { liege: 123457289012345678n, eth: GAS_RESERVE });
+    await api()
+      .post(`/v1/jobs/${jobId}/submit`)
+      .set(bearer(provider))
+      .send({ deliverable: "Report attached." })
+      .expect(200);
+    await api()
+      .post(`/v1/jobs/${jobId}/evaluate`)
+      .set(bearer(evaluator))
+      .send({ outcome: "accepted", rationale: "Meets the criteria." })
+      .expect(200);
+    expect(await settle(jobId)).toBe("complete");
+    expect(paid(wallet)).toContainEqual(["liege", provider.address, 123456789012345678n]);
+    expect(paid(wallet)).toContainEqual(["liege", evaluator.address, 500000000000n]);
+  });
+
   test("a failure before or after any chain call never pays twice or strands funds", async () => {
     const clean = await onchainJob("funded");
     await planAcceptance(clean.jobId);

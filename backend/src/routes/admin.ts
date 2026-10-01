@@ -224,7 +224,7 @@ adminRouter.post(
   }),
 );
 
-// A late deposit can arrive after an earlier empty sweep completed. Reopen only the two
+// A late deposit can arrive after an earlier empty sweep completed. Reopen only the client-only
 // client-only sweep rows; fixed provider/evaluator payouts are never recreated here.
 adminRouter.post(
   "/settlements/:jobId/resweep",
@@ -235,7 +235,7 @@ adminRouter.post(
       await client.query("BEGIN");
       const reopened = await client.query(
         `UPDATE escrow_payouts SET status = 'pending', nonce = NULL, signed_tx = NULL, tx_hashes = '{}', amount_raw = NULL, attempts = 0, last_error = NULL, updated_at = now()
-         WHERE job_id = $1 AND purpose IN ('usdg_sweep', 'eth_sweep') AND status IN ('skipped', 'confirmed') RETURNING purpose`,
+         WHERE job_id = $1 AND purpose IN ('usdg_sweep', 'token_sweep', 'eth_sweep') AND status IN ('skipped', 'confirmed') RETURNING purpose`,
         [jobId],
       );
       if (!reopened.rowCount)

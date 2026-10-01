@@ -18,6 +18,7 @@ export type SandboxResult = {
 const MAX_TIMEOUT_MS = 120_000;
 const MAX_OUTPUT_BYTES = 1_000_000;
 const MAX_ARTIFACT_BYTES = 5_000_000;
+const forbiddenEnvironment = /^(?:NODE_OPTIONS|NODE_PATH|LD_PRELOAD|LD_LIBRARY_PATH|DYLD_)/;
 const safeRelative = (value: string) => {
   const normalized = value.replaceAll("\\", "/");
   return normalized && !normalized.startsWith("/") && !normalized.split("/").includes("..")
@@ -34,6 +35,9 @@ export async function runSandboxed(input: {
   timeoutMs?: number;
   maxOutputBytes?: number;
 }): Promise<SandboxResult> {
+  for (const key of Object.keys(input.env ?? {}))
+    if (forbiddenEnvironment.test(key))
+      throw new Error(`Unsafe runner environment variable: ${key}`);
   const runId = randomUUID();
   const timeoutMs = Math.min(Math.max(input.timeoutMs ?? 30_000, 100), MAX_TIMEOUT_MS);
   const maxOutputBytes = Math.min(
