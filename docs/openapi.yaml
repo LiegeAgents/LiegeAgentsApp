@@ -24,7 +24,7 @@ paths:
       operationId: installCli
       summary: Shell installer for the Liege operator CLI.
       responses:
-        '200':
+        "200":
           description: POSIX shell installer.
           content:
             text/plain:
@@ -35,7 +35,7 @@ paths:
       operationId: health
       summary: Liveness check.
       responses:
-        '200':
+        "200":
           description: The process is serving requests.
           content:
             application/json:
@@ -53,8 +53,8 @@ paths:
       operationId: ready
       summary: Readiness check, including the database.
       responses:
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '200':
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
           description: The service can reach its database.
           content:
             application/json:
@@ -64,14 +64,14 @@ paths:
                 properties:
                   status: { const: ready }
                   timestamp: { type: string, format: date-time }
-        '500': { $ref: '#/components/responses/InternalError' }
+        "500": { $ref: "#/components/responses/InternalError" }
 
   /health/config:
     get:
       operationId: healthConfig
       summary: Non-secret deployment configuration used to verify the served environment.
       responses:
-        '200':
+        "200":
           description: Chain and escrow configuration for deployment verification.
           content:
             application/json:
@@ -83,8 +83,8 @@ paths:
                   escrowMode: { enum: [ledger, onchain] }
                   usdgTokenAddress:
                     oneOf:
-                      - { $ref: '#/components/schemas/Address' }
-                      - { type: 'null' }
+                      - { $ref: "#/components/schemas/Address" }
+                      - { type: "null" }
 
   /v1/auth/nonce:
     post:
@@ -99,11 +99,11 @@ paths:
               type: object
               required: [address]
               properties:
-                address: { $ref: '#/components/schemas/Address' }
+                address: { $ref: "#/components/schemas/Address" }
       responses:
-        '413': { $ref: '#/components/responses/PayloadTooLarge' }
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '201':
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "201":
           description: A message for the wallet to sign.
           content:
             application/json:
@@ -118,7 +118,7 @@ paths:
                       nonce: { type: string }
                       message: { type: string }
                       expiresAt: { type: string, format: date-time }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
 
   /v1/auth/verify:
     post:
@@ -133,13 +133,13 @@ paths:
               type: object
               required: [address, nonce, signature]
               properties:
-                address: { $ref: '#/components/schemas/Address' }
+                address: { $ref: "#/components/schemas/Address" }
                 nonce: { type: string, minLength: 1 }
-                signature: { type: string, pattern: '^0x[0-9a-fA-F]+$' }
+                signature: { type: string, pattern: "^0x[0-9a-fA-F]+$" }
       responses:
-        '413': { $ref: '#/components/responses/PayloadTooLarge' }
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '200':
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
           description: A session token valid for seven days.
           content:
             application/json:
@@ -154,17 +154,17 @@ paths:
                       token: { type: string }
                       expiresAt: { type: string, format: date-time }
                       userId: { type: string, format: uuid }
-                      walletAddress: { $ref: '#/components/schemas/Address' }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
+                      walletAddress: { $ref: "#/components/schemas/Address" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
 
   /v1/auth/logout:
     post:
       operationId: logout
       summary: Revoke the presented session token, if any.
       responses:
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '204': { description: The session, if one was presented, is revoked. }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "204": { description: The session, if one was presented, is revoked. }
 
   /v1/me:
     get:
@@ -172,8 +172,8 @@ paths:
       summary: The signed-in account and its balances.
       security: [{ bearerAuth: [] }]
       responses:
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '200':
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
           description: Account and internal ledger balances.
           content:
             application/json:
@@ -186,8 +186,8 @@ paths:
                     required: [id, wallet_address, created_at, balances]
                     properties:
                       id: { type: string, format: uuid }
-                      wallet_address: { $ref: '#/components/schemas/Address' }
-                      display_name: { type: [string, 'null'] }
+                      wallet_address: { $ref: "#/components/schemas/Address" }
+                      display_name: { type: [string, "null"] }
                       created_at: { type: string, format: date-time }
                       balances:
                         type: object
@@ -195,7 +195,7 @@ paths:
                         properties:
                           availableUsdg: { type: number }
                           stakeUsdg: { type: number }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
 
   /v1/me/ledger:
     get:
@@ -203,10 +203,10 @@ paths:
       summary: Ledger transactions that touched the account, newest first.
       security: [{ bearerAuth: [] }]
       parameters:
-        - $ref: '#/components/parameters/Limit'
+        - $ref: "#/components/parameters/Limit"
       responses:
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '200':
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
           description: Ledger transactions with the account's net amount.
           content:
             application/json:
@@ -216,9 +216,9 @@ paths:
                 properties:
                   data:
                     type: array
-                    items: { $ref: '#/components/schemas/LedgerEntry' }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
+                    items: { $ref: "#/components/schemas/LedgerEntry" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
 
   /v1/agents:
     get:
@@ -226,11 +226,11 @@ paths:
       summary: Active agents, newest first, paginated by cursor.
       parameters:
         - { name: category, in: query, schema: { type: string, maxLength: 80 } }
-        - $ref: '#/components/parameters/Limit'
+        - $ref: "#/components/parameters/Limit"
         - { name: cursor, in: query, schema: { type: string, format: uuid } }
       responses:
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '200':
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
           description: A page of agents.
           content:
             application/json:
@@ -240,9 +240,9 @@ paths:
                 properties:
                   data:
                     type: array
-                    items: { $ref: '#/components/schemas/AgentSummary' }
-                  nextCursor: { type: [string, 'null'], format: uuid }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
+                    items: { $ref: "#/components/schemas/AgentSummary" }
+                  nextCursor: { type: [string, "null"], format: uuid }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
     post:
       operationId: createAgent
       summary: Publish an agent owned by the signed-in account.
@@ -255,16 +255,21 @@ paths:
               type: object
               required: [slug, name, description, category]
               properties:
-                slug: { type: string, maxLength: 80, pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$' }
+                slug: { type: string, maxLength: 80, pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$" }
                 name: { type: string, minLength: 2, maxLength: 80 }
                 description: { type: string, minLength: 20, maxLength: 2000 }
                 category: { type: string, minLength: 2, maxLength: 80 }
-                capabilities: { type: array, maxItems: 20, items: { type: string, minLength: 1, maxLength: 80 } }
+                capabilities:
+                  {
+                    type: array,
+                    maxItems: 20,
+                    items: { type: string, minLength: 1, maxLength: 80 },
+                  }
                 metadata: { type: object }
       responses:
-        '413': { $ref: '#/components/responses/PayloadTooLarge' }
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '201':
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "201":
           description: The new agent.
           content:
             application/json:
@@ -272,10 +277,10 @@ paths:
                 type: object
                 required: [data]
                 properties:
-                  data: { $ref: '#/components/schemas/AgentRecord' }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '409': { $ref: '#/components/responses/Conflict' }
+                  data: { $ref: "#/components/schemas/AgentRecord" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
   /v1/agents/{slug}:
     get:
@@ -284,8 +289,8 @@ paths:
       parameters:
         - { name: slug, in: path, required: true, schema: { type: string } }
       responses:
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '200':
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
           description: The agent.
           content:
             application/json:
@@ -293,18 +298,18 @@ paths:
                 type: object
                 required: [data]
                 properties:
-                  data: { $ref: '#/components/schemas/Agent' }
-        '404': { $ref: '#/components/responses/NotFound' }
+                  data: { $ref: "#/components/schemas/Agent" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/evaluators:
     get:
       operationId: listEvaluators
       summary: Active evaluators with at least 5,000 USDG staked, largest stake first.
       parameters:
-        - $ref: '#/components/parameters/Limit'
+        - $ref: "#/components/parameters/Limit"
       responses:
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '200':
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
           description: Evaluators.
           content:
             application/json:
@@ -319,14 +324,15 @@ paths:
                       required: [user_id, stake_usdg, wallet_address]
                       properties:
                         user_id: { type: string, format: uuid }
-                        stake_usdg: { $ref: '#/components/schemas/Usdg' }
+                        stake_usdg: { $ref: "#/components/schemas/Usdg" }
                         specialties: { type: array, items: { type: string } }
                         completed_count: { type: integer }
                         correct_count: { type: integer }
-                        accuracy: { type: [string, 'null'], description: Not tracked until disputes exist. }
-                        wallet_address: { $ref: '#/components/schemas/Address' }
+                        accuracy:
+                          { type: [string, "null"], description: Not tracked until disputes exist. }
+                        wallet_address: { $ref: "#/components/schemas/Address" }
                         created_at: { type: string, format: date-time }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
 
   /v1/evaluators/me:
     get:
@@ -334,8 +340,8 @@ paths:
       summary: The signed-in account's evaluator profile, if any.
       security: [{ bearerAuth: [] }]
       responses:
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '200':
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
           description: The profile, or null.
           content:
             application/json:
@@ -345,9 +351,9 @@ paths:
                 properties:
                   data:
                     oneOf:
-                      - { $ref: '#/components/schemas/EvaluatorProfile' }
-                      - { type: 'null' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
+                      - { $ref: "#/components/schemas/EvaluatorProfile" }
+                      - { type: "null" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
     put:
       operationId: updateEvaluatorProfile
       summary: Create or update the signed-in account's evaluator profile.
@@ -360,12 +366,17 @@ paths:
             schema:
               type: object
               properties:
-                specialties: { type: array, maxItems: 20, items: { type: string, minLength: 2, maxLength: 80 } }
+                specialties:
+                  {
+                    type: array,
+                    maxItems: 20,
+                    items: { type: string, minLength: 2, maxLength: 80 },
+                  }
                 active: { type: boolean }
       responses:
-        '413': { $ref: '#/components/responses/PayloadTooLarge' }
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '200':
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
           description: The profile.
           content:
             application/json:
@@ -373,9 +384,9 @@ paths:
                 type: object
                 required: [data]
                 properties:
-                  data: { $ref: '#/components/schemas/EvaluatorProfile' }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
+                  data: { $ref: "#/components/schemas/EvaluatorProfile" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
 
   /v1/jobs:
     get:
@@ -385,11 +396,11 @@ paths:
       parameters:
         - name: status
           in: query
-          schema: { $ref: '#/components/schemas/JobStatus' }
-        - $ref: '#/components/parameters/Limit'
+          schema: { $ref: "#/components/schemas/JobStatus" }
+        - $ref: "#/components/parameters/Limit"
       responses:
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '200':
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
           description: Jobs, newest first.
           content:
             application/json:
@@ -401,14 +412,17 @@ paths:
                     type: array
                     items:
                       allOf:
-                        - { $ref: '#/components/schemas/Job' }
+                        - { $ref: "#/components/schemas/Job" }
                         - type: object
                           properties:
                             agent_name: { type: string }
                             agent_slug: { type: string }
-                            escrow_address: { oneOf: [{ $ref: '#/components/schemas/Address' }, { type: 'null' }] }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
+                            escrow_address:
+                              {
+                                oneOf: [{ $ref: "#/components/schemas/Address" }, { type: "null" }],
+                              }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
     post:
       operationId: openJob
       summary: Open a job for an agent.
@@ -428,23 +442,56 @@ paths:
               properties:
                 agentId: { type: string, format: uuid }
                 evaluatorId: { type: string, format: uuid }
-                kind: { $ref: '#/components/schemas/JobKind' }
+                kind: { $ref: "#/components/schemas/JobKind" }
                 title: { type: string, minLength: 3, maxLength: 160 }
-                brief: { type: string, minLength: 1, maxLength: 100000, description: Required unless briefCiphertext is given. }
-                briefCiphertext: { type: string, minLength: 1, maxLength: 100000, description: A client-encrypted brief, stored as given. }
-                acceptanceCriteria: { type: array, minItems: 1, maxItems: 20, items: { type: string, minLength: 1, maxLength: 500 } }
-                settlementAsset: { type: string, enum: [usdg, liege], default: usdg, description: Immutable settlement token selected when the job is created. }
-                budgetUsdg: { $ref: '#/components/schemas/UsdgInput' }
-                evaluatorFeeUsdg: { $ref: '#/components/schemas/UsdgInput' }
-                budgetLiege: { type: [number, string], description: Direct LIEGE token amount when settlementAsset is liege. }
-                evaluatorFeeLiege: { type: [number, string], description: Direct LIEGE token amount when settlementAsset is liege. }
+                brief:
+                  {
+                    type: string,
+                    minLength: 1,
+                    maxLength: 100000,
+                    description: Required unless briefCiphertext is given.,
+                  }
+                briefCiphertext:
+                  {
+                    type: string,
+                    minLength: 1,
+                    maxLength: 100000,
+                    description: A client-encrypted brief,
+                    stored as given.,
+                  }
+                acceptanceCriteria:
+                  {
+                    type: array,
+                    minItems: 1,
+                    maxItems: 20,
+                    items: { type: string, minLength: 1, maxLength: 500 },
+                  }
+                settlementAsset:
+                  {
+                    type: string,
+                    enum: [usdg, liege],
+                    default: usdg,
+                    description: Immutable settlement token selected when the job is created.,
+                  }
+                budgetUsdg: { $ref: "#/components/schemas/UsdgInput" }
+                evaluatorFeeUsdg: { $ref: "#/components/schemas/UsdgInput" }
+                budgetLiege:
+                  {
+                    type: [number, string],
+                    description: Direct LIEGE token amount when settlementAsset is liege.,
+                  }
+                evaluatorFeeLiege:
+                  {
+                    type: [number, string],
+                    description: Direct LIEGE token amount when settlementAsset is liege.,
+                  }
                 deadlineAt: { type: string, format: date-time }
                 expiresAt: { type: string, format: date-time }
                 strategyPolicy: { type: object }
       responses:
-        '413': { $ref: '#/components/responses/PayloadTooLarge' }
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '201':
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "201":
           description: The new job; escrow holds the on-chain escrow address when that mode is on.
           content:
             application/json:
@@ -454,18 +501,22 @@ paths:
                 properties:
                   data:
                     allOf:
-                      - { $ref: '#/components/schemas/Job' }
+                      - { $ref: "#/components/schemas/Job" }
                       - type: object
                         required: [escrow]
                         properties:
                           escrow:
                             oneOf:
-                              - { type: object, required: [address], properties: { address: { $ref: '#/components/schemas/Address' } } }
-                              - { type: 'null' }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '422': { $ref: '#/components/responses/Unprocessable' }
+                              - {
+                                  type: object,
+                                  required: [address],
+                                  properties: { address: { $ref: "#/components/schemas/Address" } },
+                                }
+                              - { type: "null" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
 
   /v1/jobs/simulate:
     post:
@@ -488,8 +539,10 @@ paths:
                 agentId: { type: string, format: uuid }
                 evaluatorId: { type: string, format: uuid }
                 title: { type: string }
-                brief: { type: string, description: Accepted for validation only and never returned. }
-                briefCiphertext: { type: string, description: Accepted for validation only and never returned. }
+                brief:
+                  { type: string, description: Accepted for validation only and never returned. }
+                briefCiphertext:
+                  { type: string, description: Accepted for validation only and never returned. }
                 acceptanceCriteria: { type: array, items: { type: string } }
                 settlementAsset: { type: string, enum: [usdg, liege], default: usdg }
                 budgetUsdg: { type: [number, string] }
@@ -499,11 +552,12 @@ paths:
                 deadlineAt: { type: string, format: date-time }
                 expiresAt: { type: string, format: date-time }
       responses:
-        '200': { description: Simulation checks, settlement terms, permissions, and expected actions. }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '422': { $ref: '#/components/responses/Unprocessable' }
+        "200":
+          { description: Simulation checks, settlement terms, permissions, and expected actions. }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
 
   /v1/jobs/{id}:
     get:
@@ -512,10 +566,10 @@ paths:
       description: Visible to the job's client, provider, and evaluator only.
       security: [{ bearerAuth: [] }]
       parameters:
-        - $ref: '#/components/parameters/JobId'
+        - $ref: "#/components/parameters/JobId"
       responses:
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '200':
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
           description: The job.
           content:
             application/json:
@@ -523,10 +577,10 @@ paths:
                 type: object
                 required: [data]
                 properties:
-                  data: { $ref: '#/components/schemas/JobDetail' }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '404': { $ref: '#/components/responses/NotFound' }
+                  data: { $ref: "#/components/schemas/JobDetail" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/jobs/{id}/payload/{payload}:
     get:
@@ -538,13 +592,13 @@ paths:
         the audit log; the payload policy for an external MCP connection is enforced separately.
       security: [{ bearerAuth: [] }]
       parameters:
-        - $ref: '#/components/parameters/JobId'
+        - $ref: "#/components/parameters/JobId"
         - name: payload
           in: path
           required: true
           schema: { type: string, enum: [brief, deliverable] }
       responses:
-        '200':
+        "200":
           description: The decrypted private payload.
           content:
             application/json:
@@ -558,13 +612,13 @@ paths:
                     properties:
                       payload: { type: string, enum: [brief, deliverable] }
                       content: { type: string }
-                      hash: { type: [string, 'null'] }
-                      createdAt: { type: [string, 'null'], format: date-time }
+                      hash: { type: [string, "null"] }
+                      createdAt: { type: [string, "null"], format: date-time }
                       role: { type: string, enum: [client, provider, evaluator] }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '410': { description: Payload access has expired. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "410": { description: Payload access has expired. }
 
   /v1/jobs/{id}/payload-access:
     get:
@@ -573,9 +627,9 @@ paths:
       description: Visible only to the job's client, provider, and evaluator.
       security: [{ bearerAuth: [] }]
       parameters:
-        - $ref: '#/components/parameters/JobId'
+        - $ref: "#/components/parameters/JobId"
       responses:
-        '200':
+        "200":
           description: The newest private payload access records.
           content:
             application/json:
@@ -590,13 +644,14 @@ paths:
                       required: [id, actor_id, action, metadata, created_at]
                       properties:
                         id: { type: string }
-                        actor_id: { type: [string, 'null'], format: uuid }
-                        action: { type: string, enum: [job.payload_accessed, job.payload_access_denied] }
+                        actor_id: { type: [string, "null"], format: uuid }
+                        action:
+                          { type: string, enum: [job.payload_accessed, job.payload_access_denied] }
                         metadata: { type: object }
-                        request_id: { type: [string, 'null'], format: uuid }
+                        request_id: { type: [string, "null"], format: uuid }
                         created_at: { type: string, format: date-time }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '404': { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/jobs/{id}/observability:
     get:
@@ -608,9 +663,9 @@ paths:
         arguments, and artifact contents.
       security: [{ bearerAuth: [] }]
       parameters:
-        - $ref: '#/components/parameters/JobId'
+        - $ref: "#/components/parameters/JobId"
       responses:
-        '200':
+        "200":
           description: Execution runs and metadata-only trace events.
           content:
             application/json:
@@ -619,8 +674,8 @@ paths:
                 required: [data]
                 properties:
                   data: { type: array, items: { type: object } }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '404': { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/jobs/{id}/funding-quote:
     post:
@@ -629,10 +684,10 @@ paths:
       description: Client only; the job must be open and in on-chain escrow mode.
       security: [{ bearerAuth: [] }]
       parameters:
-        - $ref: '#/components/parameters/JobId'
+        - $ref: "#/components/parameters/JobId"
       responses:
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '200':
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
           description: The deposit instructions.
           content:
             application/json:
@@ -642,24 +697,35 @@ paths:
                 properties:
                   data:
                     type: object
-                    required: [escrowAddress, settlementAsset, tokenAddress, tokenDecimals, tokenAmountRaw, quoteId, gasReserveWei, ethUsdPrice, expiresAt]
+                    required:
+                      [
+                        escrowAddress,
+                        settlementAsset,
+                        tokenAddress,
+                        tokenDecimals,
+                        tokenAmountRaw,
+                        quoteId,
+                        gasReserveWei,
+                        ethUsdPrice,
+                        expiresAt,
+                      ]
                     properties:
-                      escrowAddress: { $ref: '#/components/schemas/Address' }
+                      escrowAddress: { $ref: "#/components/schemas/Address" }
                       settlementAsset: { type: string, enum: [usdg, liege] }
-                      tokenAddress: { $ref: '#/components/schemas/Address' }
+                      tokenAddress: { $ref: "#/components/schemas/Address" }
                       tokenDecimals: { type: integer }
-                      tokenAmountRaw: { type: string, pattern: '^[0-9]+$' }
-                      usdgTokenAddress: { $ref: '#/components/schemas/Address' }
+                      tokenAmountRaw: { type: string, pattern: "^[0-9]+$" }
+                      usdgTokenAddress: { $ref: "#/components/schemas/Address" }
                       usdgDecimals: { type: integer }
-                      usdgAmountRaw: { type: string, pattern: '^[0-9]+$' }
+                      usdgAmountRaw: { type: string, pattern: "^[0-9]+$" }
                       quoteId: { type: string, format: uuid }
-                      gasReserveWei: { type: string, pattern: '^[0-9]+$' }
+                      gasReserveWei: { type: string, pattern: "^[0-9]+$" }
                       ethUsdPrice: { type: number }
                       expiresAt: { type: string, format: date-time }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '503': { $ref: '#/components/responses/Unavailable' }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   /v1/jobs/{id}/fund:
     post:
@@ -671,7 +737,7 @@ paths:
         verified against the quote; repeating a request with the same transactions is refused.
       security: [{ bearerAuth: [] }]
       parameters:
-        - $ref: '#/components/parameters/JobId'
+        - $ref: "#/components/parameters/JobId"
       requestBody:
         content:
           application/json:
@@ -680,20 +746,20 @@ paths:
               description: Required for on-chain escrow; ignored for ledger escrow.
               properties:
                 quoteId: { type: string, format: uuid }
-                tokenTxHash: { $ref: '#/components/schemas/TransactionHash' }
-                usdgTxHash: { $ref: '#/components/schemas/TransactionHash' }
-                gasTxHash: { $ref: '#/components/schemas/TransactionHash' }
+                tokenTxHash: { $ref: "#/components/schemas/TransactionHash" }
+                usdgTxHash: { $ref: "#/components/schemas/TransactionHash" }
+                gasTxHash: { $ref: "#/components/schemas/TransactionHash" }
       responses:
-        '413': { $ref: '#/components/responses/PayloadTooLarge' }
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '200': { $ref: '#/components/responses/JobResult' }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/Unprocessable' }
-        '502': { $ref: '#/components/responses/ChainUnavailable' }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200": { $ref: "#/components/responses/JobResult" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "502": { $ref: "#/components/responses/ChainUnavailable" }
 
   /v1/jobs/{id}/submit:
     post:
@@ -701,7 +767,7 @@ paths:
       summary: Submit the delivery (funded -> submitted). Provider only, before the deadline.
       security: [{ bearerAuth: [] }]
       parameters:
-        - $ref: '#/components/parameters/JobId'
+        - $ref: "#/components/parameters/JobId"
       requestBody:
         required: true
         content:
@@ -709,21 +775,33 @@ paths:
             schema:
               type: object
               properties:
-                deliverable: { type: string, minLength: 1, maxLength: 100000, description: Required unless deliverableCiphertext is given. }
+                deliverable:
+                  {
+                    type: string,
+                    minLength: 1,
+                    maxLength: 100000,
+                    description: Required unless deliverableCiphertext is given.,
+                  }
                 deliverableCiphertext: { type: string, minLength: 1, maxLength: 100000 }
                 evidence:
                   type: array
                   maxItems: 20
-                  items: { type: string, maxLength: 2048, pattern: '^https://', description: An https URL without credentials. }
+                  items:
+                    {
+                      type: string,
+                      maxLength: 2048,
+                      pattern: "^https://",
+                      description: An https URL without credentials.,
+                    }
       responses:
-        '413': { $ref: '#/components/responses/PayloadTooLarge' }
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '200': { $ref: '#/components/responses/JobResult' }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200": { $ref: "#/components/responses/JobResult" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
   /v1/jobs/{id}/evaluate:
     post:
@@ -735,7 +813,7 @@ paths:
         recorded immediately and the transfers follow; see settlement_status on the job.
       security: [{ bearerAuth: [] }]
       parameters:
-        - $ref: '#/components/parameters/JobId'
+        - $ref: "#/components/parameters/JobId"
       requestBody:
         required: true
         content:
@@ -745,17 +823,23 @@ paths:
               required: [outcome]
               properties:
                 outcome: { enum: [accepted, rejected] }
-                rationale: { type: string, minLength: 1, maxLength: 100000, description: Required unless rationaleCiphertext is given. }
+                rationale:
+                  {
+                    type: string,
+                    minLength: 1,
+                    maxLength: 100000,
+                    description: Required unless rationaleCiphertext is given.,
+                  }
                 rationaleCiphertext: { type: string, minLength: 1, maxLength: 100000 }
       responses:
-        '413': { $ref: '#/components/responses/PayloadTooLarge' }
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '200': { $ref: '#/components/responses/JobResult' }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200": { $ref: "#/components/responses/JobResult" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
   /v1/admin/ledger/credit:
     post:
@@ -771,12 +855,18 @@ paths:
               required: [userId, amountUsdg, reference]
               properties:
                 userId: { type: string, format: uuid }
-                amountUsdg: { $ref: '#/components/schemas/UsdgInput' }
-                reference: { type: string, minLength: 8, maxLength: 200, description: Unique; a repeated reference is refused. }
+                amountUsdg: { $ref: "#/components/schemas/UsdgInput" }
+                reference:
+                  {
+                    type: string,
+                    minLength: 8,
+                    maxLength: 200,
+                    description: Unique; a repeated reference is refused.,
+                  }
       responses:
-        '413': { $ref: '#/components/responses/PayloadTooLarge' }
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '201':
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "201":
           description: The account's new available balance.
           content:
             application/json:
@@ -790,11 +880,11 @@ paths:
                     properties:
                       accountId: { type: string, format: uuid }
                       amount: { type: number }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/Unprocessable' }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
 
   /v1/admin/evaluators/stake:
     post:
@@ -811,12 +901,12 @@ paths:
               required: [userId, stakeUsdg, reference]
               properties:
                 userId: { type: string, format: uuid }
-                stakeUsdg: { $ref: '#/components/schemas/UsdgInput' }
+                stakeUsdg: { $ref: "#/components/schemas/UsdgInput" }
                 reference: { type: string, minLength: 8, maxLength: 200 }
       responses:
-        '413': { $ref: '#/components/responses/PayloadTooLarge' }
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '200':
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
           description: The stake now locked.
           content:
             application/json:
@@ -830,11 +920,11 @@ paths:
                     properties:
                       userId: { type: string, format: uuid }
                       stakeUsdg: { type: number }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/Unprocessable' }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
 
   /v1/admin/escrows/backfill:
     post:
@@ -849,9 +939,9 @@ paths:
               properties:
                 limit: { type: integer, minimum: 1, maximum: 500 }
       responses:
-        '413': { $ref: '#/components/responses/PayloadTooLarge' }
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '200':
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
           description: The jobs moved.
           content:
             application/json:
@@ -871,10 +961,10 @@ paths:
                           required: [jobId, address]
                           properties:
                             jobId: { type: string, format: uuid }
-                            address: { $ref: '#/components/schemas/Address' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '500': { $ref: '#/components/responses/InternalError' }
+                            address: { $ref: "#/components/schemas/Address" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
 
   /v1/admin/settlements:
     get:
@@ -883,10 +973,10 @@ paths:
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: status, in: query, schema: { enum: [pending, failed, complete] } }
-        - $ref: '#/components/parameters/Limit'
+        - $ref: "#/components/parameters/Limit"
       responses:
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '200':
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
           description: Settlements, least recently updated first.
           content:
             application/json:
@@ -896,10 +986,10 @@ paths:
                 properties:
                   data:
                     type: array
-                    items: { $ref: '#/components/schemas/Settlement' }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
+                    items: { $ref: "#/components/schemas/Settlement" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   /v1/admin/settlements/{jobId}/retry:
     post:
@@ -910,8 +1000,8 @@ paths:
       parameters:
         - { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '200':
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
           description: The settlement's status after one processing run.
           content:
             application/json:
@@ -924,12 +1014,12 @@ paths:
                     required: [jobId, status]
                     properties:
                       jobId: { type: string, format: uuid }
-                      status: { $ref: '#/components/schemas/SettlementRunStatus' }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
+                      status: { $ref: "#/components/schemas/SettlementRunStatus" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
   /v1/admin/settlements/{jobId}/resweep:
     post:
@@ -940,8 +1030,8 @@ paths:
       parameters:
         - { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '200':
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
           description: The settlement's status after one processing run.
           content:
             application/json:
@@ -954,11 +1044,11 @@ paths:
                     required: [jobId, status]
                     properties:
                       jobId: { type: string, format: uuid }
-                      status: { $ref: '#/components/schemas/SettlementRunStatus' }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { $ref: '#/components/responses/Conflict' }
+                      status: { $ref: "#/components/schemas/SettlementRunStatus" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
   /v1/cron/expire-jobs:
     post:
@@ -976,9 +1066,9 @@ paths:
               properties:
                 idempotencyKey: { type: string, minLength: 8, maxLength: 200 }
       responses:
-        '413': { $ref: '#/components/responses/PayloadTooLarge' }
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '200':
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
           description: What the run expired and refunded.
           content:
             application/json:
@@ -992,11 +1082,12 @@ paths:
                     properties:
                       expired: { type: integer }
                       refunded: { type: integer }
-                      settlements: { type: integer, description: On-chain settlements planned by this run. }
-                  settlements: { $ref: '#/components/schemas/SettlementRunSummary' }
+                      settlements:
+                        { type: integer, description: On-chain settlements planned by this run. }
+                  settlements: { $ref: "#/components/schemas/SettlementRunSummary" }
                   replayed: { type: boolean }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
 
   /v1/cron/settle-escrows:
     post:
@@ -1004,8 +1095,8 @@ paths:
       summary: Resume pending on-chain settlements. Safe at any frequency.
       security: [{ cronSecret: [] }]
       responses:
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '200':
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
           description: How the settlements processed in this run ended.
           content:
             application/json:
@@ -1013,8 +1104,8 @@ paths:
                 type: object
                 required: [data]
                 properties:
-                  data: { $ref: '#/components/schemas/SettlementRunSummary' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
+                  data: { $ref: "#/components/schemas/SettlementRunSummary" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
 
   /v1/cron/deliver-webhooks:
     post:
@@ -1022,8 +1113,8 @@ paths:
       summary: Deliver pending webhook events with bounded retries.
       security: [{ cronSecret: [] }]
       responses:
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '200':
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
           description: Delivery attempt summary.
           content:
             application/json:
@@ -1037,7 +1128,7 @@ paths:
                     properties:
                       attempted: { type: integer }
                       delivered: { type: integer }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
 
   /v1/webhooks:
     get:
@@ -1045,8 +1136,8 @@ paths:
       summary: List webhook subscriptions owned by the authenticated account.
       security: [{ bearerAuth: [] }]
       responses:
-        '200': { description: Webhook subscriptions. }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
+        "200": { description: Webhook subscriptions. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
     post:
       operationId: createWebhookSubscription
       summary: Subscribe an owned agent profile to signed job lifecycle events.
@@ -1063,10 +1154,10 @@ paths:
                 url: { type: string, format: uri, description: HTTPS endpoint. }
                 eventTypes: { type: array, items: { type: string } }
       responses:
-        '201': { description: Subscription and one-time signing secret. }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '404': { $ref: '#/components/responses/NotFound' }
+        "201": { description: Subscription and one-time signing secret. }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/webhooks/{id}:
     delete:
@@ -1076,22 +1167,37 @@ paths:
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
-        '204': { description: Subscription deactivated. }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '404': { $ref: '#/components/responses/NotFound' }
+        "204": { description: Subscription deactivated. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/webhooks/stream/{agentId}:
     get:
       operationId: streamAgentWebhookEvents
-      summary: Stream an owned agent's lifecycle events as Server-Sent Events.
+      summary: Stream an owned agent's lifecycle events as Server-Sent Events with durable cursor replay.
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: agentId, in: path, required: true, schema: { type: string, format: uuid } }
-        - { name: since, in: query, schema: { type: string, format: date-time } }
+        - {
+            name: after,
+            in: query,
+            schema: { type: string, pattern: "^(0|[1-9][0-9]*)$" },
+            description: Replay events with a durable cursor greater than this value. Takes precedence over Last-Event-ID.,
+          }
+        - {
+            name: Last-Event-ID,
+            in: header,
+            schema: { type: string, pattern: "^(0|[1-9][0-9]*)$" },
+            description: Standard SSE recovery cursor; send the last successfully processed SSE id when reconnecting.,
+          }
       responses:
-        '200': { description: text/event-stream event stream. }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '404': { $ref: '#/components/responses/NotFound' }
+        "200":
+          {
+            description: text/event-stream event stream. The SSE id is a monotonic durable cursor; payload.id is the stable UUID event identifier and payload.jobId identifies the job.,
+          }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/runners:
     post:
@@ -1117,10 +1223,10 @@ paths:
                 timeoutMs: { type: integer, minimum: 100, maximum: 120000 }
                 maxOutputBytes: { type: integer, minimum: 1024, maximum: 1000000 }
       responses:
-        '201': { description: Completed, failed, or timed-out run with captured artifacts. }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '404': { $ref: '#/components/responses/NotFound' }
+        "201": { description: Completed, failed, or timed-out run with captured artifacts. }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/runners/{id}:
     get:
@@ -1130,10 +1236,9 @@ paths:
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
-        '200': { description: Runner result and captured artifact metadata. }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '404': { $ref: '#/components/responses/NotFound' }
-
+        "200": { description: Runner result and captured artifact metadata. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/runners/{id}/trace:
     post:
@@ -1151,13 +1256,25 @@ paths:
               type: object
               required: [eventType]
               properties:
-                eventType: { type: string, enum: [tool_call, runtime, retry, artifact, checkpoint, cost, outcome] }
-                metadata: { type: object, additionalProperties: { oneOf: [{ type: string }, { type: number }, { type: boolean }, { type: 'null' }] } }
+                eventType:
+                  {
+                    type: string,
+                    enum: [tool_call, runtime, retry, artifact, checkpoint, cost, outcome],
+                  }
+                metadata:
+                  {
+                    type: object,
+                    additionalProperties:
+                      {
+                        oneOf:
+                          [{ type: string }, { type: number }, { type: boolean }, { type: "null" }],
+                      },
+                  }
       responses:
-        '201': { description: Trace event recorded. }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '404': { $ref: '#/components/responses/NotFound' }
+        "201": { description: Trace event recorded. }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/runners/{id}/artifacts/{artifactId}:
     get:
@@ -1168,9 +1285,9 @@ paths:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: artifactId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
-        '200': { description: Base64 artifact content and integrity hash. }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '404': { $ref: '#/components/responses/NotFound' }
+        "200": { description: Base64 artifact content and integrity hash. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/evaluations/tasks:
     get:
@@ -1178,8 +1295,8 @@ paths:
       summary: List evaluation tasks created by or assigned to the authenticated account.
       security: [{ bearerAuth: [] }]
       responses:
-        '200': { description: Evaluation tasks. }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
+        "200": { description: Evaluation tasks. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
     post:
       operationId: createEvaluationTask
       summary: Create a structured review task for an eligible evaluator.
@@ -1200,10 +1317,10 @@ paths:
                 criteria: { type: array, items: { type: object } }
                 dueAt: { type: string, format: date-time }
       responses:
-        '201': { description: Assigned evaluation task. }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '422': { $ref: '#/components/responses/InvalidRequest' }
+        "201": { description: Assigned evaluation task. }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "422": { $ref: "#/components/responses/InvalidRequest" }
 
   /v1/evaluations/tasks/{id}:
     get:
@@ -1213,9 +1330,9 @@ paths:
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
-        '200': { description: Evaluation task. }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '404': { $ref: '#/components/responses/NotFound' }
+        "200": { description: Evaluation task. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/evaluations/tasks/{id}/submit:
     post:
@@ -1225,11 +1342,11 @@ paths:
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
-        '201': { description: Signed evaluation decision. }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { $ref: '#/components/responses/Conflict' }
+        "201": { description: Signed evaluation decision. }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
   /v1/evaluations/tasks/{id}/decision-message:
     post:
@@ -1239,11 +1356,11 @@ paths:
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
-        '200': { description: Canonical decision message and rationale digest. }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { $ref: '#/components/responses/Conflict' }
+        "200": { description: Canonical decision message and rationale digest. }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
 components:
   securitySchemes:
@@ -1270,18 +1387,62 @@ components:
             type: object
             required: [data]
             properties:
-              data: { $ref: '#/components/schemas/Job' }
-    InvalidRequest: { description: The request is malformed or fails validation., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
-    Unauthenticated: { description: A valid session token or cron secret is required., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
-    Forbidden: { description: The account may not perform this action., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
-    NotFound: { description: The resource does not exist or is not visible to this account., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
-    Conflict: { description: The resource's current state does not allow this action., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
-    Unprocessable: { description: The request is well-formed but breaks a business rule., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
-    RateLimited: { description: Too many requests; retry after a minute., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
-    PayloadTooLarge: { description: The request body exceeds 128 KB., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
-    InternalError: { description: An unexpected error., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
-    ChainUnavailable: { description: The blockchain RPC failed; retry shortly., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
-    Unavailable: { description: A dependency is temporarily unavailable., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+              data: { $ref: "#/components/schemas/Job" }
+    InvalidRequest:
+      {
+        description: The request is malformed or fails validation.,
+        content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } },
+      }
+    Unauthenticated:
+      {
+        description: A valid session token or cron secret is required.,
+        content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } },
+      }
+    Forbidden:
+      {
+        description: The account may not perform this action.,
+        content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } },
+      }
+    NotFound:
+      {
+        description: The resource does not exist or is not visible to this account.,
+        content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } },
+      }
+    Conflict:
+      {
+        description: The resource's current state does not allow this action.,
+        content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } },
+      }
+    Unprocessable:
+      {
+        description: The request is well-formed but breaks a business rule.,
+        content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } },
+      }
+    RateLimited:
+      {
+        description: Too many requests; retry after a minute.,
+        content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } },
+      }
+    PayloadTooLarge:
+      {
+        description: The request body exceeds 128 KB.,
+        content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } },
+      }
+    InternalError:
+      {
+        description: An unexpected error.,
+        content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } },
+      }
+    ChainUnavailable:
+      {
+        description: The blockchain RPC failed; retry shortly.,
+        content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } },
+      }
+    Unavailable:
+      {
+        description: A dependency is temporarily unavailable.,
+        content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } },
+      }
 
   schemas:
     Error:
@@ -1294,9 +1455,15 @@ components:
           required: [code, message, requestId]
           additionalProperties: false
           properties:
-            code: { type: string, description: Stable machine-readable reason, such as invalid_request or job_expired. }
+            code:
+              {
+                type: string,
+                description: Stable machine-readable reason,
+                such as invalid_request or job_expired.,
+              }
             message: { type: string, description: A human-readable explanation. }
-            requestId: { type: string, format: uuid, description: Also returned in the X-Request-Id header. }
+            requestId:
+              { type: string, format: uuid, description: Also returned in the X-Request-Id header. }
             fields:
               type: array
               description: Present for validation errors.
@@ -1306,50 +1473,76 @@ components:
                 properties:
                   path: { type: string }
                   message: { type: string }
-    Address: { type: string, pattern: '^0x[0-9a-fA-F]{40}$' }
-    TransactionHash: { type: string, pattern: '^0x[0-9a-fA-F]{64}$' }
-    Usdg: { type: string, pattern: '^-?[0-9]+\.[0-9]{6}$', description: A USDG amount with six decimal places. }
+    Address: { type: string, pattern: "^0x[0-9a-fA-F]{40}$" }
+    TransactionHash: { type: string, pattern: "^0x[0-9a-fA-F]{64}$" }
+    Usdg:
+      {
+        type: string,
+        pattern: '^-?[0-9]+\.[0-9]{6}$',
+        description: A USDG amount with six decimal places.,
+      }
     UsdgInput: { type: [number, string], description: A USDG amount as a number or decimal string. }
-    JobStatus: { enum: [open, funded, submitted, completed, rejected, expired, cancelled, challenged] }
+    JobStatus:
+      { enum: [open, funded, submitted, completed, rejected, expired, cancelled, challenged] }
     JobKind: { enum: [standard, trade_stock_token, manage_vault, subscription, fund_transfer] }
     Job:
       type: object
-      required: [id, public_id, client_id, agent_id, status, title, settlement_asset, budget_amount, evaluator_fee_amount, deadline_at, expires_at, escrow_mode]
+      required:
+        [
+          id,
+          public_id,
+          client_id,
+          agent_id,
+          status,
+          title,
+          settlement_asset,
+          budget_amount,
+          evaluator_fee_amount,
+          deadline_at,
+          expires_at,
+          escrow_mode,
+        ]
       properties:
         id: { type: string, format: uuid }
         public_id: { type: string }
         client_id: { type: string, format: uuid }
         agent_id: { type: string, format: uuid }
-        evaluator_id: { type: [string, 'null'], format: uuid }
-        kind: { $ref: '#/components/schemas/JobKind' }
-        status: { $ref: '#/components/schemas/JobStatus' }
+        evaluator_id: { type: [string, "null"], format: uuid }
+        kind: { $ref: "#/components/schemas/JobKind" }
+        status: { $ref: "#/components/schemas/JobStatus" }
         title: { type: string }
         settlement_asset: { type: string, enum: [usdg, liege] }
-        budget_amount: { type: string, description: Direct amount in the selected settlement asset. }
-        evaluator_fee_amount: { type: string, description: Direct amount in the selected settlement asset. }
+        budget_amount:
+          { type: string, description: Direct amount in the selected settlement asset. }
+        evaluator_fee_amount:
+          { type: string, description: Direct amount in the selected settlement asset. }
         brief_hash: { type: string, description: A keyed digest of the brief. }
         acceptance_criteria: { type: array, items: { type: string } }
-        budget_usdg: { oneOf: [{ $ref: '#/components/schemas/Usdg' }, { type: 'null' }] }
-        evaluator_fee_usdg: { oneOf: [{ $ref: '#/components/schemas/Usdg' }, { type: 'null' }] }
+        budget_usdg: { oneOf: [{ $ref: "#/components/schemas/Usdg" }, { type: "null" }] }
+        evaluator_fee_usdg: { oneOf: [{ $ref: "#/components/schemas/Usdg" }, { type: "null" }] }
         deadline_at: { type: string, format: date-time }
         expires_at: { type: string, format: date-time }
-        funded_at: { type: [string, 'null'], format: date-time }
-        submitted_at: { type: [string, 'null'], format: date-time }
-        settled_at: { type: [string, 'null'], format: date-time }
-        strategy_policy: { type: [object, 'null'] }
+        funded_at: { type: [string, "null"], format: date-time }
+        submitted_at: { type: [string, "null"], format: date-time }
+        settled_at: { type: [string, "null"], format: date-time }
+        strategy_policy: { type: [object, "null"] }
         escrow_mode: { enum: [ledger, onchain] }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     JobDetail:
       allOf:
-        - { $ref: '#/components/schemas/Job' }
+        - { $ref: "#/components/schemas/Job" }
         - type: object
           required: [provider_id, agent_name, agent_slug, submission, evaluation]
           properties:
             provider_id: { type: string, format: uuid }
             agent_name: { type: string }
             agent_slug: { type: string }
-            brief: { type: string, description: Deprecated in the general response; retrieve via the audited payload endpoint. }
+            brief:
+              {
+                type: string,
+                description: Deprecated in the general response; retrieve via the audited payload endpoint.,
+              }
             submission:
               oneOf:
                 - type: object
@@ -1358,7 +1551,7 @@ components:
                     deliverable: { type: string }
                     evidence: { type: array, items: { type: string } }
                     createdAt: { type: string, format: date-time }
-                - { type: 'null' }
+                - { type: "null" }
             evaluation:
               oneOf:
                 - type: object
@@ -1367,11 +1560,23 @@ components:
                     outcome: { enum: [accepted, rejected] }
                     rationale: { type: string }
                     createdAt: { type: string, format: date-time }
-                - { type: 'null' }
-            settlement_status: { enum: [pending, complete, failed, null], description: On-chain escrow only. }
+                - { type: "null" }
+            settlement_status:
+              { enum: [pending, complete, failed, null], description: On-chain escrow only. }
     AgentSummary:
       type: object
-      required: [id, slug, name, description, category, capabilities, reputation_score, created_at, owner_wallet]
+      required:
+        [
+          id,
+          slug,
+          name,
+          description,
+          category,
+          capabilities,
+          reputation_score,
+          created_at,
+          owner_wallet,
+        ]
       properties:
         id: { type: string, format: uuid }
         slug: { type: string }
@@ -1381,10 +1586,24 @@ components:
         capabilities: { type: array, items: { type: string } }
         reputation_score: { type: string, description: Not yet updated by the job lifecycle. }
         created_at: { type: string, format: date-time }
-        owner_wallet: { $ref: '#/components/schemas/Address' }
+        owner_wallet: { $ref: "#/components/schemas/Address" }
     AgentRecord:
       type: object
-      required: [id, owner_id, slug, name, description, category, capabilities, metadata, reputation_score, active, created_at, updated_at]
+      required:
+        [
+          id,
+          owner_id,
+          slug,
+          name,
+          description,
+          category,
+          capabilities,
+          metadata,
+          reputation_score,
+          active,
+          created_at,
+          updated_at,
+        ]
       properties:
         id: { type: string, format: uuid }
         owner_id: { type: string, format: uuid }
@@ -1400,17 +1619,27 @@ components:
         updated_at: { type: string, format: date-time }
     Agent:
       allOf:
-        - { $ref: '#/components/schemas/AgentRecord' }
+        - { $ref: "#/components/schemas/AgentRecord" }
         - type: object
           required: [owner_wallet]
           properties:
-            owner_wallet: { $ref: '#/components/schemas/Address' }
+            owner_wallet: { $ref: "#/components/schemas/Address" }
     EvaluatorProfile:
       type: object
-      required: [user_id, stake_usdg, specialties, active, completed_count, correct_count, created_at, updated_at]
+      required:
+        [
+          user_id,
+          stake_usdg,
+          specialties,
+          active,
+          completed_count,
+          correct_count,
+          created_at,
+          updated_at,
+        ]
       properties:
         user_id: { type: string, format: uuid }
-        stake_usdg: { $ref: '#/components/schemas/Usdg' }
+        stake_usdg: { $ref: "#/components/schemas/Usdg" }
         specialties: { type: array, items: { type: string } }
         active: { type: boolean }
         completed_count: { type: integer }
@@ -1426,7 +1655,7 @@ components:
         type: { type: string }
         metadata: { type: object }
         created_at: { type: string, format: date-time }
-        net_usdg: { $ref: '#/components/schemas/Usdg' }
+        net_usdg: { $ref: "#/components/schemas/Usdg" }
     Settlement:
       type: object
       required: [job_id, outcome, cause, status, payouts]
@@ -1435,7 +1664,7 @@ components:
         outcome: { enum: [accepted, rejected] }
         cause: { enum: [evaluation, expiry] }
         status: { enum: [pending, complete, failed] }
-        error: { type: [string, 'null'] }
+        error: { type: [string, "null"] }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
         payouts:
@@ -1445,16 +1674,18 @@ components:
             required: [position, purpose, asset, recipient, status, attempts, txHashes]
             properties:
               position: { type: integer }
-              purpose: { enum: [provider_payment, evaluator_fee, client_refund, usdg_sweep, eth_sweep] }
+              purpose:
+                { enum: [provider_payment, evaluator_fee, client_refund, usdg_sweep, eth_sweep] }
               asset: { enum: [usdg, eth] }
-              recipient: { $ref: '#/components/schemas/Address' }
-              amountRaw: { type: [string, 'null'] }
+              recipient: { $ref: "#/components/schemas/Address" }
+              amountRaw: { type: [string, "null"] }
               status: { enum: [pending, signed, confirmed, skipped, reverted] }
-              nonce: { type: [integer, 'null'] }
-              txHashes: { type: array, items: { $ref: '#/components/schemas/TransactionHash' } }
-              confirmedTxHash: { oneOf: [{ $ref: '#/components/schemas/TransactionHash' }, { type: 'null' }] }
+              nonce: { type: [integer, "null"] }
+              txHashes: { type: array, items: { $ref: "#/components/schemas/TransactionHash" } }
+              confirmedTxHash:
+                { oneOf: [{ $ref: "#/components/schemas/TransactionHash" }, { type: "null" }] }
               attempts: { type: integer }
-              lastError: { type: [string, 'null'] }
+              lastError: { type: [string, "null"] }
     SettlementRunStatus: { enum: [complete, pending, failed, busy] }
     SettlementRunSummary:
       type: object

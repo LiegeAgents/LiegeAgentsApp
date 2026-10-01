@@ -96,7 +96,10 @@ const jobInput = z
 export const jobsRouter = Router();
 
 // Ciphertext never leaves the API. Private fields are retrieved through the audited payload route.
-const publicJob = ({ brief_ciphertext: _ciphertext, ...job }: Record<string, unknown>) => job;
+const publicJob = ({ brief_ciphertext: _ciphertext, ...job }: Record<string, unknown>) => ({
+  ...job,
+  jobId: job.id,
+});
 
 type PrivatePayload = "brief" | "deliverable";
 const payloadColumn = {
@@ -238,6 +241,7 @@ jobsRouter.get(
     response.json({
       data: {
         ...job,
+        jobId: job.id,
         brief: undefined,
         brief_ciphertext: undefined,
         submission: job.deliverable_ciphertext
