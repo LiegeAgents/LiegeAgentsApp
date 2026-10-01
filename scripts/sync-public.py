@@ -69,8 +69,9 @@ def rewrite_export(stream: bytes) -> bytes:
                 output.extend(b"\n")
                 cursor += 1
             continue
-        if line in (b"commit refs/heads/main\n", b"reset refs/heads/main\n"):
-            output.extend(line.replace(b"refs/heads/main", f"refs/heads/{PUBLIC_BRANCH}".encode()))
+        source_ref = f"refs/heads/{SOURCE_BRANCH}".encode()
+        if line in (b"commit " + source_ref + b"\n", b"reset " + source_ref + b"\n"):
+            output.extend(line.replace(source_ref, f"refs/heads/{PUBLIC_BRANCH}".encode()))
         else:
             output.extend(rewritten_identity(line))
     return bytes(output)
