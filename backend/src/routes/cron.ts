@@ -105,12 +105,9 @@ cronRouter.post(
       );
       for (const invoice of expiredInvoices.rows)
         await enqueueWebhookEvent(client, { invoiceId: invoice.id, eventType: "invoice.expired" });
-      const result = {
-        expired: expired.rowCount ?? 0,
-        invoicesExpired: expiredInvoices.rowCount ?? 0,
-        refunded,
-        settlements,
-      };
+      // Keep the established job-expiry response stable. Invoice expiry is observable through its
+      // durable lifecycle event and invoice status rather than a new field on this legacy route.
+      const result = { expired: expired.rowCount ?? 0, refunded, settlements };
       await client.query(
         "INSERT INTO cron_runs (name, idempotency_key, result) VALUES ($1,$2,$3)",
         ["expire-jobs", idempotencyKey, JSON.stringify(result)],
