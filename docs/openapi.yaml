@@ -1074,6 +1074,20 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
 
+  /v1/evaluations/tasks/{id}/decision-message:
+    post:
+      operationId: previewEvaluationDecisionMessage
+      summary: Build the exact wallet message an assigned evaluator must sign.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Canonical decision message and rationale digest. }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, description: A session token from /v1/auth/verify. }

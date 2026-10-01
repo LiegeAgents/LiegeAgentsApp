@@ -35,6 +35,7 @@ const submitInput = z.object({
   evidence: z.array(evidenceUrl).max(50).default([]),
   signature: z.string().regex(/^0x[0-9a-fA-F]+$/),
 });
+const decisionInput = submitInput.omit({ signature: true });
 
 export const evaluationRouter = Router();
 
@@ -133,6 +134,56 @@ evaluationRouter.get(
     if (!result.rowCount)
       throw new ApiError(404, "evaluation_task_not_found", "This evaluation task is unavailable.");
     response.json({ data: result.rows[0] });
+  }),
+);
+
+evaluationRouter.post(
+  "/tasks/:id/decision-message",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const id = z.string().uuid().parse(request.params.id);
+    const value = decisionInput.parse(request.body);
+    const task = await db.query<{
+      evaluator_id: string;
+      criteria: EvaluationCriterion[];
+      status: string;
+      due_at: Date;
+    }>("SELECT evaluator_id, criteria, status, due_at FROM evaluation_tasks WHERE id=$1", [id]);
+    if (!task.rowCount)
+      throw new ApiError(404, "evaluation_task_not_found", "This evaluation task is unavailable.");
+    const row = task.rows[0];
+    if (row.evaluator_id !== request.auth!.userId)
+      throw new ApiError(
+        403,
+        "not_assigned_evaluator",
+        "Only the assigned evaluator can sign this task.",
+      );
+    if (row.status !== "assigned" || row.due_at <= new Date())
+      throw new ApiError(
+        409,
+        "evaluation_closed",
+        "This evaluation task is no longer accepting decisions.",
+      );
+    const expected = new Set(row.criteria.map((item) => item.id));
+    const actual = Object.keys(value.scores);
+    if (actual.length !== expected.size || actual.some((key) => !expected.has(key)))
+      throw new ApiError(400, "invalid_scores", "Scores must include exactly every criterion.");
+    for (const item of row.criteria)
+      if (value.scores[item.id] > item.maxScore)
+        throw new ApiError(400, "invalid_score", `Score for ${item.id} exceeds its maximum.`);
+    const rationaleHash = payloadDigest(value.rationale);
+    response.json({
+      data: {
+        message: decisionMessage({
+          taskId: id,
+          outcome: value.outcome,
+          scores: value.scores,
+          rationaleHash,
+          evidence: value.evidence,
+        }),
+        rationaleHash,
+      },
+    });
   }),
 );
 
