@@ -450,6 +450,14 @@ export default function Workspace() {
                   onNotice={notify}
                 />
               )}
+              {wallet.apiSession && (
+                <AgentRulebook
+                  token="cookie"
+                  agents={allAgents}
+                  ownerAddress={wallet.session.address}
+                  onNotice={notify}
+                />
+              )}
               {wallet.apiSession && <EvaluatorSetup token="cookie" />}
               {new URLSearchParams(location.search).get("operator") === "1" &&
                 wallet.apiSession && (
@@ -1098,6 +1106,265 @@ function AgentKillSwitch({ token, agents, ownerAddress, onNotice }) {
             );
           })}
         </div>
+      )}
+    </section>
+  );
+}
+
+const ruleDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const ruleHours = Array.from({ length: 24 }, (_, hour) => hour);
+const ruleHourLabel = (hour) => `${String(hour).padStart(2, "0")}:00`;
+const browserTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+const ruleAmount = (value) => (value === "" || value == null ? null : Number(value));
+
+function rulebookForm(policy) {
+  return {
+    maxActionAmount: policy?.maxActionAmount ?? "",
+    dailyBudget: policy?.dailyBudget ?? "",
+    monthlyBudget: policy?.monthlyBudget ?? "",
+    requireHumanAbove: policy?.requireHumanAbove ?? "",
+    approvalMode: policy?.approvalMode || "always",
+    allowedAssets: (policy?.allowedAssets || []).join(", "),
+    hoursEnabled: Boolean(policy?.activeHours),
+    start: policy?.activeHours?.start ?? 9,
+    end: policy?.activeHours?.end ?? 17,
+    activeDays: policy?.activeDays || [],
+    timezone:
+      policy?.activeHours || policy?.activeDays?.length
+        ? policy.timezone || "UTC"
+        : browserTimeZone(),
+  };
+}
+
+function AgentRulebook({ token, agents, ownerAddress, onNotice }) {
+  const ownedAgents = agents.filter(
+    (agent) => agent.owner_wallet?.toLowerCase() === ownerAddress?.toLowerCase(),
+  );
+  const [agentId, setAgentId] = useState("");
+  const [policy, setPolicy] = useState(null);
+  const [form, setForm] = useState(rulebookForm(null));
+  const [saving, setSaving] = useState(false);
+  const selected = agentId || ownedAgents[0]?.id || "";
+  useEffect(() => {
+    if (!selected) return;
+    let active = true;
+    api
+      .agentAccount(token, selected)
+      .then((result) => {
+        if (!active) return;
+        setPolicy(result.data.policy);
+        setForm(rulebookForm(result.data.policy));
+      })
+      .catch((error) => onNotice(error?.message || "Could not load this agent's rules."));
+    return () => {
+      active = false;
+    };
+  }, [token, selected]);
+  const set = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  const toggleDay = (day) =>
+    setForm((current) => ({
+      ...current,
+      activeDays: current.activeDays.includes(day)
+        ? current.activeDays.filter((value) => value !== day)
+        : [...current.activeDays, day].sort(),
+    }));
+  const save = async (event) => {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      const result = await api.updateAgentPolicy(token, selected, {
+        // Rules this form does not edit are sent back unchanged.
+        allowedVenues: policy?.allowedVenues || [],
+        approvedCounterparties: policy?.approvedCounterparties || [],
+        allowedActions: policy?.allowedActions || [],
+        simulationRequired: policy?.simulationRequired ?? true,
+        maxActionAmount: ruleAmount(form.maxActionAmount),
+        dailyBudget: ruleAmount(form.dailyBudget),
+        monthlyBudget: ruleAmount(form.monthlyBudget),
+        requireHumanAbove: ruleAmount(form.requireHumanAbove),
+        approvalMode: form.approvalMode,
+        allowedAssets: form.allowedAssets
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean),
+        activeHours: form.hoursEnabled
+          ? { start: Number(form.start), end: Number(form.end) }
+          : null,
+        activeDays: form.hoursEnabled ? form.activeDays : [],
+        timezone: form.timezone,
+      });
+      setPolicy(result.data.policy);
+      setForm(rulebookForm(result.data.policy));
+      onNotice(`Rulebook saved as policy v${result.data.policy.version}.`);
+    } catch (error) {
+      onNotice(error?.message || "Could not save these rules.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <section className="settings-panel mcp-settings-panel agent-rulebook-panel">
+      <div className="mcp-settings-heading">
+        <div>
+          <span className="eyebrow">AGENT ACCOUNTS</span>
+          <h2>Rulebook</h2>
+          <p>
+            Set the limits each agent works within. Anything over your approval threshold waits for
+            you, and anything outside its active hours is refused. Every save creates a new policy
+            version, so the agent can never act on rules you have replaced.
+          </p>
+        </div>
+        {policy && <span className="rulebook-version">Policy v{policy.version}</span>}
+      </div>
+      {!ownedAgents.length ? (
+        <div className="mcp-empty-note">
+          Launch an agent profile first. Its rulebook will appear here.
+        </div>
+      ) : (
+        <form className="rulebook-form" onSubmit={save}>
+          <Field label="Agent">
+            <select value={selected} onChange={(event) => setAgentId(event.target.value)}>
+              {ownedAgents.map((agent) => (
+                <option key={agent.id} value={agent.id}>
+                  {agent.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div className="rulebook-section">
+            <h3>Spending</h3>
+            <div className="rulebook-grid">
+              <Field label="Max per action" help="USDG. Larger actions are refused.">
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={form.maxActionAmount}
+                  onChange={set("maxActionAmount")}
+                  placeholder="No limit"
+                />
+              </Field>
+              <Field label="Daily budget" help="USDG per day.">
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={form.dailyBudget}
+                  onChange={set("dailyBudget")}
+                  placeholder="No limit"
+                />
+              </Field>
+              <Field label="Monthly budget" help="USDG per month.">
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={form.monthlyBudget}
+                  onChange={set("monthlyBudget")}
+                  placeholder="No limit"
+                />
+              </Field>
+            </div>
+          </div>
+          <div className="rulebook-section">
+            <h3>Approval</h3>
+            <div className="rulebook-grid">
+              <Field label="Ask me first">
+                <select value={form.approvalMode} onChange={set("approvalMode")}>
+                  <option value="always">For every action</option>
+                  <option value="within_policy">Only above my threshold</option>
+                </select>
+              </Field>
+              <Field label="Require my approval above" help="USDG. Held for you, not refused.">
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={form.requireHumanAbove}
+                  onChange={set("requireHumanAbove")}
+                  placeholder="No threshold"
+                />
+              </Field>
+              <Field label="Allowed assets" help="Comma separated. Empty allows any asset.">
+                <input
+                  value={form.allowedAssets}
+                  onChange={set("allowedAssets")}
+                  placeholder="usdg, liege"
+                />
+              </Field>
+            </div>
+          </div>
+          <div className="rulebook-section">
+            <div className="rulebook-section-head">
+              <h3>Active hours</h3>
+              <label className="rulebook-toggle">
+                <input
+                  type="checkbox"
+                  checked={form.hoursEnabled}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, hoursEnabled: event.target.checked }))
+                  }
+                />
+                Only let this agent act during set hours
+              </label>
+            </div>
+            {form.hoursEnabled && (
+              <>
+                <div className="rulebook-grid">
+                  <Field label="From">
+                    <select value={form.start} onChange={set("start")}>
+                      {ruleHours.map((hour) => (
+                        <option key={hour} value={hour}>
+                          {ruleHourLabel(hour)}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Until" help="Earlier than From runs overnight.">
+                    <select value={form.end} onChange={set("end")}>
+                      {ruleHours.map((hour) => (
+                        <option key={hour} value={hour}>
+                          {ruleHourLabel(hour)}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Time zone">
+                    <input value={form.timezone} onChange={set("timezone")} />
+                  </Field>
+                </div>
+                <div className="rulebook-days" role="group" aria-label="Active days">
+                  {ruleDays.map((label, day) => (
+                    <button
+                      type="button"
+                      key={label}
+                      className={form.activeDays.includes(day) ? "active" : ""}
+                      aria-pressed={form.activeDays.includes(day)}
+                      onClick={() => toggleDay(day)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                  <small>
+                    {form.activeDays.length ? "Only on the selected days." : "Every day."}
+                  </small>
+                </div>
+              </>
+            )}
+          </div>
+          <div className="form-actions">
+            <Button
+              type="submit"
+              disabled={
+                saving ||
+                !selected ||
+                (form.hoursEnabled && Number(form.start) === Number(form.end))
+              }
+            >
+              {saving ? "Saving…" : "Save rulebook"}
+            </Button>
+          </div>
+        </form>
       )}
     </section>
   );

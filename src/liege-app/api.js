@@ -113,6 +113,14 @@ export const api = {
   revokeMcpConnection: (token, id) =>
     request(`/v1/mcp/connections/${encodeURIComponent(id)}`, { token, method: "DELETE" }),
   agentAccounts: (token) => request("/v1/agent-accounts", { token }),
+  agentAccount: (token, agentId) =>
+    request(`/v1/agent-accounts/${encodeURIComponent(agentId)}`, { token }),
+  updateAgentPolicy: (token, agentId, input) =>
+    request(`/v1/agent-accounts/${encodeURIComponent(agentId)}/policy`, {
+      token,
+      method: "PUT",
+      body: JSON.stringify(input),
+    }),
   controlAgentAccount: (token, agentId, input) =>
     request(`/v1/agent-accounts/${encodeURIComponent(agentId)}/control`, {
       token,

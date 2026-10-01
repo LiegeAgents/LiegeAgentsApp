@@ -2,7 +2,13 @@ import { createHash } from "node:crypto";
 import { Router } from "express";
 import { verifyMessage } from "viem";
 import { z } from "zod";
-import { agentActionDigest, canonical, normalizeAgentAction } from "../agentActions.js";
+import {
+  agentActionDigest,
+  canonical,
+  isTimeZone,
+  normalizeAgentAction,
+  ownerRuleReasons,
+} from "../agentActions.js";
 import { requireAuth } from "../auth.js";
 import { audit } from "../audit.js";
 import { db } from "../db/index.js";
@@ -22,6 +28,20 @@ const policyInput = z.object({
   allowedActions: z.array(z.string().min(1).max(120)).max(100).default([]),
   approvalMode: z.enum(["always", "within_policy"]).default("always"),
   simulationRequired: z.boolean().default(true),
+  requireHumanAbove: z.coerce.number().positive().nullable().optional(),
+  activeHours: z
+    .object({
+      start: z.number().int().min(0).max(23),
+      end: z.number().int().min(0).max(23),
+    })
+    .refine(
+      (hours) => hours.start !== hours.end,
+      "Active hours must start and end at different times.",
+    )
+    .nullable()
+    .optional(),
+  activeDays: z.array(z.number().int().min(0).max(6)).max(7).default([]),
+  timezone: z.string().max(64).refine(isTimeZone, "Unknown time zone.").default("UTC"),
 });
 const actionInput = z.object({
   action: z.string().min(1).max(120),
@@ -92,6 +112,14 @@ const publicAccount = (row: Record<string, unknown>) => ({
           allowedActions: row.allowed_actions ?? [],
           approvalMode: row.approval_mode,
           simulationRequired: row.simulation_required,
+          requireHumanAbove:
+            row.require_human_above == null ? null : String(row.require_human_above),
+          activeHours:
+            row.active_hours_start == null
+              ? null
+              : { start: row.active_hours_start, end: row.active_hours_end },
+          activeDays: row.active_days ?? [],
+          timezone: row.active_timezone ?? "UTC",
           updatedAt: row.policy_updated_at,
         },
 });
@@ -107,7 +135,8 @@ agentAccountsRouter.post(
     const result = await db.query(
       `SELECT a.*, p.version AS policy_version, p.max_action_amount, p.daily_budget, p.monthly_budget,
         p.allowed_assets, p.allowed_venues, p.approved_counterparties, p.allowed_actions,
-        p.approval_mode, p.simulation_required, p.updated_at AS policy_updated_at
+        p.approval_mode, p.simulation_required, p.require_human_above, p.active_hours_start,
+        p.active_hours_end, p.active_days, p.active_timezone, p.updated_at AS policy_updated_at
        FROM agent_accounts a LEFT JOIN agent_account_policies p ON p.agent_id=a.agent_id
        WHERE a.agent_id=$1`,
       [agentId],
@@ -122,7 +151,8 @@ agentAccountsRouter.get(
     const result = await db.query(
       `SELECT a.*, p.version AS policy_version, p.max_action_amount, p.daily_budget, p.monthly_budget,
         p.allowed_assets, p.allowed_venues, p.approved_counterparties, p.allowed_actions,
-        p.approval_mode, p.simulation_required, p.updated_at AS policy_updated_at
+        p.approval_mode, p.simulation_required, p.require_human_above, p.active_hours_start,
+        p.active_hours_end, p.active_days, p.active_timezone, p.updated_at AS policy_updated_at
        FROM agent_accounts a JOIN agents ag ON ag.id=a.agent_id
        LEFT JOIN agent_account_policies p ON p.agent_id=a.agent_id
        WHERE ag.owner_id=$1 ORDER BY a.created_at DESC`,
@@ -140,7 +170,8 @@ agentAccountsRouter.get(
     const result = await db.query(
       `SELECT a.*, p.version AS policy_version, p.max_action_amount, p.daily_budget, p.monthly_budget,
         p.allowed_assets, p.allowed_venues, p.approved_counterparties, p.allowed_actions,
-        p.approval_mode, p.simulation_required, p.updated_at AS policy_updated_at
+        p.approval_mode, p.simulation_required, p.require_human_above, p.active_hours_start,
+        p.active_hours_end, p.active_days, p.active_timezone, p.updated_at AS policy_updated_at
        FROM agent_accounts a LEFT JOIN agent_account_policies p ON p.agent_id=a.agent_id WHERE a.agent_id=$1`,
       [agentId],
     );
@@ -157,14 +188,18 @@ agentAccountsRouter.put(
     const result = await db.query(
       `INSERT INTO agent_account_policies
        (agent_id, version, max_action_amount, daily_budget, monthly_budget, allowed_assets, allowed_venues,
-        approved_counterparties, allowed_actions, approval_mode, simulation_required, updated_by)
-       VALUES ($1,1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        approved_counterparties, allowed_actions, approval_mode, simulation_required, updated_by,
+        require_human_above, active_hours_start, active_hours_end, active_days, active_timezone)
+       VALUES ($1,1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
        ON CONFLICT (agent_id) DO UPDATE SET version=agent_account_policies.version+1,
         max_action_amount=EXCLUDED.max_action_amount, daily_budget=EXCLUDED.daily_budget,
         monthly_budget=EXCLUDED.monthly_budget, allowed_assets=EXCLUDED.allowed_assets,
         allowed_venues=EXCLUDED.allowed_venues, approved_counterparties=EXCLUDED.approved_counterparties,
         allowed_actions=EXCLUDED.allowed_actions, approval_mode=EXCLUDED.approval_mode,
-        simulation_required=EXCLUDED.simulation_required, updated_by=EXCLUDED.updated_by, updated_at=now()
+        simulation_required=EXCLUDED.simulation_required, updated_by=EXCLUDED.updated_by,
+        require_human_above=EXCLUDED.require_human_above, active_hours_start=EXCLUDED.active_hours_start,
+        active_hours_end=EXCLUDED.active_hours_end, active_days=EXCLUDED.active_days,
+        active_timezone=EXCLUDED.active_timezone, updated_at=now()
        RETURNING *`,
       [
         agentId,
@@ -178,6 +213,11 @@ agentAccountsRouter.put(
         input.approvalMode,
         input.simulationRequired,
         request.auth!.userId,
+        input.requireHumanAbove ?? null,
+        input.activeHours?.start ?? null,
+        input.activeHours?.end ?? null,
+        [...new Set(input.activeDays)].sort(),
+        input.timezone,
       ],
     );
     await audit(db, {
@@ -338,11 +378,14 @@ agentAccountsRouter.post(
     if (limits.rows[0]?.action_exceeded) violations.push("action_limit_exceeded");
     if (limits.rows[0]?.daily_exceeded) violations.push("daily_budget_exceeded");
     if (limits.rows[0]?.monthly_exceeded) violations.push("monthly_budget_exceeded");
+    const ownerRules = ownerRuleReasons(row, action.amount);
+    violations.push(...ownerRules.denied);
     const actionDigest = agentActionDigest(agentId, Number(row.version), action);
     const result = {
       eligible: violations.length === 0,
       violations,
-      approvalRequired: row.approval_mode === "always",
+      approvalRequired: row.approval_mode === "always" || ownerRules.review.length > 0,
+      reviewReasons: ownerRules.review,
       policyVersion: Number(row.version),
     };
     const inserted = await db.query(
@@ -453,9 +496,13 @@ agentAccountsRouter.post(
       if (limits.rows[0]?.action_exceeded) reasons.push("action_limit_exceeded");
       if (limits.rows[0]?.daily_exceeded) reasons.push("daily_budget_exceeded");
       if (limits.rows[0]?.monthly_exceeded) reasons.push("monthly_budget_exceeded");
+      const ownerRules = ownerRuleReasons(row, input.amount ?? null);
+      reasons.push(...ownerRules.denied, ...ownerRules.review);
       if (row.simulation_required && !boundDigest && !input.simulationDigest && !input.simulate)
         reasons.push("simulation_required");
-      const hardReasons = reasons.filter((reason) => reason !== "simulation_required");
+      // These route the action to the owner for approval instead of denying it.
+      const reviewReasons = new Set(["simulation_required", "human_approval_required"]);
+      const hardReasons = reasons.filter((reason) => !reviewReasons.has(reason));
       const decision = input.simulate
         ? "simulation"
         : hardReasons.length

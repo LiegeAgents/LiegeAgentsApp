@@ -101,6 +101,44 @@ describe.skipIf(!databaseAvailable)("agent accounts and mandates", () => {
     expect(denied.body.data.reasons).toContain("account_killed");
   });
 
+  test("holds large actions for the owner and denies actions outside active hours", async () => {
+    await api().post("/v1/agent-accounts").set(bearer(owner)).send({ agentId }).expect(201);
+    const policy = (rules: object) =>
+      api()
+        .put(`/v1/agent-accounts/${agentId}/policy`)
+        .set(bearer(owner))
+        .send({ approvalMode: "within_policy", simulationRequired: false, ...rules });
+    const authorize = (amount: number) =>
+      api()
+        .post(`/v1/agent-accounts/${agentId}/actions/authorize`)
+        .set(bearer(owner))
+        .send({ action: "rebalance", amount })
+        .expect(200);
+
+    const saved = await policy({ requireHumanAbove: 50, timezone: "Africa/Lagos" }).expect(200);
+    expect(saved.body.data.policy.requireHumanAbove).toBe("50");
+    expect(saved.body.data.policy.timezone).toBe("Africa/Lagos");
+    expect((await authorize(10)).body.data.decision).toBe("approved");
+    const held = await authorize(60);
+    expect(held.body.data.decision).toBe("approval_required");
+    expect(held.body.data.reasons).toEqual(["human_approval_required"]);
+
+    // A one-hour window that starts an hour from now never contains the current time.
+    const hour = new Date().getUTCHours();
+    await policy({ activeHours: { start: (hour + 1) % 24, end: (hour + 2) % 24 } }).expect(200);
+    const outside = await authorize(10);
+    expect(outside.body.data.decision).toBe("denied");
+    expect(outside.body.data.reasons).toContain("outside_active_hours");
+
+    const account = await api().get(`/v1/agent-accounts/${agentId}`).set(bearer(owner)).expect(200);
+    expect(account.body.data.policy.activeHours).toEqual({
+      start: (hour + 1) % 24,
+      end: (hour + 2) % 24,
+    });
+    await policy({ timezone: "Mars/Olympus" }).expect(400);
+    await policy({ activeHours: { start: 9, end: 9 } }).expect(400);
+  });
+
   test("stores and verifies an owner-signed mandate before it can be revoked", async () => {
     await api().post("/v1/agent-accounts").set(bearer(owner)).send({ agentId }).expect(201);
     const nonce = `nonce-${crypto.randomUUID()}`;
