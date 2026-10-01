@@ -450,6 +450,7 @@ export default function Workspace() {
                   onNotice={notify}
                 />
               )}
+              {wallet.apiSession && <ReceiptsPanel token="cookie" onNotice={notify} />}
               {wallet.apiSession && (
                 <AgentRulebook
                   token="cookie"
@@ -1106,6 +1107,164 @@ function AgentKillSwitch({ token, agents, ownerAddress, onNotice }) {
             );
           })}
         </div>
+      )}
+    </section>
+  );
+}
+
+const receiptTypeLabel = {
+  admin_credit: "Deposit",
+  invoice_payment: "Invoice payment",
+  invoice_refund: "Invoice refund",
+  job_fund: "Job funded",
+  job_settlement: "Job settlement",
+  evaluator_fee: "Evaluator fee",
+  job_refund: "Job refund",
+  job_expiry_refund: "Expired job refund",
+  stake_lock: "Stake locked",
+  stake_unlock: "Stake released",
+};
+const receiptLabel = (type) =>
+  receiptTypeLabel[type] || type.replace(/_/g, " ").replace(/^./, (x) => x.toUpperCase());
+const receiptAmount = (value, asset) => {
+  const amount = Number(value);
+  return `${amount > 0 ? "+" : ""}${amount.toLocaleString("en-US", { maximumFractionDigits: 6 })} ${asset.toUpperCase()}`;
+};
+const receiptChanges = (line) =>
+  [
+    Number(line.availableChange) && receiptAmount(line.availableChange, line.asset),
+    Number(line.stakeChange) && `${receiptAmount(line.stakeChange, line.asset)} stake`,
+  ].filter(Boolean);
+
+function ReceiptsPanel({ token, onNotice }) {
+  const [lines, setLines] = useState(null);
+  const [open, setOpen] = useState(null);
+  useEffect(() => {
+    api
+      .receipts(token)
+      .then((result) => setLines(result.data || []))
+      .catch((error) => {
+        setLines([]);
+        onNotice(error?.message || "Could not load receipts.");
+      });
+  }, [token]);
+  const show = async (receiptId) => {
+    try {
+      setOpen((await api.receipt(token, receiptId)).data);
+    } catch (error) {
+      onNotice(error?.message || "Could not load this receipt.");
+    }
+  };
+  return (
+    <section className="settings-panel mcp-settings-panel receipts-panel">
+      <div className="mcp-settings-heading">
+        <div>
+          <span className="eyebrow">LEDGER</span>
+          <h2>Receipts &amp; exports</h2>
+          <p>
+            Every payment, refund, and settlement on your account, itemized and linked to its job or
+            invoice. Each receipt and export carries a SHA-256 digest so you can prove it was not
+            changed.
+          </p>
+        </div>
+        <div className="receipts-exports">
+          <Button secondary small href={api.receiptExportUrl("csv")} download>
+            <Download size={13} /> CSV
+          </Button>
+          <Button secondary small href={api.receiptExportUrl("json")} download>
+            <Download size={13} /> JSON
+          </Button>
+        </div>
+      </div>
+      {lines && !lines.length ? (
+        <div className="mcp-empty-note">
+          No ledger activity yet. Receipts appear here after your first deposit, job, or invoice.
+        </div>
+      ) : (
+        <div className="mcp-connection-list">
+          <div className="mcp-list-head">
+            <h3>Recent receipts</h3>
+            <span>{lines ? `${lines.length} shown` : "Loading…"}</span>
+          </div>
+          {(lines || []).map((line) => (
+            <button
+              className="receipt-row"
+              key={`${line.receiptId}-${line.asset}`}
+              onClick={() => show(line.receiptId)}
+            >
+              <span className="receipt-icon">
+                <ReceiptText size={14} />
+              </span>
+              <span className="receipt-main">
+                <strong>{receiptLabel(line.type)}</strong>
+                <small>
+                  {line.subject
+                    ? `${line.subject.publicId} · ${line.subject.title}`
+                    : "Account activity"}{" "}
+                  · {new Date(line.createdAt).toLocaleDateString()}
+                </small>
+              </span>
+              <span className="receipt-amounts">
+                {receiptChanges(line).map((change) => (
+                  <b key={change} className={change.startsWith("+") ? "credit" : "debit"}>
+                    {change}
+                  </b>
+                ))}
+              </span>
+              <ArrowUpRight size={14} />
+            </button>
+          ))}
+        </div>
+      )}
+      {open && (
+        <Modal title="Receipt" onClose={() => setOpen(null)}>
+          <div className="receipt-card">
+            <div className="receipt-card-head">
+              <span>{receiptLabel(open.type)}</span>
+              <div>
+                {open.lines.flatMap(receiptChanges).map((change) => (
+                  <strong key={change}>{change}</strong>
+                ))}
+              </div>
+            </div>
+            <dl>
+              {open.subject && (
+                <>
+                  <dt>{open.subject.type === "job" ? "Job" : "Invoice"}</dt>
+                  <dd>
+                    {open.subject.publicId} · {open.subject.title}
+                  </dd>
+                  <dt>Agent</dt>
+                  <dd>{open.subject.agentName}</dd>
+                </>
+              )}
+              <dt>Date</dt>
+              <dd>{new Date(open.createdAt).toLocaleString()}</dd>
+              <dt>Receipt ID</dt>
+              <dd className="mono">{open.receiptId}</dd>
+              <dt>Reference</dt>
+              <dd className="mono">{open.reference}</dd>
+              <dt>SHA-256</dt>
+              <dd className="mono receipt-digest">{open.digest}</dd>
+            </dl>
+            <Button
+              secondary
+              small
+              onClick={() => {
+                const url = URL.createObjectURL(
+                  new Blob([JSON.stringify(open, null, 2)], { type: "application/json" }),
+                );
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = `liege-receipt-${open.receiptId}.json`;
+                link.click();
+                URL.revokeObjectURL(url);
+              }}
+            >
+              <Download size={13} /> Download receipt
+            </Button>
+          </div>
+        </Modal>
       )}
     </section>
   );

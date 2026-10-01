@@ -2938,6 +2938,121 @@ section[id] {
     monospace;
   color: var(--l-muted);
 }
+.receipts-exports {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+.receipt-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 13px 0;
+  border: 0;
+  border-bottom: 1px solid var(--l-border);
+  background: transparent;
+  color: var(--l-text);
+  text-align: left;
+  cursor: pointer;
+}
+.receipt-row:hover .receipt-main strong {
+  color: var(--l-green);
+}
+.receipt-row > svg {
+  flex: 0 0 auto;
+  color: var(--l-muted);
+}
+.receipt-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--l-border);
+  border-radius: 6px;
+  color: var(--l-muted);
+}
+.receipt-main {
+  flex: 1;
+  min-width: 0;
+}
+.receipt-main strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+}
+.receipt-main small {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  font-size: 10px;
+  color: var(--l-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.receipt-amounts {
+  display: grid;
+  justify-items: end;
+  gap: 3px;
+}
+.receipt-amounts b {
+  font:
+    500 11px var(--font-paper-mono),
+    monospace;
+  white-space: nowrap;
+}
+.receipt-amounts b.credit {
+  color: var(--l-green);
+}
+.receipt-card {
+  display: grid;
+  gap: 18px;
+}
+.receipt-card-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px dashed var(--l-border);
+}
+.receipt-card-head > span {
+  font-size: 13px;
+  color: var(--l-muted);
+}
+.receipt-card-head strong {
+  display: block;
+  font:
+    400 24px var(--font-paper-mono),
+    monospace;
+  text-align: right;
+}
+.receipt-card dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 10px 18px;
+  margin: 0;
+  font-size: 12px;
+}
+.receipt-card dt {
+  color: var(--l-muted);
+}
+.receipt-card dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.receipt-digest {
+  font-size: 10px;
+}
+@media (max-width: 800px) {
+  .receipts-exports {
+    margin-top: 17px;
+  }
+  .receipt-row > svg {
+    display: none;
+  }
+}
 .agent-rulebook-panel .mcp-settings-heading {
   align-items: flex-start;
 }
