@@ -1,5 +1,5 @@
 export type Signer = (message: string) => Promise<string> | string;
-export const SDK_VERSION = "0.1.3";
+export const SDK_VERSION = "0.1.4";
 
 export interface Session { token: string; userId: string; walletAddress: string; expiresAt?: string; }
 export interface Job { id: string; status: string; [key: string]: unknown; }
