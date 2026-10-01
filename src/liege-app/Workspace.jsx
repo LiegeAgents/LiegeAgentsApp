@@ -645,6 +645,8 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
     }),
     [error, setError] = useState(""),
     [saving, setSaving] = useState(false),
+    [simulating, setSimulating] = useState(false),
+    [simulation, setSimulation] = useState(null),
     [evaluators, setEvaluators] = useState([]);
   useEffect(() => {
     let active = true;
@@ -661,6 +663,7 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
   const change = (k, val) => {
       setV({ ...v, [k]: val });
       setError("");
+      setSimulation(null);
     },
     agent = agents.find((a) => a.id === v.agent);
   const submit = async (e) => {
@@ -685,7 +688,7 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
     try {
       const deadline = new Date(`${v.deadline}T23:59:59.999Z`),
         expires = new Date(deadline.getTime() + 7 * 864e5);
-      const result = await api.createJob(token, {
+      const input = {
         agentId: v.agent,
         evaluatorId: v.evaluator || undefined,
         title: v.title.trim(),
@@ -695,12 +698,45 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
         ...(v.settlementAsset === "liege" ? { budgetLiege: v.budget } : { budgetUsdg: v.budget }),
         deadlineAt: deadline.toISOString(),
         expiresAt: expires.toISOString(),
-      });
+      };
+      const result = await api.createJob(token, input);
       onSave(jobForDisplay(result.data));
     } catch (e) {
       setError(e?.message || "Could not create this job.");
     } finally {
       setSaving(false);
+    }
+  };
+  const preview = async () => {
+    if (!token || !agent) return;
+    const acceptanceCriteria = v.criteria
+      .split("\n")
+      .map((x) => x.trim())
+      .filter(Boolean);
+    if (!acceptanceCriteria.length) {
+      setError("Add at least one acceptance criterion before running the preflight.");
+      return;
+    }
+    setSimulating(true);
+    setError("");
+    try {
+      const deadline = new Date(`${v.deadline}T23:59:59.999Z`);
+      const result = await api.simulateJob(token, {
+        agentId: v.agent,
+        evaluatorId: v.evaluator || undefined,
+        title: v.title.trim(),
+        brief: v.brief.trim(),
+        acceptanceCriteria,
+        settlementAsset: v.settlementAsset,
+        ...(v.settlementAsset === "liege" ? { budgetLiege: v.budget } : { budgetUsdg: v.budget }),
+        deadlineAt: deadline.toISOString(),
+        expiresAt: new Date(deadline.getTime() + 7 * 864e5).toISOString(),
+      });
+      setSimulation(result.data);
+    } catch (e) {
+      setError(e?.message || "The preflight simulation could not be completed.");
+    } finally {
+      setSimulating(false);
     }
   };
   return (
@@ -811,6 +847,15 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
             it cannot be settled until an evaluator is assigned.
           </Notice>
         )}
+        {simulation && (
+          <Notice error={!simulation.ready}>
+            <strong>{simulation.ready ? "Preflight passed" : "Preflight blocked"}</strong>
+            <span>
+              {simulation.settlement.totalEscrow} {simulation.settlement.asset.toUpperCase()} escrow ·{" "}
+              {simulation.checks.filter((check) => check.status === "fail").length} blocking checks
+            </span>
+          </Notice>
+        )}
         {error && <Notice error>{error}</Notice>}
         <div className="form-actions">
           <Button type="button" secondary onClick={onClose}>
@@ -818,6 +863,9 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
           </Button>
           <Button type="submit" disabled={saving || !token}>
             {saving ? "Creating…" : "Create encrypted job"} <ArrowRight size={14} />
+          </Button>
+          <Button type="button" secondary onClick={preview} disabled={simulating || !token}>
+            {simulating ? "Checking…" : "Run preflight"}
           </Button>
         </div>
       </form>

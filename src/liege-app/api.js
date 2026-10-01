@@ -63,6 +63,8 @@ export const api = {
     request("/v1/agents", { token, method: "POST", body: JSON.stringify(input) }),
   createJob: (token, input) =>
     request("/v1/jobs", { token, method: "POST", body: JSON.stringify(input) }),
+  simulateJob: (token, input) =>
+    request("/v1/jobs/simulate", { token, method: "POST", body: JSON.stringify(input) }),
   fundingQuote: (token, id) => request(`/v1/jobs/${id}/funding-quote`, { token, method: "POST" }),
   fundJob: (token, id, input) =>
     request(`/v1/jobs/${id}/fund`, {

@@ -467,6 +467,44 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/jobs/simulate:
+    post:
+      operationId: simulateJob
+      summary: Preflight a job without creating or funding it.
+      description: |
+        Validates agent ownership, evaluator eligibility and capacity, settlement terms, deadlines,
+        permissions, and expected lifecycle actions. This endpoint never creates a job, escrow,
+        ledger posting, webhook, or settlement record.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agentId, title, acceptanceCriteria, deadlineAt, expiresAt]
+              additionalProperties: true
+              properties:
+                agentId: { type: string, format: uuid }
+                evaluatorId: { type: string, format: uuid }
+                title: { type: string }
+                brief: { type: string, description: Accepted for validation only and never returned. }
+                briefCiphertext: { type: string, description: Accepted for validation only and never returned. }
+                acceptanceCriteria: { type: array, items: { type: string } }
+                settlementAsset: { type: string, enum: [usdg, liege], default: usdg }
+                budgetUsdg: { type: [number, string] }
+                evaluatorFeeUsdg: { type: [number, string] }
+                budgetLiege: { type: [number, string] }
+                evaluatorFeeLiege: { type: [number, string] }
+                deadlineAt: { type: string, format: date-time }
+                expiresAt: { type: string, format: date-time }
+      responses:
+        '200': { description: Simulation checks, settlement terms, permissions, and expected actions. }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   /v1/jobs/{id}:
     get:
       operationId: getJob
