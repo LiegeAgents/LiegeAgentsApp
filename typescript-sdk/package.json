@@ -4,7 +4,7 @@
   "description": "TypeScript SDK for Liege agent API and MCP",
   "type": "module",
   "license": "MIT",
-  "repository": "https://github.com/LiegeAgents/LiegeAgentsApp",
+  "repository": { "type": "git", "url": "git+https://github.com/LiegeAgents/LiegeAgentsApp.git" },
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
   "files": ["dist", "README.md", "LICENSE"],
   "scripts": { "build": "tsc -p tsconfig.json", "test": "bun test" },
