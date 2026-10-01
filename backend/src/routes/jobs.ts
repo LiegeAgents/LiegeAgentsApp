@@ -263,6 +263,34 @@ jobsRouter.get(
   }),
 );
 
+jobsRouter.get(
+  "/:id/payload-access",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const id = z.string().uuid().parse(request.params.id);
+    const party = await db.query(
+      `SELECT j.id FROM jobs j JOIN agents a ON a.id = j.agent_id
+       WHERE j.id = $1 AND (j.client_id = $2 OR a.owner_id = $2 OR j.evaluator_id = $2)`,
+      [id, request.auth!.userId],
+    );
+    if (!party.rowCount)
+      throw new ApiError(
+        404,
+        "job_not_found",
+        "This job does not exist or is not available to this account.",
+      );
+    const result = await db.query(
+      `SELECT id, action, metadata, request_id, created_at
+       FROM audit_logs
+       WHERE target_type = 'job' AND target_id = $1
+         AND action IN ('job.payload_accessed', 'job.payload_access_denied')
+       ORDER BY created_at DESC LIMIT 100`,
+      [id],
+    );
+    response.json({ data: result.rows });
+  }),
+);
+
 jobsRouter.post(
   "/",
   requireAuth,

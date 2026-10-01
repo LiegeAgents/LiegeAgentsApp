@@ -53,6 +53,7 @@ export const api = {
   jobs: (token) => request("/v1/jobs", { token }),
   job: (token, id) => request(`/v1/jobs/${id}`, { token }),
   jobPayload: (token, id, payload) => request(`/v1/jobs/${id}/payload/${payload}`, { token }),
+  jobPayloadAccess: (token, id) => request(`/v1/jobs/${id}/payload-access`, { token }),
   evaluators: () => request("/v1/evaluators"),
   evaluatorProfile: (token) => request("/v1/evaluators/me", { token }),
   updateEvaluatorProfile: (token, input) =>

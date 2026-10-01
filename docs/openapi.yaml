@@ -528,6 +528,37 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '410': { description: Payload access has expired. }
 
+  /v1/jobs/{id}/payload-access:
+    get:
+      operationId: listJobPayloadAccess
+      summary: List private payload access records for a job.
+      description: Visible only to the job's client, provider, and evaluator.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: The newest private payload access records.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, action, metadata, created_at]
+                      properties:
+                        id: { type: string }
+                        action: { type: string, enum: [job.payload_accessed, job.payload_access_denied] }
+                        metadata: { type: object }
+                        request_id: { type: [string, 'null'], format: uuid }
+                        created_at: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /v1/jobs/{id}/funding-quote:
     post:
       operationId: quoteFunding
