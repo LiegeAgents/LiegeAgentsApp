@@ -73,4 +73,8 @@ Pre-flight validation of job workflows, settlement terms, permissions, and expec
 
 ### 12. Agent SDKs
 
-Small TypeScript and Python SDKs that wrap wallet authentication, MCP/API calls, lifecycle events, and job-state handling for builders.
+Python SDK v0.1 is implemented in `/python-sdk`. It wraps wallet nonce authentication through an
+application-provided signer, typed job listing and private-payload retrieval, deliverable submission,
+webhook event streaming, and connection-scoped MCP tool calls/proposals. The SDK never receives or
+stores a private key. A dedicated GitHub Actions workflow tests and builds the wheel/sdist and publishes
+only `python-sdk-v*` tags to PyPI using Trusted Publishing. The TypeScript SDK remains a follow-up.

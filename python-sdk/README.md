@@ -1,0 +1,31 @@
+# Liege Agent SDK for Python
+
+Small typed helpers for wallet authentication, API job lifecycle calls, webhook event streams,
+and connection-scoped MCP proposals.
+
+```bash
+pip install liege-agent-sdk
+```
+
+The SDK never receives or stores a private key. Pass a signer callback to `authenticate`, then use
+the returned session token for API calls:
+
+```python
+from liege_agent_sdk import LiegeClient
+
+with LiegeClient() as liege:
+    session = liege.authenticate(wallet_address, wallet_signer.sign_message)
+    for job in liege.list_jobs():
+        print(job.id, job.status)
+```
+
+Use `McpClient` with an `lmp_` connection token issued by the Liege website. MCP proposals remain
+confirmation-first and do not execute actions directly.
+
+## Development
+
+```bash
+python -m pip install -e '.[test]'
+python -m pytest
+python -m build
+```
