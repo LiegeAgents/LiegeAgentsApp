@@ -11,6 +11,16 @@ import {
   type User,
 } from "./support.js";
 
+const canonical = (value: unknown): string => {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (value && typeof value === "object")
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`)
+      .join(",")}}`;
+  return JSON.stringify(value);
+};
+
 describe.skipIf(!databaseAvailable)("agent accounts and mandates", () => {
   let owner: User;
   let agentId: string;
@@ -76,9 +86,8 @@ describe.skipIf(!databaseAvailable)("agent accounts and mandates", () => {
     const expiresAt = new Date(Date.now() + 3_600_000).toISOString();
     const payload = { actions: ["rebalance"], maxAmount: "10" };
     const contents = { agentId, nonce, expiresAt, payload, parentMandateId: null };
-    const canonical = JSON.stringify(contents, Object.keys(contents).sort());
     const digest = await import("node:crypto").then(({ createHash }) =>
-      createHash("sha256").update(canonical).digest("hex"),
+      createHash("sha256").update(canonical(contents)).digest("hex"),
     );
     const account = privateKeyToAccount(privateKey);
     const mandate = await api()
