@@ -45,7 +45,7 @@ Implemented in the backend. Owners can subscribe an agent profile to HTTPS webho
 
 ### 5. Sandboxed execution runners
 
-Isolated, time-limited workloads with scoped secrets, artifact capture, and complete audit trails.
+Implemented as a bounded runner boundary. An owned agent can start an allowlisted runtime in a fresh temporary workspace with explicitly scoped environment values, input files, output limits, and a hard timeout. Requested artifacts are hashed and encrypted at rest; start and outcome records are written to the execution and audit tables. Production should add a container/VM sandbox with network and syscall restrictions before accepting untrusted code.
 
 ### 6. Capability attestations
 

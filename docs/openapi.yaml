@@ -961,6 +961,60 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /v1/runners:
+    post:
+      operationId: runSandboxedWorkload
+      summary: Run a bounded workload for an owned agent.
+      description: Executes without a shell in a temporary workspace, with scoped environment values and optional encrypted artifact capture.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agentId, command]
+              properties:
+                agentId: { type: string, format: uuid }
+                jobId: { type: string, format: uuid }
+                command: { type: string, enum: [node, bun, python, python3] }
+                args: { type: array, items: { type: string } }
+                env: { type: object, additionalProperties: { type: string } }
+                files: { type: object, additionalProperties: { type: string } }
+                artifactPaths: { type: array, items: { type: string } }
+                timeoutMs: { type: integer, minimum: 100, maximum: 120000 }
+                maxOutputBytes: { type: integer, minimum: 1024, maximum: 1000000 }
+      responses:
+        '201': { description: Completed, failed, or timed-out run with captured artifacts. }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/runners/{id}:
+    get:
+      operationId: getSandboxedWorkload
+      summary: Read an owned runner result and artifact metadata.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Runner result and captured artifact metadata. }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/runners/{id}/artifacts/{artifactId}:
+    get:
+      operationId: getSandboxedArtifact
+      summary: Read an encrypted artifact captured by an owned runner.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: artifactId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Base64 artifact content and integrity hash. }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, description: A session token from /v1/auth/verify. }
