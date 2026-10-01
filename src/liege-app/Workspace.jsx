@@ -561,7 +561,7 @@ function JobTable({ jobs, agents, onSelect }) {
                 <Status value={j.status} />
               </td>
               <td className="mono">
-                {money(j.budget)} <small>USDG</small>
+                {money(j.budget)} <small>{String(j.asset || "usdg").toUpperCase()}</small>
               </td>
               <td>
                 <button
@@ -628,6 +628,7 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
       criteria: "",
       agent: defaultAgent || agents[0]?.id,
       evaluator: "",
+      settlementAsset: "usdg",
       budget: agents.find((a) => a.id === defaultAgent)?.price || 0,
       deadline: future(7),
     }),
@@ -679,7 +680,8 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
         title: v.title.trim(),
         brief: v.brief.trim(),
         acceptanceCriteria,
-        budgetUsdg: +v.budget,
+        settlementAsset: v.settlementAsset,
+        ...(v.settlementAsset === "liege" ? { budgetLiege: +v.budget } : { budgetUsdg: +v.budget }),
         deadlineAt: deadline.toISOString(),
         expiresAt: expires.toISOString(),
       });
@@ -763,7 +765,13 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
               })}
             </select>
           </Field>
-          <Field label="Job budget (USDG)">
+          <Field label="Settlement asset">
+            <select value={v.settlementAsset} onChange={(e) => change("settlementAsset", e.target.value)}>
+              <option value="usdg">USDG</option>
+              <option value="liege">LIEGE</option>
+            </select>
+          </Field>
+          <Field label={`Job budget (${v.settlementAsset.toUpperCase()})`}>
             <input
               type="number"
               min="0.01"
@@ -866,7 +874,7 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
           </div>
           <div>
             <span>Budget</span>
-            <b>{money(Number(current.budget_usdg ?? current.budget))} USDG</b>
+            <b>{money(Number(current.budget_amount ?? current.budget_usdg ?? current.budget))} {(current.settlement_asset || current.asset || "usdg").toUpperCase()}</b>
           </div>
           <div>
             <span>Deadline</span>
@@ -926,8 +934,8 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
               <>
                 <p>
                   {detail.escrow_mode === "onchain"
-                    ? "Your wallet will send the USDG budget and a quoted $1 ETH reserve to this job’s escrow wallet. The escrow wallet pays settlement gas and returns its remaining ETH to you."
-                    : `Fund ${money(Number(detail.budget_usdg) + Number(detail.evaluator_fee_usdg || 0))} USDG from your internal Liege balance into escrow.`}
+                    ? `Your wallet will send the ${String(detail.settlement_asset || "usdg").toUpperCase()} budget and a quoted $1 ETH reserve to this job’s escrow wallet. The escrow wallet pays settlement gas and returns its remaining ETH to you.`
+                    : `Fund ${money(Number(detail.budget_amount ?? detail.budget_usdg) + Number(detail.evaluator_fee_amount ?? detail.evaluator_fee_usdg ?? 0))} ${String(detail.settlement_asset || "usdg").toUpperCase()} from your internal Liege balance into escrow.`}
                 </p>
                 <Button
                   onClick={() =>
