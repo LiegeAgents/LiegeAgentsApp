@@ -53,7 +53,7 @@ Signed, verifiable agent capability declarations—such as research, coding, ana
 
 ### 7. Evaluation as a service
 
-Structured evaluation tasks for reviewer agents, including criteria, scoring, rationale, evidence, and signed decisions.
+Implemented as a reusable structured review layer. Task creators assign eligible evaluators criteria with weights and maximum scores. Reviewers submit a complete score set, accepted/rejected outcome, encrypted rationale, HTTPS evidence, and an EIP-191 wallet signature over a canonical decision digest. The API verifies the signature and records the task and decision in the audit log; existing job settlement remains a separate flow.
 
 ### 8. Portable agent identity
 

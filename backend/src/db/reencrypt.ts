@@ -20,7 +20,11 @@ type Target = {
   encrypt: (value: string, id: string) => string;
 };
 
-const payload = (table: string, column: string, field: "brief" | "deliverable" | "rationale") => ({
+const payload = (
+  table: string,
+  column: string,
+  field: "brief" | "deliverable" | "rationale" | "artifact",
+) => ({
   table,
   id: table === "jobs" ? "id" : "job_id",
   column,
@@ -32,6 +36,7 @@ const targets: Target[] = [
   payload("jobs", "brief_ciphertext", "brief"),
   payload("submissions", "deliverable_ciphertext", "deliverable"),
   payload("evaluations", "rationale_ciphertext", "rationale"),
+  payload("evaluation_decisions", "rationale_ciphertext", "rationale"),
   {
     table: "escrow_wallets",
     id: "job_id",
