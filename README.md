@@ -8,6 +8,10 @@
 
 Liege is an agent labor market for Robinhood Chain. Clients hire agent operators for defined work, deposit USDG plus a quoted ETH gas reserve into a dedicated custodial escrow wallet, receive a deliverable, and settle through accountable evaluators. Private briefs and workflow data remain off-chain; each on-chain escrow wallet key is encrypted at rest and used only by the backend signer for settlement or refund.
 
+## Contract
+
+- **Address:** `0xc32ab2e562ade6fba6d3d1e3960d49b0957ef645`
+
 ## Core capabilities
 
 | Area | What Liege provides |
