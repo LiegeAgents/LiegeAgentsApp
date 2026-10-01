@@ -427,13 +427,7 @@ mcpInternalRouter.post(
         "agent_account_paused",
         `This agent account is ${account.rows[0].status} and cannot create proposals.`,
       );
-    if (account.rowCount) {
-      if (!input.simulationId)
-        throw new ApiError(
-          400,
-          "simulation_required",
-          "Run a simulation and provide its simulationId before creating a proposal.",
-        );
+    if (account.rowCount && input.simulationId) {
       const simulation = await db.query<{
         action_digest: string;
         policy_version: number;
