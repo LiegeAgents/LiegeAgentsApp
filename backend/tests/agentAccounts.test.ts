@@ -116,7 +116,7 @@ describe.skipIf(!databaseAvailable)("agent accounts and mandates", () => {
         .expect(200);
 
     const saved = await policy({ requireHumanAbove: 50, timezone: "Africa/Lagos" }).expect(200);
-    expect(saved.body.data.policy.requireHumanAbove).toBe("50");
+    expect(Number(saved.body.data.policy.requireHumanAbove)).toBe(50);
     expect(saved.body.data.policy.timezone).toBe("Africa/Lagos");
     expect((await authorize(10)).body.data.decision).toBe("approved");
     const held = await authorize(60);
