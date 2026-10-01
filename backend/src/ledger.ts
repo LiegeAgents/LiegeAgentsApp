@@ -60,21 +60,21 @@ export async function transfer(
     type: string;
     from: string;
     to: string;
-    amount: number;
+    amount: number | string;
     createdBy?: string;
     metadata?: object;
     insufficientFunds?: ApiError;
     asset?: SettlementAsset;
   },
 ) {
-  if (!Number.isFinite(input.amount) || input.amount <= 0)
-    throw new ApiError(422, "invalid_amount", "A ledger transfer amount must be positive.");
   // Only the platform clearing account may go negative. The row lock serializes debits per
   // account until this transaction ends; the balance is read in a separate statement so that,
   // under READ COMMITTED, it includes any debit committed while this one waited for the lock.
   const asset = input.asset ?? "usdg";
-  const amount = Number(input.amount.toFixed(asset === "usdg" ? 6 : 18));
-  if (!Number.isFinite(amount) || amount <= 0)
+  const decimals = asset === "usdg" ? 6 : 18;
+  const amount = typeof input.amount === "number" ? String(input.amount) : input.amount.trim();
+  const amountPattern = new RegExp(`^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,${decimals}})?$`);
+  if (!amountPattern.test(amount) || Number(amount) <= 0)
     throw new ApiError(422, "invalid_amount", "A ledger transfer amount must be positive.");
   if ((await lockAccount(client, input.from)) !== "platform_clearing") {
     const funded = await client.query<{ covered: boolean }>(
@@ -102,7 +102,7 @@ export async function transfer(
   );
   await client.query(
     "INSERT INTO ledger_postings (transaction_id, account_id, amount, amount_usdg) VALUES ($1,$2,$3::numeric,CASE WHEN $6::text = 'usdg' THEN $3::numeric ELSE NULL END),($1,$4,$5::numeric,CASE WHEN $6::text = 'usdg' THEN $5::numeric ELSE NULL END)",
-    [transaction.rows[0].id, input.from, -amount, input.to, amount, asset],
+    [transaction.rows[0].id, input.from, `-${amount}`, input.to, amount, asset],
   );
   return transaction.rows[0].id;
 }
@@ -110,7 +110,7 @@ export async function transfer(
 export async function creditUser(
   client: PoolClient,
   userId: string,
-  amount: number,
+  amount: number | string,
   createdBy: string,
   reference: string,
   metadata: object = {},
