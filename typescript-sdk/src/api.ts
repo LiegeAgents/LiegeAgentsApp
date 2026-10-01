@@ -33,9 +33,11 @@ export class LiegeClient {
     const url = new URL(`/v1/webhooks/stream/${encodeURIComponent(agentId)}`, this.baseUrl); if (since) url.searchParams.set("since", since.toISOString());
     const response = await this.request(url, { headers: this.headers() }); if (!response.ok || !response.body) throw new LiegeAPIError("Unable to open the event stream", response.status);
     const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ""; let id = ""; let event = "message"; let data: string[] = [];
-    for (;;) { const chunk = await reader.read(); if (chunk.done) break; buffer += decoder.decode(chunk.value, { stream: true }); const lines = buffer.split("\n"); buffer = lines.pop() ?? "";
-      for (const line of lines) { if (!line.trim()) { if (data.length) yield { id, event, data: JSON.parse(data.join("\n")) }; id = ""; event = "message"; data = []; continue; } const [field, ...rest] = line.replace(/\r$/, "").split(":"); const value = rest.join(":").trimStart(); if (field === "id") id = value; else if (field === "event") event = value; else if (field === "data") data.push(value); }
-    }
+    const processLine = (raw: string): JobEvent | undefined => { const line = raw.replace(/\r$/, ""); if (!line.trim()) { if (!data.length) return; const parsed = { id, event, data: JSON.parse(data.join("\n")) }; id = ""; event = "message"; data = []; return parsed; } const [field, ...rest] = line.split(":"); const value = rest.join(":").trimStart(); if (field === "id") id = value; else if (field === "event") event = value; else if (field === "data") data.push(value); };
+    try {
+      for (;;) { const chunk = await reader.read(); if (chunk.done) break; buffer += decoder.decode(chunk.value, { stream: true }); const lines = buffer.split("\n"); buffer = lines.pop() ?? ""; for (const line of lines) { const parsed = processLine(line); if (parsed) yield parsed; } }
+      buffer += decoder.decode(); if (buffer) buffer += "\n\n"; for (const line of buffer.split("\n")) { const parsed = processLine(line); if (parsed) yield parsed; }
+    } finally { await reader.cancel().catch(() => undefined); }
   }
 
   private headers(): HeadersInit { return this.token ? { Authorization: `Bearer ${this.token}` } : {}; }
