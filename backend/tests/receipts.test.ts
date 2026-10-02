@@ -74,6 +74,46 @@ describe.skipIf(!databaseAvailable)("receipts and statement exports", () => {
     expect(row).toContain(`"'=HYPERLINK(""https://example.com""), research"`);
   });
 
+  test("exports OpenTelemetry compliant traces and spans with stable digests", async () => {
+    const { issuer, invoice } = await paidInvoice();
+    const otel = await api().get("/v1/receipts?format=otel").set(bearer(issuer)).expect(200);
+    expect(otel.headers["content-type"]).toContain("application/json");
+    expect(otel.headers["x-liege-statement-digest"]).toMatch(/^[0-9a-f]{64}$/);
+    expect(otel.body.digest).toMatch(/^[0-9a-f]{64}$/);
+    expect(otel.body.resourceSpans).toBeArray();
+    expect(otel.body.resourceSpans.length).toBeGreaterThan(0);
+
+    const resourceSpan = otel.body.resourceSpans[0];
+    expect(resourceSpan.resource.attributes).toEqual(
+      expect.arrayContaining([
+        { key: "service.name", value: { stringValue: "liege" } },
+        { key: "network.chain_id", value: { intValue: 4663 } },
+      ]),
+    );
+
+    const spans = resourceSpan.scopeSpans[0].spans;
+    expect(spans.length).toBeGreaterThan(0);
+    const [span] = spans;
+    expect(span.traceId).toMatch(/^[0-9a-f]{32}$/);
+    expect(span.spanId).toMatch(/^[0-9a-f]{16}$/);
+    expect(span.name).toBe("ledger.invoice_payment");
+    expect(span.kind).toBe("SPAN_KIND_INTERNAL");
+    expect(span.attributes).toEqual(
+      expect.arrayContaining([
+        { key: "ledger.transaction_type", value: { stringValue: "invoice_payment" } },
+        { key: "ledger.asset", value: { stringValue: "usdg" } },
+        { key: "ledger.subject_id", value: { stringValue: invoice.publicId } },
+      ]),
+    );
+
+    const receiptIdAttr = span.attributes.find((a: any) => a.key === "ledger.receipt_id");
+    const receiptOtel = await api()
+      .get(`/v1/receipts/${receiptIdAttr.value.stringValue}?format=otel`)
+      .set(bearer(issuer))
+      .expect(200);
+    expect(receiptOtel.body.resourceSpans[0].scopeSpans[0].spans).toHaveLength(1);
+  });
+
   test("never shows another account's receipt", async () => {
     const { payer } = await paidInvoice();
     const outsider = await signIn();

@@ -13,7 +13,7 @@ import httpx
 from .errors import LiegeAPIError
 from .models import (
     AgentAccount, AgentActionAuthorization, AgentActionInput, AgentActionSimulation, AgentControlResult,
-    AgentPolicyInput, Invoice, InvoiceRefund, Job, JobEvent, Service, ServiceType, Session,
+    AgentPolicyInput, Invoice, InvoiceRefund, Job, JobEvent, Receipt, Service, ServiceType, Session,
 )
 
 
@@ -120,6 +120,20 @@ class LiegeClient:
     def list_invoice_refunds(self, invoice_id: str) -> list[InvoiceRefund]:
         items = self._request("GET", f"/v1/invoices/{invoice_id}/refunds")
         return [InvoiceRefund.from_dict(item) for item in items]
+
+    def list_receipts(self, format: str = "json", limit: int = 500) -> Any:
+        params: dict[str, Any] = {"limit": limit}
+        if format:
+            params["format"] = format
+        res = self._request("GET", "/v1/receipts", params=params)
+        if format in ("otel", "csv"):
+            return res
+        items = res if isinstance(res, list) else (res.get("data", []) if isinstance(res, dict) else [])
+        return [Receipt.from_dict(item) for item in items]
+
+    def get_receipt(self, receipt_id: str, format: str = "json") -> Any:
+        params = {"format": format} if format != "json" else None
+        return self._request("GET", f"/v1/receipts/{receipt_id}", params=params)
 
     def list_services(self, agent_id: str | None = None, service_type: ServiceType | None = None,
                       limit: int = 50) -> list[Service]:

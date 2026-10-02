@@ -103,6 +103,90 @@ const csvCell = (value: unknown, text = true) => {
   return /[",\r\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell;
 };
 
+function formatOtel(
+  items: Array<{
+    receiptId: string;
+    type: string;
+    asset: string;
+    availableChange: string;
+    stakeChange: string;
+    reference: string;
+    subject: Subject | null;
+    createdAt: string;
+  }>,
+  generatedAt: string,
+  statementDigest: string,
+) {
+  const spans = items.map((item) => {
+    const traceId = item.receiptId.replace(/-/g, "").toLowerCase().padEnd(32, "0").slice(0, 32);
+    const spanId = createHash("sha256")
+      .update(`${item.receiptId}:${item.asset}:${item.type}`)
+      .digest("hex")
+      .slice(0, 16);
+    const timeUnixNano = (BigInt(new Date(item.createdAt).getTime()) * 1_000_000n).toString();
+
+    const attributes: Array<{
+      key: string;
+      value: { stringValue?: string; doubleValue?: number; intValue?: number };
+    }> = [
+      { key: "ledger.receipt_id", value: { stringValue: item.receiptId } },
+      { key: "ledger.transaction_type", value: { stringValue: item.type } },
+      { key: "ledger.asset", value: { stringValue: item.asset } },
+      { key: "ledger.available_change", value: { doubleValue: Number(item.availableChange) } },
+      { key: "ledger.stake_change", value: { doubleValue: Number(item.stakeChange) } },
+      { key: "ledger.reference", value: { stringValue: item.reference } },
+      { key: "network.chain_id", value: { intValue: 4663 } },
+      { key: "network.name", value: { stringValue: "robinhood_chain" } },
+    ];
+
+    if (item.subject) {
+      attributes.push(
+        { key: "ledger.subject_type", value: { stringValue: item.subject.type } },
+        { key: "ledger.subject_id", value: { stringValue: item.subject.publicId } },
+        { key: "ledger.subject_title", value: { stringValue: item.subject.title } },
+        { key: "ledger.agent_name", value: { stringValue: item.subject.agentName } },
+      );
+    }
+
+    return {
+      traceId,
+      spanId,
+      name: `ledger.${item.type}`,
+      kind: "SPAN_KIND_INTERNAL",
+      startTimeUnixNano: timeUnixNano,
+      endTimeUnixNano: timeUnixNano,
+      attributes,
+      status: { code: "STATUS_CODE_OK" },
+    };
+  });
+
+  return {
+    resourceSpans: [
+      {
+        resource: {
+          attributes: [
+            { key: "service.name", value: { stringValue: "liege" } },
+            { key: "service.version", value: { stringValue: "0.1.7" } },
+            { key: "network.chain_id", value: { intValue: 4663 } },
+            { key: "network.name", value: { stringValue: "robinhood_chain" } },
+          ],
+        },
+        scopeSpans: [
+          {
+            scope: {
+              name: "liege.ledger",
+              version: "1.0.0",
+            },
+            spans,
+          },
+        ],
+      },
+    ],
+    digest: statementDigest,
+    generatedAt,
+  };
+}
+
 export const receiptsRouter = Router();
 receiptsRouter.use(requireAuth);
 
@@ -111,7 +195,7 @@ receiptsRouter.get(
   asyncRoute(async (request, response) => {
     const query = z
       .object({
-        format: z.enum(["json", "csv"]).default("json"),
+        format: z.enum(["json", "csv", "otel"]).default("json"),
         limit: z.coerce.number().int().min(1).max(5000).default(500),
       })
       .parse(request.query);
@@ -157,6 +241,15 @@ receiptsRouter.get(
         .send([header.join(","), ...body].join("\r\n") + "\r\n");
       return;
     }
+    if (query.format === "otel") {
+      const otelPayload = formatOtel(lines, generatedAt, statementDigest);
+      response.type("application/json").set("X-Liege-Statement-Digest", statementDigest);
+      if (request.query.download === "1") {
+        response.set("Content-Disposition", `attachment; filename="${filename}.otel.json"`);
+      }
+      response.json(otelPayload);
+      return;
+    }
     if (request.query.download === "1")
       response.set("Content-Disposition", `attachment; filename="${filename}.json"`);
     response.json({ data: lines, digest: statementDigest, generatedAt });
@@ -188,6 +281,25 @@ receiptsRouter.get(
       })),
       createdAt: new Date(first.created_at).toISOString(),
     };
+    if (request.query.format === "otel") {
+      const itemized = rows.map((row) => ({
+        receiptId: first.id,
+        type: first.type,
+        asset: row.asset,
+        availableChange: String(row.available_change),
+        stakeChange: String(row.stake_change),
+        reference: first.reference,
+        subject: found.get(subjectOf(first.reference)?.id ?? "") ?? null,
+        createdAt: new Date(first.created_at).toISOString(),
+      }));
+      const receiptDigest = digest(receipt);
+      const otelPayload = formatOtel(itemized, receipt.createdAt, receiptDigest);
+      response
+        .type("application/json")
+        .set("X-Liege-Statement-Digest", receiptDigest)
+        .json(otelPayload);
+      return;
+    }
     response.json({ data: { ...receipt, digest: digest(receipt) } });
   }),
 );

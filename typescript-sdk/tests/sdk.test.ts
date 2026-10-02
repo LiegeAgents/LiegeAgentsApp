@@ -85,6 +85,50 @@ describe("LiegeClient", () => {
     expect(refunds[0].reason).toBe("Scope adjusted");
   });
 
+  test("lists receipts and exports OpenTelemetry compliant spans", async () => {
+    const client = new LiegeClient({ token: "session", fetch: async (input) => {
+      const url = String(input);
+      if (url.includes("/v1/receipts?limit=500&format=otel")) {
+        return new Response(JSON.stringify({
+          resourceSpans: [{
+            resource: { attributes: [{ key: "service.name", value: { stringValue: "liege" } }] },
+            scopeSpans: [{
+              scope: { name: "liege.ledger", version: "1.0.0" },
+              spans: [{
+                traceId: "00000000000000000000000000000001",
+                spanId: "0000000000000001",
+                name: "ledger.invoice_payment",
+                kind: "SPAN_KIND_INTERNAL",
+                startTimeUnixNano: "1727870400000000000",
+                endTimeUnixNano: "1727870400000000000",
+                attributes: [{ key: "ledger.asset", value: { stringValue: "usdg" } }],
+                status: { code: "STATUS_CODE_OK" },
+              }],
+            }],
+          }],
+          digest: "a".repeat(64),
+          generatedAt: "2026-10-02T12:00:00Z",
+        }));
+      }
+      if (url.includes("/v1/receipts?limit=500")) {
+        return new Response(JSON.stringify({
+          data: [{ receiptId: "rec-1", type: "invoice_payment", reference: "ref-1", subject: null, createdAt: "2026-10-02T12:00:00Z" }],
+          digest: "a".repeat(64),
+          generatedAt: "2026-10-02T12:00:00Z",
+        }));
+      }
+      return new Response("not found", { status: 404 });
+    } });
+
+    const statement = await client.listReceipts();
+    expect(statement).toHaveLength(1);
+    expect(statement[0].receiptId).toBe("rec-1");
+
+    const otel = await client.listReceipts({ format: "otel" });
+    expect(otel.resourceSpans).toHaveLength(1);
+    expect(otel.resourceSpans[0].scopeSpans[0].spans[0].name).toBe("ledger.invoice_payment");
+  });
+
   test("lists and creates typed catalog services", async () => {
     let calls = 0;
     const client = new LiegeClient({ token: "session", fetch: async (input, init) => {

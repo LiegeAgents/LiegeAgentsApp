@@ -1472,6 +1472,9 @@ function ReceiptsPanel({ token, onNotice }) {
           <Button secondary small href={api.receiptExportUrl("json")} download>
             <Download size={13} /> JSON
           </Button>
+          <Button secondary small href={api.receiptExportUrl("otel")} download>
+            <Download size={13} /> OpenTelemetry
+          </Button>
         </div>
       </div>
       {lines && !lines.length ? (
