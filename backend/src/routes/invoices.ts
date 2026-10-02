@@ -57,6 +57,18 @@ const refundInput = z.object({
   reason: z.string().trim().max(500).optional(),
 });
 
+function decimalUnits(value: string, decimals: number): bigint {
+  const [whole, fraction = ""] = value.split(".");
+  return BigInt(whole) * 10n ** BigInt(decimals) + BigInt(fraction.padEnd(decimals, "0"));
+}
+
+function unitsDecimal(value: bigint, decimals: number): string {
+  const base = 10n ** BigInt(decimals);
+  const whole = value / base;
+  const fraction = (value % base).toString().padStart(decimals, "0").replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : whole.toString();
+}
+
 type InvoiceRow = {
   id: string;
   public_id: string;
@@ -554,12 +566,17 @@ invoicesRouter.post(
         );
       const asset = (invoice.asset ?? "usdg") as SettlementAsset;
       const decimals = ASSET_DECIMALS[asset] ?? 6;
-      const totalAmount = Number(invoice.amount ?? invoice.amount_usdg ?? "0");
-      const alreadyRefunded = Number(
-        invoice.refunded_amount ?? invoice.refunded_amount_usdg ?? "0",
+      const totalUnits = decimalUnits(
+        String(invoice.amount ?? invoice.amount_usdg ?? "0"),
+        decimals,
       );
-      const remaining = Math.max(0, Number((totalAmount - alreadyRefunded).toFixed(decimals)));
-      if (remaining <= 0)
+      const refundedUnits = decimalUnits(
+        String(invoice.refunded_amount ?? invoice.refunded_amount_usdg ?? "0"),
+        decimals,
+      );
+      const remainingUnits = totalUnits > refundedUnits ? totalUnits - refundedUnits : 0n;
+      const remaining = unitsDecimal(remainingUnits, decimals);
+      if (remainingUnits <= 0n)
         throw new ApiError(
           409,
           "invoice_not_refundable",
@@ -569,10 +586,7 @@ invoicesRouter.post(
       let refundAmountStr: string;
       const rawAmount = body.amount ?? body.amountUsdg;
       if (rawAmount == null) {
-        refundAmountStr = remaining
-          .toFixed(decimals)
-          .replace(/\.0+$/, "")
-          .replace(/(\.\d*?)0+$/, "$1");
+        refundAmountStr = remaining;
       } else {
         const str =
           typeof rawAmount === "number"
@@ -582,15 +596,20 @@ invoicesRouter.post(
                 .replace(/(\.\d*?)0+$/, "$1")
             : String(rawAmount).trim();
         const amountRegex = new RegExp(`^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,${decimals}})?$`);
-        if (!amountRegex.test(str) || Number(str) <= 0) {
+        let refundUnits = 0n;
+        try {
+          refundUnits = decimalUnits(str, decimals);
+        } catch {
+          refundUnits = 0n;
+        }
+        if (!amountRegex.test(str) || refundUnits <= 0n) {
           throw new ApiError(
             422,
             "invalid_amount",
             `Refund amount must be a positive decimal with at most ${decimals} decimals for ${assetLabel(asset)}.`,
           );
         }
-        const parsedRefundAmount = Number(str);
-        if (parsedRefundAmount > remaining + 1e-9) {
+        if (refundUnits > remainingUnits) {
           throw new ApiError(
             422,
             "amount_exceeds_remaining",

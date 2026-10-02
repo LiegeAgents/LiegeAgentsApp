@@ -1,5 +1,5 @@
 export type Signer = (message: string) => Promise<string> | string;
-export const SDK_VERSION = "0.1.7";
+export const SDK_VERSION = "0.1.8";
 
 export interface X402PaymentRequired {
   x402Version: number;
@@ -56,6 +56,28 @@ export interface Service {
   slaMinutes: number; requirementsSchema: Record<string, unknown>; deliverableSchema: Record<string, unknown>;
   [key: string]: unknown;
 }
+export type AgentStatus = "active" | "paused" | "killed";
+export type ApprovalMode = "always" | "within_policy";
+export interface AgentPolicy {
+  version: number; maxActionAmount: string | null; dailyBudget: string | null; monthlyBudget: string | null;
+  allowedAssets: string[]; allowedVenues: string[]; approvedCounterparties: string[]; allowedActions: string[];
+  approvalMode: ApprovalMode; simulationRequired: boolean; requireHumanAbove: string | null;
+  activeHours: { start: number; end: number } | null; activeDays: number[]; timezone: string;
+}
+export interface AgentAccount { accountId: string; agentId: string; status: AgentStatus; killReason?: string | null; pausedAt?: string | null; policy: AgentPolicy | null; [key: string]: unknown; }
+export interface AgentPolicyInput {
+  maxActionAmount?: string | number | null; dailyBudget?: string | number | null; monthlyBudget?: string | number | null;
+  allowedAssets?: string[]; allowedVenues?: string[]; approvedCounterparties?: string[]; allowedActions?: string[];
+  approvalMode?: ApprovalMode; simulationRequired?: boolean; requireHumanAbove?: string | number | null;
+  activeHours?: { start: number; end: number } | null; activeDays?: number[]; timezone?: string;
+}
+export interface AgentActionInput {
+  action: string; amount?: string | number; asset?: string; venue?: string; counterparty?: string;
+  details?: Record<string, unknown>; simulationId?: string; simulationDigest?: string; simulate?: boolean;
+}
+export interface AgentActionSimulation { id: string; actionDigest: string; action: Record<string, unknown>; result: Record<string, unknown>; policyVersion: number; expiresAt: string; createdAt: string; [key: string]: unknown; }
+export interface AgentActionAuthorization { actionId: string; accountId: string; decision: string; reasons: string[]; policyVersion: number; simulationDigest: string | null; createdAt: string; [key: string]: unknown; }
+export interface AgentControlResult { accountId: string; status: AgentStatus; killReason?: string | null; revokedConnections: number; rejectedProposals: number; [key: string]: unknown; }
 export interface JobEvent { id: string; event: string; data: unknown; }
 export interface EventStreamOptions {
   after?: string;

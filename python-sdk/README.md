@@ -35,6 +35,10 @@ The service catalog is available through `list_services`, `get_service`, and `cr
 Services use `tool`, `data`, or `skill` as their type; `sandboxed_runner` is an execution mode,
 not a separate service type.
 
+Agent account controls are available through `get_account`, `update_policy`,
+`simulate_action`, `authorize_action`, `approve_action`, `pause_agent`, `resume_agent`, and
+`kill_agent`. Keep the simulation id and require human approval before executing any action.
+
 ## Development
 
 ```bash

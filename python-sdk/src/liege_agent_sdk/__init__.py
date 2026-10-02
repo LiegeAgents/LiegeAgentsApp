@@ -4,6 +4,12 @@ from .client import LiegeClient, decode_x402_payment_required, encode_x402_json
 from .errors import LiegeAPIError
 from .mcp import McpClient
 from .models import (
+    AgentAccount,
+    AgentActionAuthorization,
+    AgentActionInput,
+    AgentActionSimulation,
+    AgentControlResult,
+    AgentPolicyInput,
     Invoice,
     InvoiceRefund,
     Job,
@@ -24,9 +30,15 @@ __all__ = [
     "LiegeClient",
     "McpClient",
     "McpProposal",
+    "AgentAccount",
+    "AgentActionAuthorization",
+    "AgentActionInput",
+    "AgentActionSimulation",
+    "AgentControlResult",
+    "AgentPolicyInput",
     "Service",
     "ServiceExecutionMode",
     "ServiceType",
     "Session",
 ]
-__version__ = "0.1.3"
+__version__ = "0.1.4"

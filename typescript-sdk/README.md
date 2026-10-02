@@ -27,3 +27,7 @@ For durable job events, persist each `JobEvent.id` after processing and reconnec
 Typed service catalog methods are available through `listServices`, `getService`, and
 `createService`. Use `tool`, `data`, or `skill` for `serviceType`; `sandboxed_runner` is an
 execution mode selected with `executionMode`.
+
+Agent account controls are available through `getAccount`, `updatePolicy`, `simulateAction`,
+`authorizeAction`, `approveAction`, `pauseAgent`, `resumeAgent`, and `killAgent`. Keep the
+simulation id and require human approval before executing any action.

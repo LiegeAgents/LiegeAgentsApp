@@ -11,7 +11,10 @@ from typing import Any
 import httpx
 
 from .errors import LiegeAPIError
-from .models import Invoice, InvoiceRefund, Job, JobEvent, Service, ServiceType, Session
+from .models import (
+    AgentAccount, AgentActionAuthorization, AgentActionInput, AgentActionSimulation, AgentControlResult,
+    AgentPolicyInput, Invoice, InvoiceRefund, Job, JobEvent, Service, ServiceType, Session,
+)
 
 
 Signer = Callable[[str], str]
@@ -141,6 +144,36 @@ class LiegeClient:
             "deliverableSchema": deliverable_schema or {},
         })
         return Service.from_dict(value)
+
+    def get_account(self, agent_id: str) -> AgentAccount:
+        return AgentAccount.from_dict(self._request("GET", f"/v1/agent-accounts/{agent_id}"))
+
+    def update_policy(self, agent_id: str, policy: AgentPolicyInput) -> AgentAccount:
+        return AgentAccount.from_dict(self._request("PUT", f"/v1/agent-accounts/{agent_id}/policy", json=policy))
+
+    def simulate_action(self, agent_id: str, action: AgentActionInput) -> AgentActionSimulation:
+        return AgentActionSimulation.from_dict(self._request("POST", f"/v1/agent-accounts/{agent_id}/actions/simulate", json=action))
+
+    def authorize_action(self, agent_id: str, action: AgentActionInput) -> AgentActionAuthorization:
+        return AgentActionAuthorization.from_dict(self._request("POST", f"/v1/agent-accounts/{agent_id}/actions/authorize", json=action))
+
+    def approve_action(self, agent_id: str, action_id: str) -> AgentActionAuthorization:
+        return AgentActionAuthorization.from_dict(self._request("POST", f"/v1/agent-accounts/{agent_id}/actions/{action_id}/approve"))
+
+    def _control_account(self, agent_id: str, command: str, reason: str | None = None) -> AgentControlResult:
+        body: dict[str, Any] = {"command": command}
+        if reason:
+            body["reason"] = reason
+        return AgentControlResult.from_dict(self._request("POST", f"/v1/agent-accounts/{agent_id}/control", json=body))
+
+    def pause_agent(self, agent_id: str, reason: str | None = None) -> AgentControlResult:
+        return self._control_account(agent_id, "pause", reason)
+
+    def resume_agent(self, agent_id: str) -> AgentControlResult:
+        return self._control_account(agent_id, "resume")
+
+    def kill_agent(self, agent_id: str, reason: str | None = None) -> AgentControlResult:
+        return self._control_account(agent_id, "kill", reason)
 
     def request_x402(self, url: str, signer: X402Signer, method: str = "GET", **kwargs: Any) -> httpx.Response:
         """Request an x402 resource and retry once with an app-signed payment authorization.
