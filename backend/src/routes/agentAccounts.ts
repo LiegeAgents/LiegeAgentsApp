@@ -785,13 +785,10 @@ export function formatAp2Mandate(
 }
 
 agentAccountsRouter.get(
-  ["/:agentId/mandates/:id/ap2", "/:agentId/mandates/:mandateId/ap2"],
+  "/:agentId/mandates/:mandateId/ap2",
   asyncRoute(async (request, response) => {
     const agentId = z.string().uuid().parse(request.params.agentId);
-    const mandateId = z
-      .string()
-      .uuid()
-      .parse(request.params.id || request.params.mandateId);
+    const mandateId = z.string().uuid().parse(request.params.mandateId);
     const wallet = await ownedAgent(agentId, request.auth!.userId);
     await ensureAccount(agentId, request.auth!.userId);
     const result = await db.query(
@@ -814,13 +811,10 @@ agentAccountsRouter.get(
 );
 
 agentAccountsRouter.get(
-  ["/:agentId/mandates/:id", "/:agentId/mandates/:mandateId"],
+  "/:agentId/mandates/:mandateId",
   asyncRoute(async (request, response) => {
     const agentId = z.string().uuid().parse(request.params.agentId);
-    const mandateId = z
-      .string()
-      .uuid()
-      .parse(request.params.id || request.params.mandateId);
+    const mandateId = z.string().uuid().parse(request.params.mandateId);
     const wallet = await ownedAgent(agentId, request.auth!.userId);
     await ensureAccount(agentId, request.auth!.userId);
     const result = await db.query(

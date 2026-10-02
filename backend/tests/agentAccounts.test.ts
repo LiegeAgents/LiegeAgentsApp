@@ -183,6 +183,7 @@ describe.skipIf(!databaseAvailable)("agent accounts and mandates", () => {
       createHash("sha256").update(canonical(contents)).digest("hex"),
     );
     const account = privateKeyToAccount(privateKey);
+    const signature = await account.signMessage({ message: `Liege Agent Mandate\n${digest}` });
     const mandate = await api()
       .post(`/v1/agent-accounts/${agentId}/mandates`)
       .set(bearer(owner))
@@ -190,7 +191,7 @@ describe.skipIf(!databaseAvailable)("agent accounts and mandates", () => {
         nonce,
         payload,
         expiresAt,
-        signature: await account.signMessage({ message: `Liege Agent Mandate\n${digest}` }),
+        signature,
       })
       .expect(201);
 
@@ -217,7 +218,7 @@ describe.skipIf(!databaseAvailable)("agent accounts and mandates", () => {
     const intentMandate = ap2Export.body.data["ap2.mandates.IntentMandate"];
     expect(intentMandate.natural_language_description).toBe("Autonomous rebalancing mandate");
 
-    expect(ap2Export.body.data.proof.signature).toBe(mandate.body.data.signature);
+    expect(ap2Export.body.data.proof.signature).toBe(signature);
     expect(ap2Export.body.data.proof.digest).toBe(digest);
   });
 });
