@@ -23,6 +23,7 @@ const eventTypes = z
       "invoice.created",
       "invoice.paid",
       "invoice.refunded",
+      "invoice.partially_refunded",
       "invoice.cancelled",
       "invoice.expired",
     ]),
@@ -38,6 +39,7 @@ const eventTypes = z
     "invoice.created",
     "invoice.paid",
     "invoice.refunded",
+    "invoice.partially_refunded",
     "invoice.cancelled",
     "invoice.expired",
   ]);

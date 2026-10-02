@@ -72,8 +72,14 @@ export const api = {
     request("/v1/invoices", { token, method: "POST", body: JSON.stringify(input) }),
   payInvoice: (token, id) =>
     request(`/v1/invoices/${encodeURIComponent(id)}/pay`, { token, method: "POST" }),
-  refundInvoice: (token, id) =>
-    request(`/v1/invoices/${encodeURIComponent(id)}/refund`, { token, method: "POST" }),
+  refundInvoice: (token, id, input) =>
+    request(`/v1/invoices/${encodeURIComponent(id)}/refund`, {
+      token,
+      method: "POST",
+      body: input ? JSON.stringify(input) : undefined,
+    }),
+  invoiceRefunds: (token, id) =>
+    request(`/v1/invoices/${encodeURIComponent(id)}/refunds`, { token }),
   cancelInvoice: (token, id) =>
     request(`/v1/invoices/${encodeURIComponent(id)}/cancel`, { token, method: "POST" }),
   evaluators: () => request("/v1/evaluators"),

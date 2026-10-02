@@ -50,6 +50,12 @@ const createInput = z
     }
   });
 const id = z.string().uuid();
+const refundInput = z.object({
+  amount: z.union([z.string(), z.number().finite()]).optional(),
+  amountUsdg: z.union([z.string(), z.number().finite()]).optional(),
+  jobId: z.string().uuid().optional(),
+  reason: z.string().trim().max(500).optional(),
+});
 
 type InvoiceRow = {
   id: string;
@@ -60,6 +66,8 @@ type InvoiceRow = {
   reference: string | null;
   amount: string;
   amount_usdg: string | null;
+  refunded_amount?: string | null;
+  refunded_amount_usdg?: string | null;
   asset: SettlementAsset;
   status: string;
   expires_at: Date;
@@ -78,6 +86,8 @@ type InvoiceRow = {
 const publicInvoice = (row: InvoiceRow) => {
   const asset = (row.asset ?? "usdg") as SettlementAsset;
   const numAmount = Number(row.amount ?? row.amount_usdg ?? 0);
+  const refundedAmount = Number(row.refunded_amount ?? row.refunded_amount_usdg ?? 0);
+  const remainingAmount = Math.max(0, numAmount - refundedAmount);
   return {
     id: row.id,
     invoiceId: row.id,
@@ -89,6 +99,14 @@ const publicInvoice = (row: InvoiceRow) => {
     amount: numAmount,
     amountUsdg:
       asset === "usdg" ? numAmount : row.amount_usdg != null ? Number(row.amount_usdg) : numAmount,
+    refundedAmount,
+    refundedAmountUsdg:
+      asset === "usdg"
+        ? refundedAmount
+        : row.refunded_amount_usdg != null
+          ? Number(row.refunded_amount_usdg)
+          : refundedAmount,
+    remainingAmount,
     asset,
     status: row.status,
     expiresAt: row.expires_at,
@@ -508,6 +526,7 @@ invoicesRouter.post(
   requireAuth,
   asyncRoute(async (request, response) => {
     const invoiceId = id.parse(request.params.id);
+    const body = refundInput.parse(request.body ?? {});
     const client = await db.connect();
     try {
       await client.query("BEGIN");
@@ -524,74 +543,227 @@ invoicesRouter.post(
           "x402_refund_not_configured",
           "Refunds for on-chain x402 payments are not configured yet.",
         );
-      if (invoice.status !== "paid" || !invoice.payer_id)
+      if (
+        (invoice.status !== "paid" && invoice.status !== "partially_refunded") ||
+        !invoice.payer_id
+      )
         throw new ApiError(
           409,
           "invoice_not_refundable",
-          "Only a paid invoice can be refunded once.",
+          "Only a paid or partially refunded invoice can be refunded.",
         );
       const asset = (invoice.asset ?? "usdg") as SettlementAsset;
-      const invoiceAmount = invoice.amount ?? invoice.amount_usdg ?? "0";
+      const decimals = ASSET_DECIMALS[asset] ?? 6;
+      const totalAmount = Number(invoice.amount ?? invoice.amount_usdg ?? "0");
+      const alreadyRefunded = Number(
+        invoice.refunded_amount ?? invoice.refunded_amount_usdg ?? "0",
+      );
+      const remaining = Math.max(0, Number((totalAmount - alreadyRefunded).toFixed(decimals)));
+      if (remaining <= 0)
+        throw new ApiError(
+          409,
+          "invoice_not_refundable",
+          "This invoice has already been fully refunded.",
+        );
+
+      let refundAmountStr: string;
+      const rawAmount = body.amount ?? body.amountUsdg;
+      if (rawAmount == null) {
+        refundAmountStr = remaining
+          .toFixed(decimals)
+          .replace(/\.0+$/, "")
+          .replace(/(\.\d*?)0+$/, "$1");
+      } else {
+        const str =
+          typeof rawAmount === "number"
+            ? rawAmount
+                .toFixed(decimals)
+                .replace(/\.0+$/, "")
+                .replace(/(\.\d*?)0+$/, "$1")
+            : String(rawAmount).trim();
+        const amountRegex = new RegExp(`^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,${decimals}})?$`);
+        if (!amountRegex.test(str) || Number(str) <= 0) {
+          throw new ApiError(
+            422,
+            "invalid_amount",
+            `Refund amount must be a positive decimal with at most ${decimals} decimals for ${assetLabel(asset)}.`,
+          );
+        }
+        const parsedRefundAmount = Number(str);
+        if (parsedRefundAmount > remaining + 1e-9) {
+          throw new ApiError(
+            422,
+            "amount_exceeds_remaining",
+            `Refund amount (${str} ${assetLabel(asset)}) exceeds the remaining refundable balance (${remaining} ${assetLabel(asset)}).`,
+          );
+        }
+        refundAmountStr = str;
+      }
+
+      if (body.jobId) {
+        const job = await client.query("SELECT id FROM jobs WHERE id=$1", [body.jobId]);
+        if (!job.rowCount)
+          throw new ApiError(404, "job_not_found", "The specified job was not found.");
+      }
+
       const from = await userBalance(client, invoice.issuer_id, "available", asset);
       const to = await userBalance(client, invoice.payer_id, "available", asset);
+      const refundRef = `invoice-refund:${invoiceId}:${randomUUID()}`;
       const transactionId = await transfer(client, {
-        reference: `invoice-refund:${invoiceId}`,
+        reference: refundRef,
         type: "invoice_refund",
         from: from.accountId,
         to: to.accountId,
-        amount: invoiceAmount,
+        amount: refundAmountStr,
         asset,
         createdBy: request.auth!.userId,
-        metadata: { invoiceId, payerId: invoice.payer_id, asset },
+        metadata: {
+          invoiceId,
+          payerId: invoice.payer_id,
+          asset,
+          ...(body.jobId ? { jobId: body.jobId } : {}),
+          ...(body.reason ? { reason: body.reason } : {}),
+        },
         insufficientFunds: new ApiError(
           422,
           "insufficient_available_balance",
           `Available ${assetLabel(asset)} cannot cover this invoice refund.`,
         ),
       });
+
       await client.query(
-        "INSERT INTO invoice_refunds (invoice_id,payer_id,issuer_id,ledger_transaction_id,amount,amount_usdg,asset) VALUES ($1,$2,$3,$4,$5,$6,$7)",
+        "INSERT INTO invoice_refunds (invoice_id, payer_id, issuer_id, ledger_transaction_id, amount, amount_usdg, asset, job_id, reason) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
         [
           invoiceId,
           invoice.payer_id,
           invoice.issuer_id,
           transactionId,
-          invoiceAmount,
-          asset === "usdg" ? invoiceAmount : null,
+          refundAmountStr,
+          asset === "usdg" ? refundAmountStr : null,
           asset,
+          body.jobId ?? null,
+          body.reason ?? null,
         ],
       );
+
       const refunded = await client.query<InvoiceRow>(
-        "UPDATE invoices SET status='refunded', refunded_at=now(), updated_at=now() WHERE id=$1 RETURNING *",
-        [invoiceId],
+        `UPDATE invoices
+         SET refunded_amount = LEAST(amount, refunded_amount + $2::numeric),
+             refunded_amount_usdg = CASE WHEN $3::text = 'usdg' THEN LEAST(COALESCE(amount_usdg, amount), refunded_amount_usdg + $2::numeric) ELSE refunded_amount_usdg END,
+             status = CASE WHEN (refunded_amount + $2::numeric) >= amount THEN 'refunded'::invoice_status ELSE 'partially_refunded'::invoice_status END,
+             refunded_at = now(),
+             updated_at = now()
+         WHERE id=$1
+         RETURNING *`,
+        [invoiceId, refundAmountStr, asset],
       );
+      const updatedInvoice = refunded.rows[0];
+      const isFull = updatedInvoice.status === "refunded";
+      const eventType = isFull ? "invoice.refunded" : "invoice.partially_refunded";
+
       await enqueueWebhookEvent(client, {
         invoiceId,
-        eventType: "invoice.refunded",
+        eventType,
         actorId: request.auth!.userId,
         data: {
-          amount: Number(invoiceAmount),
-          amountUsdg: Number(invoice.amount_usdg ?? invoiceAmount),
+          amount: Number(refundAmountStr),
+          amountUsdg: asset === "usdg" ? Number(refundAmountStr) : Number(refundAmountStr),
           asset,
           payerId: invoice.payer_id,
+          jobId: body.jobId ?? null,
+          reason: body.reason ?? null,
+          refundedAmount: Number(
+            updatedInvoice.refunded_amount ?? updatedInvoice.refunded_amount_usdg ?? 0,
+          ),
+          remainingAmount: Math.max(
+            0,
+            Number(updatedInvoice.amount ?? updatedInvoice.amount_usdg ?? 0) -
+              Number(updatedInvoice.refunded_amount ?? updatedInvoice.refunded_amount_usdg ?? 0),
+          ),
+          status: updatedInvoice.status,
         },
       });
       await audit(client, {
         actorId: request.auth!.userId,
-        action: "invoice.refunded",
+        action: eventType,
         targetType: "invoice",
         targetId: invoiceId,
         requestId: request.requestId,
-        metadata: { ledgerTransactionId: transactionId, amount: invoiceAmount, asset },
+        metadata: {
+          ledgerTransactionId: transactionId,
+          amount: refundAmountStr,
+          asset,
+          jobId: body.jobId ?? null,
+          reason: body.reason ?? null,
+          status: updatedInvoice.status,
+        },
       });
       await client.query("COMMIT");
-      response.json({ data: publicInvoice({ ...refunded.rows[0], payer_id: invoice.payer_id }) });
+      response.json({
+        data: publicInvoice({
+          ...updatedInvoice,
+          issuer_wallet: invoice.issuer_wallet,
+          payer_id: invoice.payer_id,
+          payer_wallet: invoice.payer_wallet,
+          payment_method: invoice.payment_method,
+          settlement_transaction: invoice.settlement_transaction,
+          settlement_network: invoice.settlement_network,
+        }),
+      });
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
     } finally {
       client.release();
     }
+  }),
+);
+
+invoicesRouter.get(
+  "/:id/refunds",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const invoiceId = id.parse(request.params.id);
+    const invoice = await db.query(
+      `SELECT i.id FROM invoices i
+       LEFT JOIN invoice_payments p ON p.invoice_id = i.id
+       WHERE i.id=$1 AND (i.issuer_id=$2 OR p.payer_id=$2)`,
+      [invoiceId, request.auth!.userId],
+    );
+    if (!invoice.rowCount)
+      throw new ApiError(404, "invoice_not_found", "This invoice is unavailable.");
+    const result = await db.query(
+      `SELECT r.id, r.invoice_id, r.payer_id, r.issuer_id, r.amount, r.amount_usdg, r.asset,
+              r.job_id, r.reason, r.refunded_at, r.ledger_transaction_id
+       FROM invoice_refunds r
+       WHERE r.invoice_id = $1
+       ORDER BY r.refunded_at ASC`,
+      [invoiceId],
+    );
+    response.json({
+      data: result.rows.map((row) => {
+        const asset = (row.asset ?? "usdg") as SettlementAsset;
+        const numAmount = Number(row.amount ?? row.amount_usdg ?? 0);
+        return {
+          id: row.id,
+          invoiceId: row.invoice_id,
+          payerId: row.payer_id,
+          issuerId: row.issuer_id,
+          amount: numAmount,
+          amountUsdg:
+            asset === "usdg"
+              ? numAmount
+              : row.amount_usdg != null
+                ? Number(row.amount_usdg)
+                : numAmount,
+          asset,
+          jobId: row.job_id ?? null,
+          reason: row.reason ?? null,
+          refundedAt: row.refunded_at,
+          ledgerTransactionId: row.ledger_transaction_id,
+        };
+      }),
+    });
   }),
 );
 

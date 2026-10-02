@@ -988,14 +988,33 @@ paths:
   /v1/invoices/{id}/refund:
     post:
       operationId: refundInvoice
-      summary: Refund a paid invoice once. Only its issuer may refund it.
+      summary: Refund a paid or partially refunded invoice fully or partially bound to jobId and reason. Only its issuer may refund it.
       security: [{ bearerAuth: [] }]
       parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount: { type: number, description: "Partial refund amount. If omitted, refunds the full remaining balance." }
+                jobId: { type: string, format: uuid, description: "Optional bound job identifier." }
+                reason: { type: string, maxLength: 500, description: "Optional explanation or audit reason." }
       responses:
-        "200": { description: Invoice refunded, content: { application/json: { schema: { type: object } } } }
+        "200": { description: Invoice refunded or partially refunded, content: { application/json: { schema: { type: object } } } }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/Unprocessable" }
+  /v1/invoices/{id}/refunds:
+    get:
+      operationId: getInvoiceRefunds
+      summary: List all refund transactions for an invoice. Available to issuer and payer.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: List of refund receipts, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /v1/invoices/{id}/cancel:
     post:
       operationId: cancelInvoice

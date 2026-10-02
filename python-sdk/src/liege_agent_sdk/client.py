@@ -11,7 +11,7 @@ from typing import Any
 import httpx
 
 from .errors import LiegeAPIError
-from .models import Invoice, Job, JobEvent, Service, ServiceType, Session
+from .models import Invoice, InvoiceRefund, Job, JobEvent, Service, ServiceType, Session
 
 
 Signer = Callable[[str], str]
@@ -103,8 +103,20 @@ class LiegeClient:
     def pay_invoice(self, invoice_id: str) -> Invoice:
         return Invoice.from_dict(self._request("POST", f"/v1/invoices/{invoice_id}/pay"))
 
-    def refund_invoice(self, invoice_id: str) -> Invoice:
-        return Invoice.from_dict(self._request("POST", f"/v1/invoices/{invoice_id}/refund"))
+    def refund_invoice(self, invoice_id: str, amount: str | float | None = None,
+                       job_id: str | None = None, reason: str | None = None) -> Invoice:
+        body: dict[str, Any] = {}
+        if amount is not None:
+            body["amount"] = amount
+        if job_id is not None:
+            body["jobId"] = job_id
+        if reason is not None:
+            body["reason"] = reason
+        return Invoice.from_dict(self._request("POST", f"/v1/invoices/{invoice_id}/refund", json=body or None))
+
+    def list_invoice_refunds(self, invoice_id: str) -> list[InvoiceRefund]:
+        items = self._request("GET", f"/v1/invoices/{invoice_id}/refunds")
+        return [InvoiceRefund.from_dict(item) for item in items]
 
     def list_services(self, agent_id: str | None = None, service_type: ServiceType | None = None,
                       limit: int = 50) -> list[Service]:

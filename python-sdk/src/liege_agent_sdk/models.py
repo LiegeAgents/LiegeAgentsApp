@@ -42,6 +42,41 @@ class JobEvent:
 
 
 @dataclass(frozen=True)
+class InvoiceRefund:
+    id: str
+    invoice_id: str
+    payer_id: str
+    issuer_id: str
+    amount: float
+    amount_usdg: float
+    asset: str
+    job_id: str | None
+    reason: str | None
+    refunded_at: str
+    ledger_transaction_id: str
+    raw: dict[str, Any]
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "InvoiceRefund":
+        amount_usdg = float(value.get("amountUsdg") or value.get("amount", 0))
+        amount = float(value.get("amount") or amount_usdg)
+        return cls(
+            value["id"],
+            value.get("invoiceId", value.get("invoice_id", "")),
+            value.get("payerId", value.get("payer_id", "")),
+            value.get("issuerId", value.get("issuer_id", "")),
+            amount,
+            amount_usdg,
+            str(value.get("asset", "usdg")),
+            value.get("jobId", value.get("job_id")),
+            value.get("reason"),
+            str(value.get("refundedAt", value.get("refunded_at", ""))),
+            str(value.get("ledgerTransactionId", value.get("ledger_transaction_id", ""))),
+            value,
+        )
+
+
+@dataclass(frozen=True)
 class Invoice:
     id: str
     public_id: str
@@ -49,13 +84,30 @@ class Invoice:
     status: str
     amount: float | None = None
     asset: str = "usdg"
+    refunded_amount: float = 0.0
+    refunded_amount_usdg: float = 0.0
+    remaining_amount: float | None = None
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> "Invoice":
         amount_usdg = float(value.get("amountUsdg") or value.get("amount", 0))
         amount = float(value.get("amount") or amount_usdg)
         asset = str(value.get("asset", "usdg"))
-        return cls(value["id"], value.get("publicId", value["id"]), amount_usdg, value["status"], amount, asset)
+        refunded_amount_usdg = float(value.get("refundedAmountUsdg") or value.get("refunded_amount_usdg") or 0)
+        refunded_amount = float(value.get("refundedAmount") or value.get("refunded_amount") or refunded_amount_usdg)
+        remaining_amount_raw = value.get("remainingAmount") or value.get("remaining_amount")
+        remaining_amount = float(remaining_amount_raw) if remaining_amount_raw is not None else max(0.0, amount - refunded_amount)
+        return cls(
+            value["id"],
+            value.get("publicId", value["id"]),
+            amount_usdg,
+            value["status"],
+            amount,
+            asset,
+            refunded_amount,
+            refunded_amount_usdg,
+            remaining_amount,
+        )
 
 
 @dataclass(frozen=True)
