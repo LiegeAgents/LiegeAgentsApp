@@ -172,6 +172,18 @@ export const docs = {
         },
       },
       {
+        title: "Track proposal decisions",
+        body: [
+          "Proposal lifecycle tools let an agent inspect its own approval queue without receiving owner-wide access. Use `list_proposals` for history, `get_proposal` for one decision, and `wait_for_proposal_decision` for bounded waiting.",
+          "Waiting never approves anything. The result reports approved, rejected, expired, or `timedOut`; reconnect or ask the owner when a proposal remains pending.",
+        ],
+        code: {
+          label: "Proposal lifecycle",
+          language: "text",
+          value: "list_proposals → get_proposal → wait_for_proposal_decision",
+        },
+      },
+      {
         title: "Page through jobs and services",
         body: [
           "List tools return an `items` array and a `nextCursor` when more results are available. Pass that cursor back in the next call; cursors are opaque and should be stored only after the current page has been processed.",
