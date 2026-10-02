@@ -17,14 +17,21 @@ accountRouter.get(
     );
     const client = await db.connect();
     try {
-      const [available, stake] = await Promise.all([
+      const [available, stake, availableLiege, stakeLiege] = await Promise.all([
         userBalance(client, request.auth!.userId),
         userBalance(client, request.auth!.userId, "stake"),
+        userBalance(client, request.auth!.userId, "available", "liege"),
+        userBalance(client, request.auth!.userId, "stake", "liege"),
       ]);
       response.json({
         data: {
           ...user.rows[0],
-          balances: { availableUsdg: available.amount, stakeUsdg: stake.amount },
+          balances: {
+            availableUsdg: available.amount,
+            stakeUsdg: stake.amount,
+            availableLiege: availableLiege.amount,
+            stakeLiege: stakeLiege.amount,
+          },
         },
       });
     } finally {

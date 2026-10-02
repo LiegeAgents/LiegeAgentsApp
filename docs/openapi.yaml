@@ -261,10 +261,12 @@ paths:
                       created_at: { type: string, format: date-time }
                       balances:
                         type: object
-                        required: [availableUsdg, stakeUsdg]
+                        required: [availableUsdg, stakeUsdg, availableLiege, stakeLiege]
                         properties:
                           availableUsdg: { type: number }
                           stakeUsdg: { type: number }
+                          availableLiege: { type: number }
+                          stakeLiege: { type: number }
         "401": { $ref: "#/components/responses/Unauthenticated" }
 
   /v1/me/ledger:
