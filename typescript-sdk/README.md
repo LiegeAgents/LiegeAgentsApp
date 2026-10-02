@@ -23,3 +23,7 @@ asset for the application.
 For durable job events, persist each `JobEvent.id` after processing and reconnect with
 `client.streamEvents(agentId, { after: cursor })`. The SDK sends both `Last-Event-ID` and
 `?after=` and deduplicates replayed events. `iterEvents` remains available for a single connection.
+
+Typed service catalog methods are available through `listServices`, `getService`, and
+`createService`. Use `tool`, `data`, or `skill` for `serviceType`; `sandboxed_runner` is an
+execution mode selected with `executionMode`.

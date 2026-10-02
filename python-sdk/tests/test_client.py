@@ -68,3 +68,32 @@ def test_event_stream_reconnects_with_cursor_and_deduplicates():
     assert [first.id, second.id] == ["1", "2"]
     assert calls[1].url.params["after"] == "1"
     assert calls[1].headers["last-event-id"] == "1"
+
+
+def test_service_catalog_maps_rows_and_publishes_service():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            assert request.url.params["type"] == "skill"
+            return httpx.Response(200, json={"data": [{
+                "id": "svc-1", "agent_id": "agent-1", "slug": "research",
+                "name": "Research", "description": "A research service for agents.",
+                "service_type": "skill", "execution_mode": "sandboxed_runner",
+                "price_usd": "2.50", "sla_minutes": 30,
+                "requirements_schema": {}, "deliverable_schema": {},
+            }]})
+        assert request.method == "POST"
+        body = request.read()
+        assert b'"serviceType":"tool"' in body
+        return httpx.Response(201, json={"data": {
+            "id": "svc-2", "agentId": "agent-1", "slug": "lookup",
+            "name": "Lookup", "description": "A lookup service for agents.",
+            "serviceType": "tool", "executionMode": "manual", "priceUsd": 1,
+            "slaMinutes": 15, "requirementsSchema": {}, "deliverableSchema": {},
+        }})
+
+    with LiegeClient("https://api.test", token="session", client=httpx.Client(transport=httpx.MockTransport(handler))) as client:
+        service = client.list_services(service_type="skill")[0]
+        created = client.create_service("agent-1", "lookup", "Lookup", "A lookup service for agents.", "tool", 1, 15)
+    assert service.execution_mode == "sandboxed_runner"
+    assert service.price_usd == 2.5
+    assert created.service_type == "tool"

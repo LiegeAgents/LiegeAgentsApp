@@ -1,6 +1,8 @@
 import {
   LiegeAPIError,
   type Invoice,
+  type Service,
+  type ServiceType,
   type Job,
   type JobEvent,
   type Session,
@@ -45,6 +47,21 @@ export class LiegeClient {
   payInvoice(id: string): Promise<Invoice> { return this.call(`/v1/invoices/${encodeURIComponent(id)}/pay`, { method: "POST" }); }
   refundInvoice(id: string): Promise<Invoice> { return this.call(`/v1/invoices/${encodeURIComponent(id)}/refund`, { method: "POST" }); }
   cancelInvoice(id: string): Promise<Invoice> { return this.call(`/v1/invoices/${encodeURIComponent(id)}/cancel`, { method: "POST" }); }
+
+  listServices(options: { agentId?: string; type?: ServiceType; limit?: number } = {}): Promise<Service[]> {
+    const query = new URLSearchParams({ limit: String(options.limit ?? 50) });
+    if (options.agentId) query.set("agentId", options.agentId);
+    if (options.type) query.set("type", options.type);
+    return this.call<Record<string, unknown>[]>(`/v1/services?${query}`).then((items) => items.map((item) => this.mapService(item)));
+  }
+  getService(agentId: string, slug: string): Promise<Service> {
+    return this.call<Record<string, unknown>>(`/v1/services/${encodeURIComponent(agentId)}/${encodeURIComponent(slug)}`).then((item) => this.mapService(item));
+  }
+  createService(input: {
+    agentId: string; slug: string; name: string; description: string; serviceType: ServiceType;
+    executionMode?: "manual" | "sandboxed_runner"; priceUsd: string | number; slaMinutes: number;
+    requirementsSchema?: Record<string, unknown>; deliverableSchema?: Record<string, unknown>;
+  }): Promise<Service> { return this.call<Record<string, unknown>>("/v1/services", { method: "POST", body: input }).then((item) => this.mapService(item)); }
 
   /** Fetch an x402 resource, asking the application-provided signer to approve a 402 challenge. */
   async requestX402(input: string | URL, signer: X402Signer, init: RequestInit = {}): Promise<Response> {
@@ -108,6 +125,22 @@ export class LiegeClient {
   }
 
   private headers(): HeadersInit { return this.token ? { Authorization: `Bearer ${this.token}` } : {}; }
+  private mapService(value: Record<string, unknown>): Service {
+    return {
+      ...value,
+      id: String(value.id),
+      agentId: String(value.agentId ?? value.agent_id),
+      slug: String(value.slug),
+      name: String(value.name),
+      description: String(value.description),
+      serviceType: (value.serviceType ?? value.service_type) as Service["serviceType"],
+      executionMode: (value.executionMode ?? value.execution_mode ?? "manual") as Service["executionMode"],
+      priceUsd: Number(value.priceUsd ?? value.price_usd),
+      slaMinutes: Number(value.slaMinutes ?? value.sla_minutes),
+      requirementsSchema: (value.requirementsSchema ?? value.requirements_schema ?? {}) as Record<string, unknown>,
+      deliverableSchema: (value.deliverableSchema ?? value.deliverable_schema ?? {}) as Record<string, unknown>,
+    };
+  }
   private async call<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
     const response = await this.request(`${this.baseUrl}${path}`, { method: options.method ?? "GET", headers: { ...this.headers(), ...(options.body ? { "content-type": "application/json" } : {}) }, body: options.body ? JSON.stringify(options.body) : undefined });
     const body = await response.json().catch(() => ({})); if (!response.ok) { const error = body?.error ?? {}; throw new LiegeAPIError(error.message ?? response.statusText, response.status, error.code); }

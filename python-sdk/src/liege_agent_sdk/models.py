@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
+
+ServiceType = Literal["tool", "data", "skill"]
+ServiceExecutionMode = Literal["manual", "sandboxed_runner"]
 
 
 @dataclass(frozen=True)
@@ -48,3 +51,30 @@ class Invoice:
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> "Invoice":
         return cls(value["id"], value.get("publicId", value["id"]), float(value["amountUsdg"]), value["status"])
+
+
+@dataclass(frozen=True)
+class Service:
+    id: str
+    agent_id: str
+    slug: str
+    name: str
+    description: str
+    service_type: ServiceType
+    execution_mode: ServiceExecutionMode
+    price_usd: float
+    sla_minutes: int
+    requirements_schema: dict[str, Any]
+    deliverable_schema: dict[str, Any]
+    raw: dict[str, Any]
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "Service":
+        return cls(
+            value["id"], value.get("agent_id", value.get("agentId")), value["slug"],
+            value["name"], value["description"], value.get("service_type", value.get("serviceType")),
+            value.get("execution_mode", value.get("executionMode", "manual")),
+            float(value.get("price_usd", value.get("priceUsd"))), int(value["sla_minutes"] if "sla_minutes" in value else value["slaMinutes"]),
+            value.get("requirements_schema", value.get("requirementsSchema", {})),
+            value.get("deliverable_schema", value.get("deliverableSchema", {})), value,
+        )
