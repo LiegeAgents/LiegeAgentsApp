@@ -6,6 +6,12 @@ import {
   type RefundInvoiceInput,
   type Service,
   type ServiceType,
+  type AgentAccount,
+  type AgentActionAuthorization,
+  type AgentActionInput,
+  type AgentActionSimulation,
+  type AgentControlResult,
+  type AgentPolicyInput,
   type Job,
   type JobEvent,
   type Session,
@@ -66,6 +72,31 @@ export class LiegeClient {
     executionMode?: "manual" | "sandboxed_runner"; priceUsd: string | number; slaMinutes: number;
     requirementsSchema?: Record<string, unknown>; deliverableSchema?: Record<string, unknown>;
   }): Promise<Service> { return this.call<Record<string, unknown>>("/v1/services", { method: "POST", body: input }).then((item) => this.mapService(item)); }
+
+  getAccount(agentId: string): Promise<AgentAccount> {
+    return this.call<Record<string, unknown>>(`/v1/agent-accounts/${encodeURIComponent(agentId)}`).then((item) => this.mapAccount(item));
+  }
+  updatePolicy(agentId: string, policy: AgentPolicyInput): Promise<AgentAccount> {
+    return this.call<Record<string, unknown>>(`/v1/agent-accounts/${encodeURIComponent(agentId)}/policy`, { method: "PUT", body: policy }).then((item) => this.mapAccount(item));
+  }
+  simulateAction(agentId: string, action: AgentActionInput): Promise<AgentActionSimulation> {
+    return this.call<Record<string, unknown>>(`/v1/agent-accounts/${encodeURIComponent(agentId)}/actions/simulate`, { method: "POST", body: action }).then((item) => this.mapSimulation(item));
+  }
+  authorizeAction(agentId: string, action: AgentActionInput): Promise<AgentActionAuthorization> {
+    return this.call<Record<string, unknown>>(`/v1/agent-accounts/${encodeURIComponent(agentId)}/actions/authorize`, { method: "POST", body: action }).then((item) => this.mapAuthorization(item));
+  }
+  approveAction(agentId: string, actionId: string): Promise<AgentActionAuthorization> {
+    return this.call<Record<string, unknown>>(`/v1/agent-accounts/${encodeURIComponent(agentId)}/actions/${encodeURIComponent(actionId)}/approve`, { method: "POST" }).then((item) => this.mapAuthorization(item));
+  }
+  pauseAgent(agentId: string, reason?: string): Promise<AgentControlResult> { return this.controlAgent(agentId, "pause", reason); }
+  resumeAgent(agentId: string): Promise<AgentControlResult> { return this.controlAgent(agentId, "resume"); }
+  killAgent(agentId: string, reason?: string): Promise<AgentControlResult> { return this.controlAgent(agentId, "kill", reason); }
+  private controlAgent(agentId: string, command: "pause" | "resume" | "kill", reason?: string): Promise<AgentControlResult> {
+    return this.call<Record<string, unknown>>(`/v1/agent-accounts/${encodeURIComponent(agentId)}/control`, { method: "POST", body: { command, ...(reason ? { reason } : {}) } }).then((item) => ({
+      ...item, accountId: String(item.accountId ?? item.agentId), status: item.status as AgentControlResult["status"],
+      revokedConnections: Number(item.revokedConnections ?? 0), rejectedProposals: Number(item.rejectedProposals ?? 0),
+    }));
+  }
 
   /** Fetch an x402 resource, asking the application-provided signer to approve a 402 challenge. */
   async requestX402(input: string | URL, signer: X402Signer, init: RequestInit = {}): Promise<Response> {
@@ -144,6 +175,18 @@ export class LiegeClient {
       requirementsSchema: (value.requirementsSchema ?? value.requirements_schema ?? {}) as Record<string, unknown>,
       deliverableSchema: (value.deliverableSchema ?? value.deliverable_schema ?? {}) as Record<string, unknown>,
     };
+  }
+  private mapAccount(value: Record<string, unknown>): AgentAccount {
+    const policy = value.policy as Record<string, unknown> | null | undefined;
+    return { ...value, accountId: String(value.accountId ?? value.agentId), agentId: String(value.agentId), status: value.status as AgentAccount["status"], policy: policy ? {
+      ...policy, version: Number(policy.version), maxActionAmount: policy.maxActionAmount == null ? null : String(policy.maxActionAmount), dailyBudget: policy.dailyBudget == null ? null : String(policy.dailyBudget), monthlyBudget: policy.monthlyBudget == null ? null : String(policy.monthlyBudget), requireHumanAbove: policy.requireHumanAbove == null ? null : String(policy.requireHumanAbove),
+    } as AgentAccount["policy"] : null };
+  }
+  private mapSimulation(value: Record<string, unknown>): AgentActionSimulation {
+    return { ...value, id: String(value.id), actionDigest: String(value.actionDigest ?? value.action_digest ?? ""), action: (value.action ?? {}) as Record<string, unknown>, result: (value.result ?? {}) as Record<string, unknown>, policyVersion: Number(value.policyVersion ?? value.policy_version), expiresAt: String(value.expiresAt ?? value.expires_at ?? ""), createdAt: String(value.createdAt ?? value.created_at ?? "") };
+  }
+  private mapAuthorization(value: Record<string, unknown>): AgentActionAuthorization {
+    return { ...value, actionId: String(value.actionId ?? value.id), accountId: String(value.accountId ?? value.agentId), decision: String(value.decision), reasons: (value.reasons ?? []) as string[], policyVersion: Number(value.policyVersion ?? value.policy_version), simulationDigest: (value.simulationDigest ?? value.simulation_digest ?? null) as string | null, createdAt: String(value.createdAt ?? value.created_at ?? "") };
   }
   private async call<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
     const response = await this.request(`${this.baseUrl}${path}`, { method: options.method ?? "GET", headers: { ...this.headers(), ...(options.body ? { "content-type": "application/json" } : {}) }, body: options.body ? JSON.stringify(options.body) : undefined });

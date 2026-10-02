@@ -1,9 +1,38 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 
 ServiceType = Literal["tool", "data", "skill"]
 ServiceExecutionMode = Literal["manual", "sandboxed_runner"]
+ApprovalMode = Literal["always", "within_policy"]
+
+
+class AgentPolicyInput(TypedDict, total=False):
+    maxActionAmount: float | str | None
+    dailyBudget: float | str | None
+    monthlyBudget: float | str | None
+    allowedAssets: list[str]
+    allowedVenues: list[str]
+    approvedCounterparties: list[str]
+    allowedActions: list[str]
+    approvalMode: ApprovalMode
+    simulationRequired: bool
+    requireHumanAbove: float | str | None
+    activeHours: dict[str, int] | None
+    activeDays: list[int]
+    timezone: str
+
+
+class AgentActionInput(TypedDict, total=False):
+    action: str
+    amount: float | str
+    asset: str
+    venue: str
+    counterparty: str
+    details: dict[str, Any]
+    simulationId: str
+    simulationDigest: str
+    simulate: bool
 
 
 @dataclass(frozen=True)
@@ -135,3 +164,99 @@ class Service:
             value.get("requirements_schema", value.get("requirementsSchema", {})),
             value.get("deliverable_schema", value.get("deliverableSchema", {})), value,
         )
+
+
+@dataclass(frozen=True)
+class AgentPolicy:
+    version: int
+    max_action_amount: str | None
+    daily_budget: str | None
+    monthly_budget: str | None
+    allowed_assets: list[str]
+    allowed_venues: list[str]
+    approved_counterparties: list[str]
+    allowed_actions: list[str]
+    approval_mode: ApprovalMode
+    simulation_required: bool
+    require_human_above: str | None
+    active_hours: dict[str, int] | None
+    active_days: list[int]
+    timezone: str
+
+
+@dataclass(frozen=True)
+class AgentAccount:
+    account_id: str
+    agent_id: str
+    status: str
+    kill_reason: str | None
+    paused_at: str | None
+    policy: AgentPolicy | None
+    raw: dict[str, Any]
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "AgentAccount":
+        policy = value.get("policy")
+        parsed_policy = None
+        if policy:
+            parsed_policy = AgentPolicy(
+                int(policy["version"]), policy.get("maxActionAmount"), policy.get("dailyBudget"),
+                policy.get("monthlyBudget"), policy.get("allowedAssets", []), policy.get("allowedVenues", []),
+                policy.get("approvedCounterparties", []), policy.get("allowedActions", []),
+                policy.get("approvalMode", "always"), bool(policy.get("simulationRequired", True)),
+                policy.get("requireHumanAbove"), policy.get("activeHours"), policy.get("activeDays", []),
+                policy.get("timezone", "UTC"),
+            )
+        return cls(value.get("accountId", value.get("agentId")), value["agentId"], value["status"],
+                   value.get("killReason"), value.get("pausedAt"), parsed_policy, value)
+
+
+@dataclass(frozen=True)
+class AgentActionSimulation:
+    id: str
+    action_digest: str
+    action: dict[str, Any]
+    result: dict[str, Any]
+    policy_version: int
+    expires_at: str
+    created_at: str
+    raw: dict[str, Any]
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "AgentActionSimulation":
+        return cls(value["id"], value.get("action_digest", value.get("actionDigest", "")), value.get("action", {}),
+                   value.get("result", {}), int(value.get("policy_version", value.get("policyVersion", 0))),
+                   str(value.get("expires_at", value.get("expiresAt", ""))), str(value.get("created_at", value.get("createdAt", ""))), value)
+
+
+@dataclass(frozen=True)
+class AgentActionAuthorization:
+    action_id: str
+    account_id: str
+    decision: str
+    reasons: list[str]
+    policy_version: int
+    simulation_digest: str | None
+    created_at: str
+    raw: dict[str, Any]
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "AgentActionAuthorization":
+        return cls(value.get("actionId", value.get("id", "")), value.get("accountId", value.get("agentId", "")),
+                   value["decision"], value.get("reasons", []), int(value.get("policyVersion", value.get("policy_version", 0))),
+                   value.get("simulationDigest", value.get("simulation_digest")), str(value.get("createdAt", value.get("created_at", ""))), value)
+
+
+@dataclass(frozen=True)
+class AgentControlResult:
+    account_id: str
+    status: str
+    kill_reason: str | None
+    revoked_connections: int
+    rejected_proposals: int
+    raw: dict[str, Any]
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "AgentControlResult":
+        return cls(value.get("accountId", value.get("agentId", "")), value["status"], value.get("killReason"),
+                   int(value.get("revokedConnections", 0)), int(value.get("rejectedProposals", 0)), value)

@@ -1,6 +1,6 @@
 {
   "name": "@liegeagents/agent-sdk",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "TypeScript SDK for Liege agent API and MCP",
   "type": "module",
   "license": "MIT",

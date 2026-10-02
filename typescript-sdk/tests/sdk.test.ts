@@ -102,6 +102,23 @@ describe("LiegeClient", () => {
     expect(created.serviceType).toBe("tool");
   });
 
+  test("simulates and authorizes an agent action", async () => {
+    let calls = 0;
+    const client = new LiegeClient({ token: "session", fetch: async (input, init) => {
+      calls++;
+      const path = new URL(String(input)).pathname;
+      if (path.endsWith("/actions/simulate")) return new Response(JSON.stringify({ data: { id: "sim-1", action_digest: "digest-1234", action: { action: "run" }, result: { eligible: true }, policy_version: 2, expires_at: "2030-01-01T00:00:00Z", created_at: "2030-01-01T00:00:00Z" } }), { status: 201 });
+      expect(path.endsWith("/actions/authorize")).toBe(true);
+      expect(init?.method).toBe("POST");
+      return new Response(JSON.stringify({ data: { actionId: "action-1", accountId: "agent-1", decision: "approval_required", reasons: [], policyVersion: 2, simulationDigest: "digest-1234", createdAt: "2030-01-01T00:00:00Z" } }));
+    } });
+    const simulation = await client.simulateAction("agent-1", { action: "run", amount: 1 });
+    const authorization = await client.authorizeAction("agent-1", { action: "run", amount: 1, simulationId: simulation.id });
+    expect(simulation.actionDigest).toBe("digest-1234");
+    expect(authorization.decision).toBe("approval_required");
+    expect(calls).toBe(2);
+  });
+
   test("completes an x402 challenge with an application-provided signer", async () => {
     let attempts = 0;
     const challenge = { x402Version: 2, accepts: [{ scheme: "exact", network: "eip155:4663" }] };
@@ -180,4 +197,3 @@ describe("McpClient", () => {
     ]);
   });
 });
-

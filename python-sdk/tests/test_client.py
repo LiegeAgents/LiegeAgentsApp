@@ -1,3 +1,5 @@
+import json
+
 import httpx
 
 from liege_agent_sdk import LiegeClient, encode_x402_json
@@ -99,6 +101,30 @@ def test_service_catalog_maps_rows_and_publishes_service():
     assert created.service_type == "tool"
 
 
+def test_agent_account_controls_bind_authorization_to_simulation():
+    calls: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        path = request.url.path
+        if path.endswith("/agent-accounts/agent-1"):
+            return httpx.Response(200, json={"data": {"accountId": "agent-1", "agentId": "agent-1", "status": "active", "policy": {"version": 2, "simulationRequired": True, "approvalMode": "always", "allowedAssets": []}}})
+        if path.endswith("/actions/simulate"):
+            return httpx.Response(201, json={"data": {"id": "sim-1", "action_digest": "digest-1234", "action": {"action": "run"}, "result": {"eligible": True}, "policy_version": 2, "expires_at": "2030-01-01T00:00:00Z", "created_at": "2030-01-01T00:00:00Z"}})
+        if path.endswith("/actions/authorize"):
+            return httpx.Response(200, json={"data": {"actionId": "action-1", "accountId": "agent-1", "decision": "approval_required", "reasons": [], "policyVersion": 2, "simulationDigest": "digest-1234", "createdAt": "2030-01-01T00:00:00Z"}})
+        raise AssertionError(path)
+
+    with LiegeClient("https://api.test", token="session", client=httpx.Client(transport=httpx.MockTransport(handler))) as client:
+        account = client.get_account("agent-1")
+        simulation = client.simulate_action("agent-1", {"action": "run", "amount": 1})
+        authorization = client.authorize_action("agent-1", {"action": "run", "amount": 1, "simulationId": simulation.id})
+    assert account.policy.version == 2
+    assert simulation.action_digest == "digest-1234"
+    assert authorization.decision == "approval_required"
+    assert calls[2].method == "POST"
+
+
 def test_partial_refund_and_list_refunds():
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/invoices/inv-1/refund"):
@@ -131,4 +157,3 @@ def test_partial_refund_and_list_refunds():
         assert refunds[0].amount == 5.0
         assert refunds[0].job_id == "job-1"
         assert refunds[0].reason == "Milestone adjust"
-
