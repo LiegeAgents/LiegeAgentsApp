@@ -25,6 +25,7 @@ import {
   Activity,
   ReceiptText,
   AlertCircle,
+  SquareTerminal,
 } from "lucide-react";
 import { Brand, AgentIcon } from "./ProductArt";
 import { Button, Status, Empty, Modal, Field, Notice, SectionHeading } from "./UI";
@@ -48,13 +49,14 @@ function read() {
     return initial();
   }
 }
-  const tabs = [
+const tabs = [
   ["overview", "Overview", LayoutGrid],
   ["agents", "Agent market", Globe],
   ["jobs", "Your jobs", BriefcaseBusiness],
   ["invoices", "USDG invoices", ReceiptText],
   ["services", "Services", Braces],
   ["evaluations", "Evaluations", Activity],
+  ["runner", "Runner center", SquareTerminal],
   ["launch", "Launch an agent", Plus],
   ["settings", "Workspace settings", Settings2],
 ];
@@ -77,6 +79,8 @@ export default function Workspace() {
     [liveJobs, setLiveJobs] = useState([]),
     [attention, setAttention] = useState({ invoices: [], evaluations: [], accounts: [] }),
     [activity, setActivity] = useState([]),
+    [runnerRuns, setRunnerRuns] = useState([]),
+    [mcpProposals, setMcpProposals] = useState([]),
     [apiError, setApiError] = useState(""),
     [loadingLive, setLoadingLive] = useState(false);
   const allAgents = liveAgents;
@@ -90,21 +94,29 @@ export default function Workspace() {
       if (wallet.apiSession) {
         const jobs = await api.jobs("cookie");
         setLiveJobs((jobs.data || []).map(jobForDisplay));
-        const [invoices, evaluations, ledger, accounts] = await Promise.allSettled([
-          api.invoices("cookie"),
-          api.evaluationTasks("cookie"),
-          api.ledger("cookie"),
-          api.agentAccounts("cookie"),
-        ]);
+        const [invoices, evaluations, ledger, accounts, runs, proposals] = await Promise.allSettled(
+          [
+            api.invoices("cookie"),
+            api.evaluationTasks("cookie"),
+            api.ledger("cookie"),
+            api.agentAccounts("cookie"),
+            api.runnerRuns("cookie"),
+            api.mcpProposals("cookie"),
+          ],
+        );
         setAttention({
           invoices: invoices.status === "fulfilled" ? invoices.value.data || [] : [],
           evaluations: evaluations.status === "fulfilled" ? evaluations.value.data || [] : [],
           accounts: accounts.status === "fulfilled" ? accounts.value.data || [] : [],
         });
         setActivity(ledger.status === "fulfilled" ? ledger.value.data || [] : []);
+        setRunnerRuns(runs.status === "fulfilled" ? runs.value.data || [] : []);
+        setMcpProposals(proposals.status === "fulfilled" ? proposals.value.data || [] : []);
       } else {
         setAttention({ invoices: [], evaluations: [], accounts: [] });
         setActivity([]);
+        setRunnerRuns([]);
+        setMcpProposals([]);
       }
     } catch (e) {
       setApiError(e?.message || "Could not reach the Liege API.");
@@ -431,6 +443,16 @@ export default function Workspace() {
               onNotice={notify}
             />
           )}
+          {!paymentInvoiceId && view === "runner" && wallet.apiSession && (
+            <RunnerCenter
+              token="cookie"
+              runs={runnerRuns}
+              proposals={mcpProposals}
+              agents={allAgents}
+              onNotice={notify}
+              onRefresh={refreshLive}
+            />
+          )}
           {!paymentInvoiceId && view === "launch" && (
             <LaunchForm token={wallet.apiSession ? "cookie" : null} onSave={saveLaunchedAgent} />
           )}
@@ -563,6 +585,134 @@ export default function Workspace() {
   );
 }
 
+function RunnerCenter({ token, runs, proposals, agents, onNotice, onRefresh }) {
+  const pending = proposals.filter((proposal) => proposal.status === "pending");
+  const active = runs.filter((run) => ["running", "queued"].includes(run.status));
+  const statusLabel = (value) => String(value || "unknown").replaceAll("_", " ");
+  const decide = async (proposal, decision) => {
+    try {
+      await api.decideMcpProposal(token, proposal.id, decision);
+      onNotice(decision === "approved" ? "Runner proposal approved." : "Runner proposal rejected.");
+      await onRefresh();
+    } catch (error) {
+      onNotice(error?.message || "Could not update the runner proposal.");
+    }
+  };
+  return (
+    <>
+      <SectionHeading
+        eyebrow="MCP / EXECUTION"
+        title="Runner center."
+        action={
+          <Button secondary onClick={onRefresh}>
+            Refresh
+          </Button>
+        }
+      >
+        Review bounded workloads before they run, then inspect their status and captured artifacts.
+      </SectionHeading>
+      <div className="runner-summary-grid">
+        <section className="settings-panel runner-summary-card">
+          <span className="panel-overline">PENDING APPROVALS</span>
+          <strong>{pending.length}</strong>
+          <small>Website decisions waiting for you</small>
+        </section>
+        <section className="settings-panel runner-summary-card">
+          <span className="panel-overline">ACTIVE RUNS</span>
+          <strong>{active.length}</strong>
+          <small>Policy-approved workloads in progress</small>
+        </section>
+        <section className="settings-panel runner-summary-card">
+          <span className="panel-overline">RECENT RUNS</span>
+          <strong>{runs.length}</strong>
+          <small>Owner-scoped execution history</small>
+        </section>
+      </div>
+      <section className="settings-panel runner-panel">
+        <div className="runner-panel-heading">
+          <div>
+            <span className="panel-overline">HUMAN GATE</span>
+            <h2>Approval queue</h2>
+          </div>
+          <span className="runner-boundary">MCP never executes directly</span>
+        </div>
+        {pending.length ? (
+          <div className="runner-proposal-list">
+            {pending.map((proposal) => {
+              const payload = proposal.payload || {};
+              const agent = agents.find((item) => item.id === proposal.agent_id);
+              return (
+                <article className="runner-proposal" key={proposal.id}>
+                  <div className="runner-proposal-main">
+                    <span className="runner-status-dot pending" />
+                    <div>
+                      <strong>{payload.command || "Runner workload"}</strong>
+                      <small>
+                        {agent?.name || "Agent account"} · {payload.timeoutMs || 30000}ms timeout ·{" "}
+                        {new Date(proposal.created_at).toLocaleString()}
+                      </small>
+                    </div>
+                  </div>
+                  <code>
+                    {[payload.command, ...(payload.args || [])].join(" ") ||
+                      "Bounded runner request"}
+                  </code>
+                  <div className="runner-actions">
+                    <Button onClick={() => decide(proposal, "approved")}>Approve</Button>
+                    <Button secondary onClick={() => decide(proposal, "rejected")}>
+                      Reject
+                    </Button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <Empty title="No pending runner proposals">
+            MCP workloads will appear here after simulation and authorization.
+          </Empty>
+        )}
+      </section>
+      <section className="settings-panel runner-panel">
+        <div className="runner-panel-heading">
+          <div>
+            <span className="panel-overline">EXECUTION LOG</span>
+            <h2>Recent runs</h2>
+          </div>
+          <span className="runner-boundary">Output remains owner-scoped</span>
+        </div>
+        {runs.length ? (
+          <div className="runner-run-list">
+            {runs.map((run) => (
+              <div className="runner-run" key={run.id}>
+                <span
+                  className={`runner-status-dot ${run.status === "completed" ? "complete" : run.status === "failed" ? "failed" : "active"}`}
+                />
+                <div className="runner-run-copy">
+                  <strong>
+                    {run.command} {(run.args || []).join(" ")}
+                  </strong>
+                  <small>
+                    {statusLabel(run.status)} · {new Date(run.created_at).toLocaleString()} ·{" "}
+                    {run.artifacts?.length || 0} artifacts
+                  </small>
+                </div>
+                <span className="runner-run-code">
+                  {run.exit_code == null ? "—" : `exit ${run.exit_code}`}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Empty title="No runner history">
+            Approved workloads and their audit trail will appear here.
+          </Empty>
+        )}
+      </section>
+    </>
+  );
+}
+
 const serviceTypes = ["All", "tool", "data", "skill"];
 
 function ServiceCatalog({ token, agents, ownerAddress, onNotice }) {
@@ -647,64 +797,192 @@ function ServiceCatalog({ token, agents, ownerAddress, onNotice }) {
         eyebrow="AGENT COMMERCE"
         title="Your service catalog."
         action={
-          <Button onClick={() => setShowCreate((value) => !value)} disabled={!token || !ownedAgents.length}>
+          <Button
+            onClick={() => setShowCreate((value) => !value)}
+            disabled={!token || !ownedAgents.length}
+          >
             <Plus size={15} /> {showCreate ? "Close form" : "Publish a service"}
           </Button>
         }
       >
-        Publish tools, data, and skills with clear pricing, delivery windows, and execution boundaries.
+        Publish tools, data, and skills with clear pricing, delivery windows, and execution
+        boundaries.
       </SectionHeading>
       {showCreate && (
         <form className="settings-panel service-create-panel" onSubmit={create}>
           <div className="service-panel-heading">
-            <div><span className="eyebrow">PUBLISH CAPABILITY</span><h2>New service</h2></div>
+            <div>
+              <span className="eyebrow">PUBLISH CAPABILITY</span>
+              <h2>New service</h2>
+            </div>
             <span className="mono muted">Owner approval required</span>
           </div>
-          <Notice>Services are discoverable in the catalog. Publishing does not execute work or move funds.</Notice>
+          <Notice>
+            Services are discoverable in the catalog. Publishing does not execute work or move
+            funds.
+          </Notice>
           <div className="form-grid">
             <Field label="Agent">
               <select required value={form.agentId} onChange={set("agentId")}>
-                {ownedAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                {ownedAgents.map((agent) => (
+                  <option key={agent.id} value={agent.id}>
+                    {agent.name}
+                  </option>
+                ))}
               </select>
             </Field>
             <Field label="Service type">
-              <select value={form.serviceType} onChange={set("serviceType")}><option value="tool">Tool</option><option value="data">Data</option><option value="skill">Skill</option></select>
+              <select value={form.serviceType} onChange={set("serviceType")}>
+                <option value="tool">Tool</option>
+                <option value="data">Data</option>
+                <option value="skill">Skill</option>
+              </select>
             </Field>
           </div>
           <div className="form-grid">
-            <Field label="Service name"><input required minLength={2} maxLength={120} value={form.name} onChange={set("name")} placeholder="Market research brief" /></Field>
-            <Field label="Slug"><input required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxLength={80} value={form.slug} onChange={set("slug")} placeholder="market-research" /></Field>
+            <Field label="Service name">
+              <input
+                required
+                minLength={2}
+                maxLength={120}
+                value={form.name}
+                onChange={set("name")}
+                placeholder="Market research brief"
+              />
+            </Field>
+            <Field label="Slug">
+              <input
+                required
+                pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+                maxLength={80}
+                value={form.slug}
+                onChange={set("slug")}
+                placeholder="market-research"
+              />
+            </Field>
           </div>
-          <Field label="Description" help="Explain inputs, deliverables, and what successful work means."><textarea required minLength={20} maxLength={4000} rows={3} value={form.description} onChange={set("description")} /></Field>
+          <Field
+            label="Description"
+            help="Explain inputs, deliverables, and what successful work means."
+          >
+            <textarea
+              required
+              minLength={20}
+              maxLength={4000}
+              rows={3}
+              value={form.description}
+              onChange={set("description")}
+            />
+          </Field>
           <div className="form-grid">
-            <Field label="Price (USD)"><input required type="number" min="0.01" step="0.01" value={form.priceUsd} onChange={set("priceUsd")} /></Field>
-            <Field label="SLA (minutes)"><input required type="number" min="1" max="10080" step="1" value={form.slaMinutes} onChange={set("slaMinutes")} /></Field>
-            <Field label="Execution mode"><select value={form.executionMode} onChange={set("executionMode")}><option value="manual">Manual approval</option><option value="sandboxed_runner">Sandboxed runner</option></select></Field>
+            <Field label="Price (USD)">
+              <input
+                required
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={form.priceUsd}
+                onChange={set("priceUsd")}
+              />
+            </Field>
+            <Field label="SLA (minutes)">
+              <input
+                required
+                type="number"
+                min="1"
+                max="10080"
+                step="1"
+                value={form.slaMinutes}
+                onChange={set("slaMinutes")}
+              />
+            </Field>
+            <Field label="Execution mode">
+              <select value={form.executionMode} onChange={set("executionMode")}>
+                <option value="manual">Manual approval</option>
+                <option value="sandboxed_runner">Sandboxed runner</option>
+              </select>
+            </Field>
           </div>
           <div className="form-grid">
-            <Field label="Requirements schema (JSON)"><textarea rows={3} value={form.requirementsSchema} onChange={set("requirementsSchema")} /></Field>
-            <Field label="Deliverable schema (JSON)"><textarea rows={3} value={form.deliverableSchema} onChange={set("deliverableSchema")} /></Field>
+            <Field label="Requirements schema (JSON)">
+              <textarea
+                rows={3}
+                value={form.requirementsSchema}
+                onChange={set("requirementsSchema")}
+              />
+            </Field>
+            <Field label="Deliverable schema (JSON)">
+              <textarea
+                rows={3}
+                value={form.deliverableSchema}
+                onChange={set("deliverableSchema")}
+              />
+            </Field>
           </div>
-          <Button type="submit" disabled={saving || !form.agentId}>{saving ? "Publishing…" : "Publish service"}<ArrowRight size={14} /></Button>
+          <Button type="submit" disabled={saving || !form.agentId}>
+            {saving ? "Publishing…" : "Publish service"}
+            <ArrowRight size={14} />
+          </Button>
         </form>
       )}
       <div className="service-catalog-toolbar">
-        <div><span className="eyebrow">LIVE CATALOG</span><strong>{loading ? "Loading…" : `${services.length} service${services.length === 1 ? "" : "s"}`}</strong></div>
+        <div>
+          <span className="eyebrow">LIVE CATALOG</span>
+          <strong>
+            {loading ? "Loading…" : `${services.length} service${services.length === 1 ? "" : "s"}`}
+          </strong>
+        </div>
         <div className="service-type-filter" role="group" aria-label="Filter services by type">
-          {serviceTypes.map((value) => <button key={value} className={type === value ? "active" : ""} onClick={() => setType(value)}>{value}</button>)}
+          {serviceTypes.map((value) => (
+            <button
+              key={value}
+              className={type === value ? "active" : ""}
+              onClick={() => setType(value)}
+            >
+              {value}
+            </button>
+          ))}
         </div>
       </div>
-      {loading ? <Empty title="Loading services">Checking the live catalog.</Empty> : services.length === 0 ? <Empty title="No services found">Publish a capability for your agent or try another filter.</Empty> : (
+      {loading ? (
+        <Empty title="Loading services">Checking the live catalog.</Empty>
+      ) : services.length === 0 ? (
+        <Empty title="No services found">
+          Publish a capability for your agent or try another filter.
+        </Empty>
+      ) : (
         <div className="service-grid">
-          {services.map((service) => <article className="service-card" key={service.id}>
-            <div className="service-card-top"><span className="service-type">{service.service_type || service.serviceType}</span><Status value={service.execution_mode || service.executionMode || "manual"} /></div>
-            <h2>{service.name}</h2><p>{service.description}</p>
-            <div className="service-card-meta"><span><small>PRICE</small>${Number(service.price_usd ?? service.priceUsd).toFixed(2)}</span><span><small>SLA</small>{service.sla_minutes ?? service.slaMinutes} min</span></div>
-            <div className="service-card-footer"><span className="mono">/{service.slug}</span><span>{service.agent_name || service.agentName || "Agent service"}</span></div>
-          </article>)}
+          {services.map((service) => (
+            <article className="service-card" key={service.id}>
+              <div className="service-card-top">
+                <span className="service-type">{service.service_type || service.serviceType}</span>
+                <Status value={service.execution_mode || service.executionMode || "manual"} />
+              </div>
+              <h2>{service.name}</h2>
+              <p>{service.description}</p>
+              <div className="service-card-meta">
+                <span>
+                  <small>PRICE</small>${Number(service.price_usd ?? service.priceUsd).toFixed(2)}
+                </span>
+                <span>
+                  <small>SLA</small>
+                  {service.sla_minutes ?? service.slaMinutes} min
+                </span>
+              </div>
+              <div className="service-card-footer">
+                <span className="mono">/{service.slug}</span>
+                <span>{service.agent_name || service.agentName || "Agent service"}</span>
+              </div>
+            </article>
+          ))}
         </div>
       )}
-      {!token && <Notice>Connect your wallet to publish services. The public catalog remains available without sign-in.</Notice>}
+      {!token && (
+        <Notice>
+          Connect your wallet to publish services. The public catalog remains available without
+          sign-in.
+        </Notice>
+      )}
     </>
   );
 }
@@ -749,7 +1027,9 @@ function InvoiceCenter({ token, agents, accountId, ownerAddress, onNotice }) {
         expiresAt: new Date(expiresAt).toISOString(),
       });
       setInvoices((items) => [result.data, ...items]);
-      onNotice(`${(asset || "usdg").toUpperCase()} invoice issued. Share its payment link with the payer.`);
+      onNotice(
+        `${(asset || "usdg").toUpperCase()} invoice issued. Share its payment link with the payer.`,
+      );
     } catch (error) {
       onNotice(error?.message || "Could not issue invoice.");
     } finally {
@@ -776,8 +1056,7 @@ function InvoiceCenter({ token, agents, accountId, ownerAddress, onNotice }) {
     const remaining =
       invoice.remainingAmount != null
         ? invoice.remainingAmount
-        : Number(invoice.amount ?? invoice.amountUsdg ?? 0) -
-          Number(invoice.refundedAmount ?? 0);
+        : Number(invoice.amount ?? invoice.amountUsdg ?? 0) - Number(invoice.refundedAmount ?? 0);
     setRefundAmount(remaining > 0 ? String(remaining) : "");
     setRefundJobId("");
     setRefundReason("");
@@ -897,17 +1176,22 @@ function InvoiceCenter({ token, agents, accountId, ownerAddress, onNotice }) {
           <Empty title="No invoices yet">Create one for an owned agent profile.</Empty>
         ) : (
           invoices.map((invoice) => (
-            <div className="mcp-connection-row invoice-row" key={invoice.id} style={{ flexWrap: "wrap" }}>
+            <div
+              className="mcp-connection-row invoice-row"
+              key={invoice.id}
+              style={{ flexWrap: "wrap" }}
+            >
               <div className="mcp-connection-name">
                 <span className="mcp-status" />
                 <div>
                   <strong>{invoice.description}</strong>
                   <small>
-                    {invoice.publicId} · {Number(invoice.amount ?? invoice.amountUsdg).toLocaleString()}{" "}
+                    {invoice.publicId} ·{" "}
+                    {Number(invoice.amount ?? invoice.amountUsdg).toLocaleString()}{" "}
                     {(invoice.asset || "usdg").toUpperCase()}
                     {invoice.refundedAmount > 0 &&
-                      ` (${Number(invoice.refundedAmount).toLocaleString()} refunded)`} ·{" "}
-                    {invoice.status.replace("_", " ")}
+                      ` (${Number(invoice.refundedAmount).toLocaleString()} refunded)`}{" "}
+                    · {invoice.status.replace("_", " ")}
                   </small>
                 </div>
               </div>
@@ -1042,11 +1326,10 @@ function InvoicePayment({ invoiceId, token, onNotice }) {
       <h1>{invoice.description}</h1>
       <p className="mono muted">{invoice.publicId}</p>
       <div className="invoice-payment-amount">
-        {Number(invoice.amount ?? invoice.amountUsdg).toLocaleString()} <small>{(invoice.asset || "usdg").toUpperCase()}</small>
+        {Number(invoice.amount ?? invoice.amountUsdg).toLocaleString()}{" "}
+        <small>{(invoice.asset || "usdg").toUpperCase()}</small>
       </div>
-      <p>
-        Issued for agent work. This payment is settled via the internal Liege ledger.
-      </p>
+      <p>Issued for agent work. This payment is settled via the internal Liege ledger.</p>
       <p>
         Expires {new Date(invoice.expiresAt).toLocaleString()} · Status:{" "}
         <strong>{invoice.status}</strong>
@@ -1058,7 +1341,8 @@ function InvoicePayment({ invoiceId, token, onNotice }) {
           </Button>
         ) : (
           <Notice>
-            Connect and sign in with the wallet that holds the {(invoice.asset || "usdg").toUpperCase()} balance to pay this invoice.
+            Connect and sign in with the wallet that holds the{" "}
+            {(invoice.asset || "usdg").toUpperCase()} balance to pay this invoice.
           </Notice>
         ))}
       {invoice.status !== "issued" && (
