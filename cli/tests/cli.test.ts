@@ -1,5 +1,19 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { execute, parseFlags, type Json } from "../src/index.js";
+import { execute, normalizeUpgradeVersion, parseFlags, type Json } from "../src/index.js";
+
+describe("CLI upgrade version validation", () => {
+  test("normalizes supported release formats", () => {
+    expect(normalizeUpgradeVersion()).toBe("latest");
+    expect(normalizeUpgradeVersion("1.2.3")).toBe("cli-v1.2.3");
+    expect(normalizeUpgradeVersion("v1.2.3")).toBe("cli-v1.2.3");
+    expect(normalizeUpgradeVersion("cli-v1.2.3")).toBe("cli-v1.2.3");
+  });
+
+  test("rejects unsafe or ambiguous release values", () => {
+    expect(() => normalizeUpgradeVersion("latest; rm -rf /")).toThrow("Upgrade version");
+    expect(() => normalizeUpgradeVersion("main")).toThrow("Upgrade version");
+  });
+});
 
 describe("CLI parseFlags", () => {
   test("parses flags with space and equals, separating positional arguments", () => {
