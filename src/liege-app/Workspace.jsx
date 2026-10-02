@@ -592,7 +592,11 @@ function RunnerCenter({ token, runs, proposals, agents, onNotice, onRefresh }) {
   const decide = async (proposal, decision) => {
     try {
       await api.decideMcpProposal(token, proposal.id, decision);
-      onNotice(decision === "approved" ? "Runner proposal approved." : "Runner proposal rejected.");
+      onNotice(
+        decision === "approved"
+          ? "Runner proposal approved; execution remains worker/CLI controlled."
+          : "Runner proposal rejected.",
+      );
       await onRefresh();
     } catch (error) {
       onNotice(error?.message || "Could not update the runner proposal.");
