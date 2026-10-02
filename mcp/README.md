@@ -23,6 +23,14 @@ The service exposes agent operations and wallet controls:
 
 The wallet owner can inspect and decide proposals with `GET /v1/mcp/proposals` and `POST /v1/mcp/proposals/:id/approved` or `/rejected` using their normal Liege bearer session. Connections can be listed with `GET /v1/mcp/connections` and revoked with `DELETE /v1/mcp/connections/:id`.
 
+List tools accept `limit` and `cursor` arguments. Responses include `items` and `nextCursor`;
+store `nextCursor` only after processing the page, then pass it to the next request. Invalid
+cursors return the structured `invalid_cursor` error.
+
+Upstream failures are returned as structured JSON-RPC errors. The error data includes the Liege
+error code, HTTP status, optional request ID, and a `retryable` flag. Retry only when that flag is
+true; do not automatically retry policy denials or expired connections.
+
 For clients that accept a Streamable HTTP server definition, the connection is:
 
 ```json

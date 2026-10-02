@@ -3,7 +3,6 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, resolve, sep } from "node:path";
 import { spawn } from "node:child_process";
-import { env } from "./config.js";
 
 export type RunnerArtifact = { name: string; sizeBytes: number; sha256: string; content: Buffer };
 export type SandboxResult = {
@@ -95,12 +94,15 @@ export async function runIsolated(input: {
   timeoutMs?: number;
   maxOutputBytes?: number;
 }): Promise<SandboxResult> {
-  if (env.NODE_ENV === "production" || env.RUNNER_WORKER_URL) {
-    if (!env.RUNNER_WORKER_URL || !env.RUNNER_WORKER_TOKEN)
+  if (process.env.NODE_ENV === "production" || process.env.RUNNER_WORKER_URL) {
+    if (!process.env.RUNNER_WORKER_URL || !process.env.RUNNER_WORKER_TOKEN)
       throw new Error("The isolated runner worker is not configured.");
-    const response = await fetch(`${env.RUNNER_WORKER_URL}/run`, {
+    const response = await fetch(`${process.env.RUNNER_WORKER_URL}/run`, {
       method: "POST",
-      headers: { "content-type": "application/json", "x-runner-token": env.RUNNER_WORKER_TOKEN },
+      headers: {
+        "content-type": "application/json",
+        "x-runner-token": process.env.RUNNER_WORKER_TOKEN,
+      },
       body: JSON.stringify(input),
       signal: AbortSignal.timeout(Math.min((input.timeoutMs ?? 30_000) + 10_000, 130_000)),
     });
