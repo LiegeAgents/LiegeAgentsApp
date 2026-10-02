@@ -118,6 +118,21 @@ export const api = {
       method: "POST",
       body: JSON.stringify(input),
     }),
+  runnerRuns: (token) => request("/v1/runners", { token }),
+  runnerRun: (token, id) => request(`/v1/runners/${encodeURIComponent(id)}`, { token }),
+  runnerArtifact: (token, runId, artifactId) =>
+    request(
+      `/v1/runners/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(artifactId)}`,
+      {
+        token,
+      },
+    ),
+  mcpProposals: (token) => request("/v1/mcp/proposals", { token }),
+  decideMcpProposal: (token, id, decision) =>
+    request(`/v1/mcp/proposals/${encodeURIComponent(id)}/${decision}`, {
+      token,
+      method: "POST",
+    }),
   creditTestBalance: (token, input) =>
     request("/v1/admin/ledger/credit", { token, method: "POST", body: JSON.stringify(input) }),
   setEvaluatorStake: (token, input) =>
