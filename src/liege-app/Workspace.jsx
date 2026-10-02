@@ -574,11 +574,6 @@ function ServiceCatalog({ token, agents, ownerAddress, onNotice }) {
   const ownedAgents = agents.filter(
     (agent) => agent.owner_wallet?.toLowerCase() === ownerAddress?.toLowerCase(),
   );
-  const activeConnections = connections.filter((connection) => !connection.revoked_at);
-  const expiringConnections = activeConnections.filter((connection) => {
-    const expiresAt = Date.parse(connection.expires_at || "");
-    return Number.isFinite(expiresAt) && expiresAt - Date.now() <= 7 * 24 * 60 * 60 * 1000;
-  });
   const [form, setForm] = useState({
     agentId: "",
     name: "",
@@ -727,6 +722,11 @@ function InvoiceCenter({ token, agents, accountId, ownerAddress, onNotice }) {
   const ownedAgents = agents.filter(
     (agent) => agent.owner_wallet?.toLowerCase() === ownerAddress?.toLowerCase(),
   );
+  const activeConnections = connections.filter((connection) => !connection.revoked_at);
+  const expiringConnections = activeConnections.filter((connection) => {
+    const expiresAt = Date.parse(connection.expires_at || "");
+    return Number.isFinite(expiresAt) && expiresAt - Date.now() <= 7 * 24 * 60 * 60 * 1000;
+  });
   const load = async () => {
     if (!token) return;
     try {
