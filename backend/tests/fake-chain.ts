@@ -9,7 +9,7 @@ type Transaction = {
   nonce: number;
   salt: number;
 };
-type Balances = { usdg: bigint; liege?: bigint; eth: bigint };
+type Balances = { usdg: bigint; liege?: bigint; eth: bigint; usdc?: bigint; usde?: bigint };
 
 // Gas cost of every transaction, paid in ETH by the sender.
 export const GAS_COST = 1_000n;

@@ -52,9 +52,14 @@ describe("LiegeClient", () => {
   test("creates an invoice through the authenticated API client", async () => {
     const client = new LiegeClient({ token: "session", fetch: async (_input, init) => {
       expect(init?.headers).toMatchObject({ Authorization: "Bearer session" });
+      const body = JSON.parse(String(init?.body));
+      if (body.asset === "liege") {
+        return new Response(JSON.stringify({ data: { id: "invoice-2", invoiceId: "invoice-2", publicId: "INV-2", amount: 100, amountUsdg: 100, asset: "liege", status: "issued" } }));
+      }
       return new Response(JSON.stringify({ data: { id: "invoice-1", invoiceId: "invoice-1", publicId: "INV-1", amountUsdg: 12.5, asset: "usdg", status: "issued" } }));
     } });
     await expect(client.createInvoice({ agentId: "agent-1", description: "Research", amountUsdg: 12.5, expiresAt: "2030-01-01T00:00:00.000Z" })).resolves.toMatchObject({ id: "invoice-1", status: "issued" });
+    await expect(client.createInvoice({ agentId: "agent-1", description: "Audit", amount: 100, asset: "liege", expiresAt: "2030-01-01T00:00:00.000Z" })).resolves.toMatchObject({ id: "invoice-2", asset: "liege" });
   });
 
   test("lists and creates typed catalog services", async () => {

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { ApiError } from "./http.js";
-import type { SettlementAsset } from "./assets.js";
+import { ASSET_DECIMALS, type SettlementAsset } from "./assets.js";
 
 type AccountKind = "available" | "escrow" | "stake" | "platform_clearing";
 
@@ -71,7 +71,7 @@ export async function transfer(
   // account until this transaction ends; the balance is read in a separate statement so that,
   // under READ COMMITTED, it includes any debit committed while this one waited for the lock.
   const asset = input.asset ?? "usdg";
-  const decimals = asset === "usdg" ? 6 : 18;
+  const decimals = ASSET_DECIMALS[asset] ?? 6;
   // JavaScript arithmetic can surface harmless binary tails such as
   // `0.30000000000000004` for `0.1 + 0.2`. Normalize only when the value is
   // within machine epsilon of the asset's supported precision; do not round a

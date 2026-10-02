@@ -13,8 +13,8 @@ export type X402Signer = (
 ) => Promise<string | X402PaymentPayload> | string | X402PaymentPayload;
 
 export interface Session { token: string; userId: string; walletAddress: string; expiresAt?: string; }
-export interface Job { id: string; status: string; [key: string]: unknown; }
-export interface Invoice { id: string; invoiceId: string; publicId: string; amountUsdg: number; asset: "usdg"; status: string; [key: string]: unknown; }
+export type InvoiceAsset = "usdg" | "liege" | "usdc" | "usde";
+export interface Invoice { id: string; invoiceId: string; publicId: string; amount?: number; amountUsdg: number; asset: InvoiceAsset | string; status: string; [key: string]: unknown; }
 export type ServiceType = "tool" | "data" | "skill";
 export type ServiceExecutionMode = "manual" | "sandboxed_runner";
 export interface Service {
