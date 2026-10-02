@@ -874,7 +874,7 @@ mcpInternalRouter.get(
         s.price_usd, s.sla_minutes, s.requirements_schema, s.deliverable_schema, a.name AS agent_name
        FROM commerce_services s
        JOIN agents a ON a.id = s.agent_id
-       WHERE s.is_active = true
+       WHERE s.active = true
        ORDER BY s.created_at DESC
        LIMIT 50`,
     );
