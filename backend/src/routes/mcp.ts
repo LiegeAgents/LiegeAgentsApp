@@ -872,7 +872,7 @@ mcpInternalRouter.get(
     const result = await db.query(
       `SELECT s.id, s.agent_id, s.slug, s.name, s.description, s.service_type, s.execution_mode,
         s.price_usd, s.sla_minutes, s.requirements_schema, s.deliverable_schema, a.name AS agent_name
-       FROM agent_services s
+       FROM commerce_services s
        JOIN agents a ON a.id = s.agent_id
        WHERE s.is_active = true
        ORDER BY s.created_at DESC
