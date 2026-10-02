@@ -4,6 +4,7 @@ const Workspace = lazy(() => import('./Workspace'))
 import Docs from './Docs'
 const Marketplace = lazy(() => import('./Marketplace'))
 import { WalletProvider } from './wallet/Wallet'
+import { InstallPrompt, registerPwa } from './pwa.jsx'
 import './brand-social.css'
 import './liege.css'
 import './workspace-premium.css'
@@ -16,6 +17,7 @@ const BODY_CLASSES =
   'geist_mono_1bf8cbf6-module__FlyLvG__variable inter_83a5a2e-module__LLhbsa__variable papermono_aa9e121d-module__lcvVkq__variable arizonaflare_e3e8b677-module__PbqaBq__variable'
 
 function Shell({ children }) {
+  useEffect(() => { registerPwa() }, [])
   useEffect(() => {
     document.body.className = BODY_CLASSES
   }, [])
@@ -23,6 +25,7 @@ function Shell({ children }) {
     <ThemeProvider>
       <WalletProvider>
         <Suspense fallback={<div className="loading-state">Opening Liege…</div>}>{children}</Suspense>
+        <InstallPrompt />
       </WalletProvider>
     </ThemeProvider>
   )
