@@ -12,6 +12,7 @@
   },
   "scripts": {
     "check": "tsc --noEmit",
+    "test": "bun test",
     "start": "bun src/index.ts",
     "dev": "bun --watch src/index.ts",
     "compile": "bun build --compile src/index.ts --outfile liege",

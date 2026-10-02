@@ -20,6 +20,7 @@ jobs:
           bun-version: "1.4.2"
       - run: bun install --frozen-lockfile
       - run: bun run check
+      - run: bun test
       - run: bun src/index.ts --help
       - run: bun run package:smoke
 

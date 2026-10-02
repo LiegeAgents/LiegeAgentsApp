@@ -1,6 +1,6 @@
 # Liege operator CLI
 
-The CLI gives a human operator a terminal interface for inspecting their Liege account and deciding MCP proposals. It never bypasses Liege authentication or executes an agent action without an explicit operator command.
+The CLI gives a human operator a terminal interface for inspecting their Liege account, managing agent runtime policies and controls, discovering and publishing services in the Service Catalog, and deciding MCP proposals. It never bypasses Liege authentication or executes an agent action without an explicit operator command.
 
 ## Install
 
@@ -25,13 +25,35 @@ The session token can be obtained after signing in through the website. Tokens a
 ## Commands
 
 ```sh
+# Health & Discovery
+bun src/index.ts health
 bun src/index.ts agents list
 bun src/index.ts jobs list
+
+# Account Control & Policies (V3)
+bun src/index.ts account list
+bun src/index.ts account status <agent-id>
+bun src/index.ts account pause <agent-id> --reason "Maintenance window"
+bun src/index.ts account resume <agent-id>
+bun src/index.ts account kill <agent-id> --reason "Emergency shutdown"
+bun src/index.ts account mandates <agent-id>
+bun src/index.ts account mandates <agent-id> <mandate-id> --format ap2
+bun src/index.ts account policy set <agent-id> '{"dailyBudget":100,"allowedAssets":["USDG"]}'
+
+# Service Catalog (V6)
+bun src/index.ts services list --type tool --limit 20
+bun src/index.ts services get <agent-id> <slug>
+bun src/index.ts services create --agent-id <agent-id> --slug oracle-price --name "Oracle Price" --description "Real-time USDG oracle feed" --service-type data --price 5 --sla 15
+bun src/index.ts services create '{"agentId":"<agent-id>","slug":"web-search","name":"Web Search","description":"Fast internet query skill","serviceType":"skill","priceUsd":2,"slaMinutes":5}'
+
+# Invoices
 bun src/index.ts invoices list
 bun src/index.ts invoices issue '{"agentId":"<owned-agent-id>","description":"Research retainer","amountUsdg":"25","expiresAt":"2026-10-08T12:00:00.000Z"}'
 bun src/index.ts invoices pay <invoice-id>
 bun src/index.ts invoices refund <invoice-id>
 bun src/index.ts invoices cancel <invoice-id>
+
+# MCP Runtime & Proposals
 bun src/index.ts mcp connections
 bun src/index.ts mcp revoke <connection-id>
 bun src/index.ts policy get <agent-id>
@@ -39,10 +61,25 @@ bun src/index.ts policy set <agent-id> '{"maxSpendPerJob":25,"allowedJobCategori
 bun src/index.ts proposals list
 bun src/index.ts proposals approve <proposal-id>
 bun src/index.ts proposals reject <proposal-id>
-bun src/index.ts health
 ```
 
 All output is JSON so it can be piped into CI tooling. Proposal approval changes the proposal status; it does not silently execute a job action.
+
+### Agent Accounts & Emergency Controls
+
+Agent accounts govern on-chain execution boundaries, daily/monthly budgets, and approved assets and counterparties on Robinhood Chain (`4663`).
+
+- `account pause`: Temporarily halts agent actions without revoking credentials.
+- `account resume`: Restores paused accounts to active status.
+- `account kill`: Irrevocably terminates account runtime access, revoking all active MCP connections and rejecting pending proposals.
+- `account mandates`: Inspects cryptographic owner mandates or exports Google AP2-compatible JSON (`--format ap2`).
+
+### Service Catalog
+
+The Service Catalog provides decentralized commerce discovery for agent tools, data feeds, and skills.
+
+- Services specify clear pricing in USDG, execution modes (`manual` or `sandboxed_runner`), and SLA guarantees in minutes.
+- Operators can list available services with optional type filtering (`tool`, `data`, `skill`) or register new offerings directly from the terminal using JSON or CLI flags.
 
 Policies are owned by the wallet that owns the agent. They can limit per-job and daily spend,
 job categories, approved counterparties, payload access, allowed actions, and whether proposals
