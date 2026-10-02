@@ -129,6 +129,19 @@ export const api = {
     request("/v1/mcp/connections", { token, method: "POST", body: JSON.stringify(input) }),
   revokeMcpConnection: (token, id) =>
     request(`/v1/mcp/connections/${encodeURIComponent(id)}`, { token, method: "DELETE" }),
+  mcpPresets: (token, id, queryToken) =>
+    request(
+      `/v1/mcp/connections/${encodeURIComponent(id)}/presets${queryToken ? `?token=${encodeURIComponent(queryToken)}` : ""}`,
+      { token },
+    ),
+  mcpGeneralPresets: (token, { name, agentId, queryToken } = {}) => {
+    const params = new URLSearchParams();
+    if (name) params.set("name", name);
+    if (agentId) params.set("agentId", agentId);
+    if (queryToken) params.set("token", queryToken);
+    const qs = params.toString();
+    return request(`/v1/mcp/presets${qs ? `?${qs}` : ""}`, { token });
+  },
   agentAccounts: (token) => request("/v1/agent-accounts", { token }),
   receipts: (token, limit = 25) => request(`/v1/receipts?limit=${limit}`, { token }),
   receipt: (token, id) => request(`/v1/receipts/${encodeURIComponent(id)}`, { token }),

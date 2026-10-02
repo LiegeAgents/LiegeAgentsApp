@@ -22,3 +22,17 @@ def test_mcp_proposal():
         proposal = client.propose("accept_job", {"jobId": "j1"})
         assert proposal.status == "pending"
         assert calls == ["initialize", "notifications/initialized", "tools/call"]
+
+
+def test_harness_presets():
+    with McpClient("lmp_secret123", "https://mcp.custom.io") as client:
+        presets = client.export_presets("Research Agent", "Research Agent")
+        assert set(presets.keys()) == {"claude_desktop", "cursor", "elizaos", "hermes", "openclaw"}
+        assert presets["claude_desktop"].filename == "claude_desktop_config.json"
+        assert presets["claude_desktop"].config["mcpServers"]["research-agent"]["headers"]["Authorization"] == "Bearer lmp_secret123"
+        assert presets["cursor"].filename == ".cursor/mcp.json"
+        assert presets["cursor"].config["mcpServers"]["research-agent"]["url"] == "https://mcp.custom.io/mcp"
+        assert "@elizaos/plugin-mcp" in presets["elizaos"].config["plugins"]
+        assert presets["hermes"].config["mcpServers"]["research-agent"]["headers"]["Authorization"] == "Bearer lmp_secret123"
+        assert presets["openclaw"].config["tools"]["mcp"]["research-agent"]["headers"]["Authorization"] == "Bearer lmp_secret123"
+

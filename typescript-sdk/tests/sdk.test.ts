@@ -335,4 +335,66 @@ describe("McpClient", () => {
     expect(ap2.issuer.chain_id).toBe(4663);
     expect(ap2["ap2.mandates.PaymentMandate"].constraints.currency).toBe("USDG");
   });
+
+  test("generates and exports harness presets for Claude Desktop, Cursor, ElizaOS, Hermes, and OpenClaw", async () => {
+    const mcp = new McpClient("lmp_sample_token_xyz", "https://mcp.custom.org");
+    const presets = mcp.exportPresets("arbitrage-bot", "Arbitrage Bot");
+
+    expect(Object.keys(presets).sort()).toEqual([
+      "claude_desktop",
+      "cursor",
+      "elizaos",
+      "hermes",
+      "openclaw",
+    ]);
+
+    expect(presets.claude_desktop.filename).toBe("claude_desktop_config.json");
+    expect(
+      (presets.claude_desktop.config as any).mcpServers["arbitrage-bot"].headers.Authorization,
+    ).toBe("Bearer lmp_sample_token_xyz");
+
+    expect(presets.cursor.filename).toBe(".cursor/mcp.json");
+    expect(
+      (presets.cursor.config as any).mcpServers["arbitrage-bot"].url,
+    ).toBe("https://mcp.custom.org/mcp");
+
+    expect(presets.elizaos.filename).toBe("character.json");
+    expect(
+      (presets.elizaos.config as any).settings.mcp.servers["arbitrage-bot"].headers.Authorization,
+    ).toBe("Bearer lmp_sample_token_xyz");
+
+    expect(presets.hermes.filename).toBe("hermes.json");
+    expect(
+      (presets.hermes.config as any).mcpServers["arbitrage-bot"].headers.Authorization,
+    ).toBe("Bearer lmp_sample_token_xyz");
+
+    expect(presets.openclaw.filename).toBe("openclaw.json");
+    expect(
+      (presets.openclaw.config as any).tools.mcp["arbitrage-bot"].headers.Authorization,
+    ).toBe("Bearer lmp_sample_token_xyz");
+
+    const liege = new LiegeClient({
+      fetch: async (input) => {
+        const url = String(input);
+        if (url.includes("/v1/mcp/connections/conn-1/presets")) {
+          return new Response(
+            JSON.stringify({
+              data: {
+                connectionId: "conn-1",
+                agentName: "Arbitrage Bot",
+                presets,
+                serverUrl: "https://mcp.liegeagents.com/mcp",
+              },
+            }),
+          );
+        }
+        return new Response("not found", { status: 404 });
+      },
+    });
+
+    const res = await liege.getMcpPresets("conn-1");
+    expect(res.connectionId).toBe("conn-1");
+    expect(res.presets.cursor).toBeDefined();
+  });
 });
+

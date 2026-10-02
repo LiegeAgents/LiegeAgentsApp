@@ -108,16 +108,155 @@ async function connection(request: { header(name: string): string | undefined })
   return result.rows[0];
 }
 
+export type HarnessPresetTarget = "claude_desktop" | "cursor" | "elizaos" | "hermes" | "openclaw";
+
+export type HarnessPreset = {
+  id: HarnessPresetTarget;
+  name: string;
+  target: HarnessPresetTarget;
+  filename: string;
+  description: string;
+  instructions: string;
+  format: "json";
+  config: Record<string, unknown>;
+};
+
+export function buildHarnessPresets(options: {
+  serverName?: string;
+  serverUrl?: string;
+  token?: string;
+  agentName?: string;
+}): Record<HarnessPresetTarget, HarnessPreset> {
+  const token = options.token || "<YOUR_LIEGE_MCP_TOKEN>";
+  const rawName = (options.serverName || options.agentName || "liege")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const serverName = rawName || "liege";
+  const url =
+    options.serverUrl ||
+    `${(env.MCP_PUBLIC_URL || "https://mcp.liegeagents.com").replace(/\/+$/, "")}/mcp`;
+
+  return {
+    claude_desktop: {
+      id: "claude_desktop",
+      name: "Claude Desktop",
+      target: "claude_desktop",
+      filename: "claude_desktop_config.json",
+      description: "Claude Desktop app MCP server configuration",
+      instructions:
+        "Paste into ~/Library/Application Support/Claude/claude_desktop_config.json (macOS) or %APPDATA%\\Claude\\claude_desktop_config.json (Windows).",
+      format: "json",
+      config: {
+        mcpServers: {
+          [serverName]: {
+            url,
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        },
+      },
+    },
+    cursor: {
+      id: "cursor",
+      name: "Cursor",
+      target: "cursor",
+      filename: ".cursor/mcp.json",
+      description: "Cursor IDE remote Streamable HTTP MCP configuration",
+      instructions:
+        "Paste into .cursor/mcp.json at your workspace root or ~/.cursor/mcp.json globally.",
+      format: "json",
+      config: {
+        mcpServers: {
+          [serverName]: {
+            url,
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        },
+      },
+    },
+    elizaos: {
+      id: "elizaos",
+      name: "ElizaOS",
+      target: "elizaos",
+      filename: "character.json",
+      description: "ElizaOS character plugin and MCP settings configuration",
+      instructions:
+        "Add @elizaos/plugin-mcp to your character plugins and configure the server under settings.mcp.servers.",
+      format: "json",
+      config: {
+        name: options.agentName || "Liege Agent",
+        plugins: ["@elizaos/plugin-mcp"],
+        settings: {
+          mcp: {
+            servers: {
+              [serverName]: {
+                url,
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    hermes: {
+      id: "hermes",
+      name: "Hermes",
+      target: "hermes",
+      filename: "hermes.json",
+      description: "Hermes autonomous agent harness tool configuration",
+      instructions: "Add to your hermes.json or config.json under mcpServers.",
+      format: "json",
+      config: {
+        mcpServers: {
+          [serverName]: {
+            url,
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        },
+      },
+    },
+    openclaw: {
+      id: "openclaw",
+      name: "OpenClaw",
+      target: "openclaw",
+      filename: "openclaw.json",
+      description: "OpenClaw autonomous agent harness configuration",
+      instructions: "Add to your OpenClaw agent configuration under tools.mcp.",
+      format: "json",
+      config: {
+        tools: {
+          mcp: {
+            [serverName]: {
+              url,
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
 export const mcpRouter = Router();
 mcpRouter.post(
   "/connections",
   requireAuth,
   asyncRoute(async (request, response) => {
     const input = connectionInput.parse(request.body);
-    const owned = await db.query("SELECT id FROM agents WHERE id = $1 AND owner_id = $2", [
-      input.agentId,
-      request.auth!.userId,
-    ]);
+    const owned = await db.query<{ id: string; name: string }>(
+      "SELECT id, name FROM agents WHERE id = $1 AND owner_id = $2",
+      [input.agentId, request.auth!.userId],
+    );
     if (!owned.rowCount)
       throw new ApiError(404, "agent_not_found", "This agent is not owned by your account.");
     const token = `lmp_${randomBytes(32).toString("hex")}`;
@@ -133,9 +272,96 @@ mcpRouter.post(
       requestId: request.requestId,
       metadata: { agentId: input.agentId },
     });
-    response
-      .status(201)
-      .json({ data: { id: result.rows[0].id, token, expiresAt: result.rows[0].expires_at } });
+    const serverUrl = `${(env.MCP_PUBLIC_URL || "https://mcp.liegeagents.com").replace(/\/+$/, "")}/mcp`;
+    const presets = buildHarnessPresets({
+      serverName: input.name,
+      serverUrl,
+      token,
+      agentName: owned.rows[0]?.name,
+    });
+    response.status(201).json({
+      data: {
+        id: result.rows[0].id,
+        token,
+        expiresAt: result.rows[0].expires_at,
+        presets,
+      },
+    });
+  }),
+);
+mcpRouter.get(
+  "/connections/:id/presets",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const id = z.string().uuid().parse(request.params.id);
+    const tokenQuery = typeof request.query.token === "string" ? request.query.token : undefined;
+    const result = await db.query<{
+      id: string;
+      agent_id: string;
+      name: string;
+      agent_name: string;
+    }>(
+      `SELECT c.id, c.agent_id, c.name, a.name AS agent_name
+       FROM mcp_connections c
+       JOIN agents a ON a.id = c.agent_id
+       WHERE c.id = $1 AND c.user_id = $2 AND c.revoked_at IS NULL`,
+      [id, request.auth!.userId],
+    );
+    if (!result.rowCount)
+      throw new ApiError(404, "connection_not_found", "This MCP connection is unavailable.");
+    const row = result.rows[0];
+    const serverUrl = `${(env.MCP_PUBLIC_URL || "https://mcp.liegeagents.com").replace(/\/+$/, "")}/mcp`;
+    const presets = buildHarnessPresets({
+      serverName: row.name,
+      serverUrl,
+      token: tokenQuery,
+      agentName: row.agent_name,
+    });
+    response.json({
+      data: {
+        connectionId: row.id,
+        agentId: row.agent_id,
+        agentName: row.agent_name,
+        connectionName: row.name,
+        serverUrl,
+        presets,
+      },
+    });
+  }),
+);
+mcpRouter.get(
+  "/presets",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const token = typeof request.query.token === "string" ? request.query.token : undefined;
+    const serverName = typeof request.query.name === "string" ? request.query.name : undefined;
+    const agentId = typeof request.query.agentId === "string" ? request.query.agentId : undefined;
+    let agentName: string | undefined;
+    if (agentId) {
+      const parsedAgentId = z.string().uuid().safeParse(agentId);
+      if (parsedAgentId.success) {
+        const agent = await db.query<{ name: string }>(
+          "SELECT name FROM agents WHERE id = $1 AND owner_id = $2",
+          [parsedAgentId.data, request.auth!.userId],
+        );
+        if (agent.rowCount) {
+          agentName = agent.rows[0].name;
+        }
+      }
+    }
+    const serverUrl = `${(env.MCP_PUBLIC_URL || "https://mcp.liegeagents.com").replace(/\/+$/, "")}/mcp`;
+    const presets = buildHarnessPresets({
+      serverName: serverName || agentName,
+      serverUrl,
+      token,
+      agentName,
+    });
+    response.json({
+      data: {
+        serverUrl,
+        presets,
+      },
+    });
   }),
 );
 mcpRouter.get(

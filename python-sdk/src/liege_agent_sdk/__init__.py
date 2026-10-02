@@ -24,6 +24,8 @@ from .models import (
     ServiceExecutionMode,
     ServiceType,
     Session,
+    McpHarnessPreset,
+    McpHarnessPresetsResponse,
 )
 
 __all__ = [
@@ -35,6 +37,8 @@ __all__ = [
     "LiegeClient",
     "McpClient",
     "McpProposal",
+    "McpHarnessPreset",
+    "McpHarnessPresetsResponse",
     "AgentAccount",
     "AgentActionAuthorization",
     "AgentActionInput",

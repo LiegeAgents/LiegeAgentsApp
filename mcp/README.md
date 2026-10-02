@@ -40,6 +40,16 @@ For clients that accept a Streamable HTTP server definition, the connection is:
 }
 ```
 
+### Harness Presets & Config Exporter
+
+Use `GET /v1/mcp/connections/:id/presets` or the **Export Config** button in Workspace to generate ready-to-paste JSON configurations for:
+- **Claude Desktop**: `claude_desktop_config.json`
+- **Cursor**: `.cursor/mcp.json`
+- **ElizaOS**: `@elizaos/plugin-mcp` character settings
+- **Hermes**: `hermes.json` tool config
+- **OpenClaw**: `openclaw.json` MCP configuration
+
+
 ## Service environment
 
 ```env

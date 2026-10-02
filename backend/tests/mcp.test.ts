@@ -12,6 +12,7 @@ import {
   signIn,
   type User,
 } from "./support.js";
+import { buildHarnessPresets } from "../src/routes/mcp.js";
 
 const internalHeaders = (connectionToken: string) => ({
   "x-mcp-internal-token": process.env.MCP_INTERNAL_API_TOKEN!,
@@ -244,5 +245,136 @@ describe.skipIf(!databaseAvailable)("MCP connections", () => {
       .set(internalHeaders(connection.token))
       .expect(200);
     expect(Array.isArray(services.body.data)).toBe(true);
+  });
+
+  test("creates a connection with presets and exports presets by connection id", async () => {
+    const response = await api()
+      .post("/v1/mcp/connections")
+      .set(bearer(owner))
+      .send({ agentId, name: "Export Test" })
+      .expect(201);
+    expect(response.body.data.presets).toBeDefined();
+    expect(response.body.data.presets.claude_desktop).toBeDefined();
+    expect(
+      response.body.data.presets.cursor.config.mcpServers["export-test"].headers.Authorization,
+    ).toBe(`Bearer ${response.body.data.token}`);
+
+    const presetsRes = await api()
+      .get(`/v1/mcp/connections/${response.body.data.id}/presets`)
+      .set(bearer(owner))
+      .expect(200);
+    expect(presetsRes.body.data.connectionId).toBe(response.body.data.id);
+    expect(presetsRes.body.data.presets.elizaos.config.plugins).toContain("@elizaos/plugin-mcp");
+
+    const withCustomToken = await api()
+      .get(`/v1/mcp/connections/${response.body.data.id}/presets?token=lmp_customtoken123`)
+      .set(bearer(owner))
+      .expect(200);
+    expect(
+      withCustomToken.body.data.presets.hermes.config.mcpServers["export-test"].headers
+        .Authorization,
+    ).toBe("Bearer lmp_customtoken123");
+
+    const generalPresets = await api()
+      .get("/v1/mcp/presets?name=cli-tool")
+      .set(bearer(owner))
+      .expect(200);
+    expect(generalPresets.body.data.presets.openclaw.config.tools.mcp["cli-tool"]).toBeDefined();
+  });
+});
+
+describe("Harness Preset Exporter", () => {
+  test("generates valid configs for Claude Desktop, Cursor, ElizaOS, Hermes, and OpenClaw", () => {
+    const presets = buildHarnessPresets({
+      serverName: "Alpha Arbitrage",
+      token: "lmp_secret123",
+      agentName: "Alpha Arbitrage",
+    });
+
+    expect(Object.keys(presets).sort()).toEqual([
+      "claude_desktop",
+      "cursor",
+      "elizaos",
+      "hermes",
+      "openclaw",
+    ]);
+
+    // Claude Desktop
+    const claude = presets.claude_desktop;
+    expect(claude.filename).toBe("claude_desktop_config.json");
+    expect(claude.config).toEqual({
+      mcpServers: {
+        "alpha-arbitrage": {
+          url: "https://mcp.liegeagents.com/mcp",
+          headers: { Authorization: "Bearer lmp_secret123" },
+        },
+      },
+    });
+
+    // Cursor
+    const cursor = presets.cursor;
+    expect(cursor.filename).toBe(".cursor/mcp.json");
+    expect(cursor.config).toEqual({
+      mcpServers: {
+        "alpha-arbitrage": {
+          url: "https://mcp.liegeagents.com/mcp",
+          headers: { Authorization: "Bearer lmp_secret123" },
+        },
+      },
+    });
+
+    // ElizaOS
+    const eliza = presets.elizaos;
+    expect(eliza.filename).toBe("character.json");
+    expect(eliza.config).toEqual({
+      name: "Alpha Arbitrage",
+      plugins: ["@elizaos/plugin-mcp"],
+      settings: {
+        mcp: {
+          servers: {
+            "alpha-arbitrage": {
+              url: "https://mcp.liegeagents.com/mcp",
+              headers: { Authorization: "Bearer lmp_secret123" },
+            },
+          },
+        },
+      },
+    });
+
+    // Hermes
+    const hermes = presets.hermes;
+    expect(hermes.filename).toBe("hermes.json");
+    expect(hermes.config).toEqual({
+      mcpServers: {
+        "alpha-arbitrage": {
+          url: "https://mcp.liegeagents.com/mcp",
+          headers: { Authorization: "Bearer lmp_secret123" },
+        },
+      },
+    });
+
+    // OpenClaw
+    const openclaw = presets.openclaw;
+    expect(openclaw.filename).toBe("openclaw.json");
+    expect(openclaw.config).toEqual({
+      tools: {
+        mcp: {
+          "alpha-arbitrage": {
+            url: "https://mcp.liegeagents.com/mcp",
+            headers: { Authorization: "Bearer lmp_secret123" },
+          },
+        },
+      },
+    });
+  });
+
+  test("uses default placeholder when token is not provided", () => {
+    const presets = buildHarnessPresets({ serverName: "my-agent" });
+    const config = presets.cursor.config as {
+      mcpServers: { "my-agent": { headers: { Authorization: string } } };
+    };
+    expect(config.mcpServers["my-agent"].headers.Authorization).toBe(
+      "Bearer <YOUR_LIEGE_MCP_TOKEN>",
+    );
   });
 });

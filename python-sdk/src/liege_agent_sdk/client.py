@@ -15,7 +15,7 @@ from .errors import LiegeAPIError
 from .models import (
     AgentAccount, AgentActionAuthorization, AgentActionInput, AgentActionSimulation, AgentControlResult,
     AgentMandate, AgentPolicyInput, Invoice, InvoiceRefund, Job, JobEvent, Receipt, Service, ServiceType, Session,
-    RunnerInput, RunnerResult, RunnerArtifact,
+    RunnerInput, RunnerResult, RunnerArtifact, McpHarnessPreset, McpHarnessPresetsResponse,
 )
 
 
@@ -201,6 +201,22 @@ class LiegeClient:
 
     def export_agent_mandate_ap2(self, agent_id: str, mandate_id: str) -> dict[str, Any]:
         return self._request("GET", f"/v1/agent-accounts/{agent_id}/mandates/{mandate_id}/ap2")
+
+    def get_mcp_presets(self, connection_id: str, token: str | None = None) -> McpHarnessPresetsResponse:
+        params = {"token": token} if token else None
+        data = self._request("GET", f"/v1/mcp/connections/{connection_id}/presets", params=params)
+        return McpHarnessPresetsResponse.from_dict(data)
+
+    def get_general_mcp_presets(self, name: str | None = None, agent_id: str | None = None,
+                                 token: str | None = None) -> dict[str, Any]:
+        params: dict[str, Any] = {}
+        if name:
+            params["name"] = name
+        if agent_id:
+            params["agentId"] = agent_id
+        if token:
+            params["token"] = token
+        return self._request("GET", "/v1/mcp/presets", params=params or None)
 
     def runner_action(self, input: RunnerInput) -> AgentActionInput:
         """Return the approval payload for a runner execution; it does not execute anything."""
