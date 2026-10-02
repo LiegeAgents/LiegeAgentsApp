@@ -20,6 +20,8 @@ from .models import (
     RunnerArtifact,
     RunnerInput,
     RunnerResult,
+    WebhookCreateInput,
+    WebhookSubscription,
     Service,
     ServiceExecutionMode,
     ServiceType,
@@ -54,5 +56,7 @@ __all__ = [
     "RunnerArtifact",
     "RunnerInput",
     "RunnerResult",
+    "WebhookCreateInput",
+    "WebhookSubscription",
 ]
-__version__ = "0.1.5"
+__version__ = "0.1.6"

@@ -197,6 +197,22 @@ describe("LiegeClient", () => {
     expect(response.status).toBe(200);
     expect(attempts).toBe(2);
   });
+
+  test("manages webhook subscriptions and verifies signed payloads", async () => {
+    const client = new LiegeClient({ token: "session", fetch: async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      if (path === "/v1/webhooks" && init?.method === "POST") return new Response(JSON.stringify({ data: { id: "wh-1", agent_id: "agent-1", url: "https://example.test/hook", event_types: ["job.completed"], active: true, secret: "whsec_test" } }), { status: 201 });
+      if (path === "/v1/webhooks") return new Response(JSON.stringify({ data: [{ id: "wh-1", agent_id: "agent-1", url: "https://example.test/hook", event_types: ["job.completed"], active: true }] }));
+      return new Response(null, { status: 204 });
+    } });
+    const created = await client.createWebhook({ agentId: "agent-1", url: "https://example.test/hook", eventTypes: ["job.completed"] });
+    expect(created.secret).toBe("whsec_test");
+    expect((await client.listWebhooks())[0].agentId).toBe("agent-1");
+    await client.deleteWebhook("wh-1");
+    const signature = "sha256=46bdc2a2e83964bd2695acc6a1f97162d8bafc135a071aa5cd5c99aae5481440";
+    expect(await client.verifyWebhookSignature("{}", signature, "whsec_test")).toBe(true);
+    expect(await client.verifyWebhookSignature("tampered", signature, "whsec_test")).toBe(false);
+  });
 });
 
 describe("McpClient", () => {
@@ -397,4 +413,3 @@ describe("McpClient", () => {
     expect(res.presets.cursor).toBeDefined();
   });
 });
-

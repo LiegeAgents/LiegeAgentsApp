@@ -1,5 +1,5 @@
 export type Signer = (message: string) => Promise<string> | string;
-export const SDK_VERSION = "0.1.9";
+export const SDK_VERSION = "0.1.10";
 
 export interface X402PaymentRequired {
   x402Version: number;
@@ -92,6 +92,10 @@ export interface RunnerResult {
   finishedAt?: string | null; createdAt?: string; artifacts: RunnerArtifact[]; [key: string]: unknown;
 }
 export interface JobEvent { id: string; event: string; data: unknown; }
+export type WebhookEventType = "job.funded" | "job.submitted" | "job.completed" | "job.rejected" | "job.expired" | "job.settled" | "invoice.created" | "invoice.paid" | "invoice.refunded" | "invoice.partially_refunded" | "invoice.cancelled" | "invoice.expired";
+export interface WebhookSubscription { id: string; agentId: string; url: string; eventTypes: WebhookEventType[]; active: boolean; createdAt?: string; updatedAt?: string; [key: string]: unknown; }
+export interface WebhookCreateInput { agentId: string; url: string; eventTypes?: WebhookEventType[]; }
+export interface WebhookCreated extends WebhookSubscription { secret: string; }
 export interface EventStreamOptions {
   after?: string;
   since?: Date;
@@ -258,4 +262,3 @@ export class LiegeAPIError extends Error {
     super(message); this.name = "LiegeAPIError";
   }
 }
-

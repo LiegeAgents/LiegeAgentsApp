@@ -36,3 +36,7 @@ Runner helpers make that approval boundary explicit: call `simulateRunnerAction`
 `authorizeRunnerAction`, then pass both returned ids to `executeApprovedRunnerAction`. Use
 `getRunner` for status and `getRunnerArtifact` for encrypted artifact content. The SDK never
 bypasses the API's account policy or executes a runner without the approved action ids.
+
+Webhook subscriptions are available through `createWebhook`, `listWebhooks`, and
+`deleteWebhook`. Store the one-time `secret` returned by `createWebhook` securely and verify
+incoming `x-liege-signature` headers with `verifyWebhookSignature` against the exact raw body.
