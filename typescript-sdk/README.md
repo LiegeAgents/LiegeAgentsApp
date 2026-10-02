@@ -40,3 +40,9 @@ bypasses the API's account policy or executes a runner without the approved acti
 Webhook subscriptions are available through `createWebhook`, `listWebhooks`, and
 `deleteWebhook`. Store the one-time `secret` returned by `createWebhook` securely and verify
 incoming `x-liege-signature` headers with `verifyWebhookSignature` against the exact raw body.
+
+Transport defaults are safe for ordinary API use: GET requests retry transient 408, 429, and 5xx
+responses with bounded exponential backoff; mutations are never retried automatically. Configure
+`timeoutMs`, `maxRetries`, and `retryBackoffMs` in `LiegeClient` options. Errors expose `status`,
+`code`, `requestId`, and `retryable`. Use `client.request(path, { signal })` when an `AbortSignal`
+is needed. Cursor-aware endpoints also expose typed `listJobsPage` and `listServicesPage` helpers.

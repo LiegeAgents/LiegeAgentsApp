@@ -2,6 +2,25 @@ import { describe, expect, test } from "bun:test";
 import { LiegeAPIError, LiegeClient, McpClient, decodeX402PaymentRequired } from "../src/index.js";
 
 describe("LiegeClient", () => {
+  test("retries transient GETs and preserves request ids on terminal errors", async () => {
+    let calls = 0;
+    const client = new LiegeClient({ retryBackoffMs: 0, maxRetries: 1, fetch: async () => {
+      calls++;
+      return new Response(JSON.stringify({ error: { message: "upstream", code: "UPSTREAM" } }), { status: 503, headers: { "x-request-id": "req-42" } });
+    } });
+    await expect(client.listJobs()).rejects.toMatchObject({ status: 503, code: "UPSTREAM", requestId: "req-42", retryable: true });
+    expect(calls).toBe(2);
+  });
+
+  test("supports typed pages and caller cancellation", async () => {
+    const client = new LiegeClient({ fetch: async (_input, init) => {
+      expect(init?.signal).toBeDefined();
+      return new Response(JSON.stringify({ data: { items: [{ id: "job-1", status: "open" }], nextCursor: "cursor-2", total: 1 } }));
+    } });
+    const page = await client.listJobsPage();
+    expect(page).toEqual({ items: [{ id: "job-1", status: "open" }], nextCursor: "cursor-2", total: 1 });
+  });
+
   test("lists jobs and unwraps API data", async () => {
     const client = new LiegeClient({ fetch: async () => new Response(JSON.stringify({ data: [{ id: "job-1", status: "open" }] }), { status: 200 }) });
     expect(await client.listJobs()).toEqual([{ id: "job-1", status: "open" }]);

@@ -1,6 +1,6 @@
 """Small, typed Python client for the Liege API and MCP service."""
 
-from .client import LiegeClient, decode_x402_payment_required, encode_x402_json
+from .client import AsyncLiegeClient, LiegeClient, decode_x402_payment_required, encode_x402_json
 from .errors import LiegeAPIError
 from .mcp import McpClient
 from .models import (
@@ -28,6 +28,7 @@ from .models import (
     Session,
     McpHarnessPreset,
     McpHarnessPresetsResponse,
+    Page,
 )
 
 __all__ = [
@@ -37,10 +38,12 @@ __all__ = [
     "JobEvent",
     "LiegeAPIError",
     "LiegeClient",
+    "AsyncLiegeClient",
     "McpClient",
     "McpProposal",
     "McpHarnessPreset",
     "McpHarnessPresetsResponse",
+    "Page",
     "AgentAccount",
     "AgentActionAuthorization",
     "AgentActionInput",
@@ -59,4 +62,4 @@ __all__ = [
     "WebhookCreateInput",
     "WebhookSubscription",
 ]
-__version__ = "0.1.6"
+__version__ = "0.1.7"

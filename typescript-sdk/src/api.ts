@@ -31,23 +31,31 @@ import {
   type X402PaymentRequired,
   type X402Signer,
   type EventStreamOptions,
+  type Page,
   type WebhookCreateInput,
   type WebhookCreated,
   type WebhookEventType,
   type WebhookSubscription,
 } from "./types.js";
 
-export interface LiegeClientOptions { baseUrl?: string; token?: string; fetch?: typeof globalThis.fetch; }
+export interface LiegeClientOptions { baseUrl?: string; token?: string; fetch?: typeof globalThis.fetch; timeoutMs?: number; maxRetries?: number; retryBackoffMs?: number; }
+export interface LiegeRequestOptions { method?: string; body?: unknown; signal?: AbortSignal; timeoutMs?: number; }
 
 export class LiegeClient {
-  private readonly request: typeof globalThis.fetch;
+  private readonly fetcher: typeof globalThis.fetch;
   private token?: string;
+  private readonly timeoutMs: number;
+  private readonly maxRetries: number;
+  private readonly retryBackoffMs: number;
   readonly baseUrl: string;
 
   constructor(options: LiegeClientOptions = {}) {
     this.baseUrl = (options.baseUrl ?? "https://api.liegeagents.com").replace(/\/$/, "");
     this.token = options.token;
-    this.request = options.fetch ?? globalThis.fetch;
+    this.fetcher = options.fetch ?? globalThis.fetch;
+    this.timeoutMs = options.timeoutMs ?? 30_000;
+    this.maxRetries = options.maxRetries ?? 2;
+    this.retryBackoffMs = options.retryBackoffMs ?? 250;
   }
 
   async authenticate(address: string, signer: Signer): Promise<Session> {
@@ -59,8 +67,11 @@ export class LiegeClient {
   }
 
   listJobs(status?: string, limit = 50): Promise<Job[]> {
+    return this.listJobsPage(status, limit).then((page) => page.items);
+  }
+  listJobsPage(status?: string, limit = 50): Promise<Page<Job>> {
     const query = new URLSearchParams({ limit: String(limit) }); if (status) query.set("status", status);
-    return this.call<Job[]>(`/v1/jobs?${query}`);
+    return this.page<Job>(`/v1/jobs?${query}`);
   }
   getJob(id: string): Promise<Record<string, unknown>> { return this.call(`/v1/jobs/${encodeURIComponent(id)}`); }
   getPrivatePayload(id: string, payload: "brief" | "deliverable"): Promise<Record<string, unknown>> { return this.call(`/v1/jobs/${encodeURIComponent(id)}/payload/${payload}`); }
@@ -92,7 +103,7 @@ export class LiegeClient {
     const query = new URLSearchParams({ limit: String(options?.limit ?? 500) });
     if (options?.format) query.set("format", options.format);
     if (options?.format === "csv") {
-      return this.request(`${this.baseUrl}/v1/receipts?${query}`, { headers: this.headers() }).then((r) => r.text());
+      return this.fetcher(`${this.baseUrl}/v1/receipts?${query}`, { headers: this.headers() }).then((r) => r.text());
     }
     return this.call(`/v1/receipts?${query}`);
   }
@@ -105,10 +116,16 @@ export class LiegeClient {
   }
 
   listServices(options: { agentId?: string; type?: ServiceType; limit?: number } = {}): Promise<Service[]> {
+    return this.listServicesPage(options).then((page) => page.items);
+  }
+  listServicesPage(options: { agentId?: string; type?: ServiceType; limit?: number } = {}): Promise<Page<Service>> {
     const query = new URLSearchParams({ limit: String(options.limit ?? 50) });
     if (options.agentId) query.set("agentId", options.agentId);
     if (options.type) query.set("type", options.type);
-    return this.call<Record<string, unknown>[]>(`/v1/services?${query}`).then((items) => items.map((item) => this.mapService(item)));
+    return this.call<unknown>(`/v1/services?${query}`).then((value) => {
+      const page = Array.isArray(value) ? { items: value as Record<string, unknown>[], nextCursor: null, total: undefined } : (value as { items?: Record<string, unknown>[]; nextCursor?: string | null; total?: number });
+      return { items: (page.items ?? []).map((item) => this.mapService(item)), nextCursor: page.nextCursor ?? null, total: page.total };
+    });
   }
   getService(agentId: string, slug: string): Promise<Service> {
     return this.call<Record<string, unknown>>(`/v1/services/${encodeURIComponent(agentId)}/${encodeURIComponent(slug)}`).then((item) => this.mapService(item));
@@ -204,7 +221,7 @@ export class LiegeClient {
 
   /** Fetch an x402 resource, asking the application-provided signer to approve a 402 challenge. */
   async requestX402(input: string | URL, signer: X402Signer, init: RequestInit = {}): Promise<Response> {
-    const first = await this.request(input, init);
+    const first = await this.fetcher(input, init);
     if (first.status !== 402) return first;
     const encoded = first.headers.get("PAYMENT-REQUIRED") ?? first.headers.get("X-PAYMENT-REQUIRED");
     if (!encoded) throw new LiegeAPIError("The x402 response did not include PAYMENT-REQUIRED", 502, "x402_invalid_challenge");
@@ -213,7 +230,7 @@ export class LiegeClient {
     const paymentSignature = typeof signed === "string" ? signed : encodeX402Json(signed);
     const headers = new Headers(init.headers);
     headers.set("PAYMENT-SIGNATURE", paymentSignature);
-    return this.request(input, { ...init, headers });
+    return this.fetcher(input, { ...init, headers });
   }
 
   async *iterEvents(agentId: string, sinceOrOptions?: Date | EventStreamOptions): AsyncGenerator<JobEvent> {
@@ -253,7 +270,7 @@ export class LiegeClient {
     else if (options.since) url.searchParams.set("since", options.since.toISOString());
     const headers = new Headers(this.headers());
     if (options.after) headers.set("Last-Event-ID", options.after);
-    const response = await this.request(url, { headers });
+    const response = await this.fetcher(url, { headers });
     if (!response.ok || !response.body) throw new LiegeAPIError("Unable to open the event stream", response.status);
     const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ""; let id = ""; let event = "message"; let data: string[] = [];
     const processLine = (raw: string): JobEvent | undefined => { const line = raw.replace(/\r$/, ""); if (!line.trim()) { if (!data.length) return; const parsed = { id, event, data: JSON.parse(data.join("\n")) }; id = ""; event = "message"; data = []; return parsed; } const [field, ...rest] = line.split(":"); const value = rest.join(":").trimStart(); if (field === "id") id = value; else if (field === "event") event = value; else if (field === "data") data.push(value); };
@@ -298,11 +315,37 @@ export class LiegeClient {
   private mapRunner(value: Record<string, unknown>): RunnerResult {
     return { ...value, id: String(value.id), status: String(value.status), artifacts: Array.isArray(value.artifacts) ? value.artifacts.map((item) => ({ ...(item as Record<string, unknown>), name: String((item as Record<string, unknown>).name), sha256: String((item as Record<string, unknown>).sha256) })) as RunnerArtifact[] : [] } as RunnerResult;
   }
-  private async call<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
-    const response = await this.request(`${this.baseUrl}${path}`, { method: options.method ?? "GET", headers: { ...this.headers(), ...(options.body ? { "content-type": "application/json" } : {}) }, body: options.body ? JSON.stringify(options.body) : undefined });
-    const body = await response.json().catch(() => ({})); if (!response.ok) { const error = body?.error ?? {}; throw new LiegeAPIError(error.message ?? response.statusText, response.status, error.code); }
-    return body?.data ?? body;
+  private async call<T>(path: string, options: LiegeRequestOptions = {}): Promise<T> {
+    const method = options.method ?? "GET";
+    const attempts = method === "GET" ? this.maxRetries + 1 : 1;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeoutMs = options.timeoutMs ?? this.timeoutMs;
+        const abort = () => controller.abort();
+        options.signal?.addEventListener("abort", abort, { once: true });
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        let response: Response;
+        try {
+          response = await this.fetcher(`${this.baseUrl}${path}`, { method, headers: { ...this.headers(), ...(options.body ? { "content-type": "application/json" } : {}) }, body: options.body ? JSON.stringify(options.body) : undefined, signal: controller.signal });
+        } finally { clearTimeout(timer); options.signal?.removeEventListener("abort", abort); }
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const error = body?.error ?? {};
+          const requestId = response.headers.get("x-request-id") ?? error.requestId;
+          if (method === "GET" && attempt + 1 < attempts && (response.status === 408 || response.status === 429 || response.status >= 500)) { await new Promise((resolve) => setTimeout(resolve, this.retryBackoffMs * 2 ** attempt)); continue; }
+          throw new LiegeAPIError(error.message ?? response.statusText, response.status, error.code, requestId, response.status >= 500 || response.status === 429);
+        }
+        return body?.data ?? body;
+      } catch (error) {
+        if (error instanceof LiegeAPIError) throw error;
+        if (method === "GET" && attempt + 1 < attempts) { await new Promise((resolve) => setTimeout(resolve, this.retryBackoffMs * 2 ** attempt)); continue; }
+        throw new LiegeAPIError(error instanceof Error && error.name === "AbortError" ? "Request aborted or timed out" : "Network request failed", 408, error instanceof Error && error.name === "AbortError" ? "request_aborted" : "network", undefined, true);
+      }
+    }
   }
+  request<T>(path: string, options: LiegeRequestOptions = {}): Promise<T> { return this.call<T>(path, options); }
+  private page<T>(path: string): Promise<Page<T>> { return this.call<T[] | { items?: T[]; nextCursor?: string | null; total?: number }>(path).then((value) => Array.isArray(value) ? { items: value, nextCursor: null } : { items: value.items ?? [], nextCursor: value.nextCursor ?? null, total: value.total }); }
 }
 
 export function encodeX402Json(value: X402PaymentPayload): string {
