@@ -574,6 +574,11 @@ function ServiceCatalog({ token, agents, ownerAddress, onNotice }) {
   const ownedAgents = agents.filter(
     (agent) => agent.owner_wallet?.toLowerCase() === ownerAddress?.toLowerCase(),
   );
+  const activeConnections = connections.filter((connection) => !connection.revoked_at);
+  const expiringConnections = activeConnections.filter((connection) => {
+    const expiresAt = Date.parse(connection.expires_at || "");
+    return Number.isFinite(expiresAt) && expiresAt - Date.now() <= 7 * 24 * 60 * 60 * 1000;
+  });
   const [form, setForm] = useState({
     agentId: "",
     name: "",
@@ -1300,6 +1305,22 @@ function McpConnections({ token, agents, ownerAddress, onNotice }) {
           Setup guide <ExternalLink size={14} />
         </a>
       </div>
+      <div className="mcp-health-strip" aria-label="MCP connection health">
+        <div>
+          <span className="mcp-health-dot active" />
+          <strong>{activeConnections.length}</strong>
+          <small>active connections</small>
+        </div>
+        <div>
+          <span className={`mcp-health-dot ${expiringConnections.length ? "warning" : "active"}`} />
+          <strong>{expiringConnections.length}</strong>
+          <small>expire within 7 days</small>
+        </div>
+        <div className="mcp-health-note">
+          <ShieldCheck size={14} />
+          <small>Tokens stay scoped to one agent profile and are never shown here.</small>
+        </div>
+      </div>
       {newToken && (
         <div className="mcp-token-card" role="status">
           <div>
@@ -1368,7 +1389,7 @@ function McpConnections({ token, agents, ownerAddress, onNotice }) {
         <div className="mcp-connection-list">
           <div className="mcp-list-head">
             <h3>Connections</h3>
-            <span>{connections.filter((connection) => !connection.revoked_at).length} active</span>
+            <span>{activeConnections.length} active</span>
           </div>
           {connections.map((connection) => (
             <div className="mcp-connection-row" key={connection.id}>

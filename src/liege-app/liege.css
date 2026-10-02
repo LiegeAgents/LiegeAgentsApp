@@ -2813,6 +2813,37 @@ section[id] {
   font-size: 11px;
   white-space: nowrap;
 }
+.mcp-health-strip {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 13px 28px;
+  border-bottom: 1px solid var(--l-border);
+  background: var(--l-soft);
+}
+.mcp-health-strip > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+}
+.mcp-health-strip strong {
+  font: 15px var(--font-paper-mono);
+}
+.mcp-health-strip small {
+  color: var(--l-muted);
+  font-size: 10px;
+}
+.mcp-health-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--l-muted);
+}
+.mcp-health-dot.active { background: var(--l-green); box-shadow: 0 0 8px color-mix(in srgb, var(--l-green) 55%, transparent); }
+.mcp-health-dot.warning { background: #d9a84c; box-shadow: 0 0 8px #d9a84c66; }
+.mcp-health-note { margin-left: auto; }
+.mcp-health-note svg { color: var(--l-green); }
 .mcp-token-card {
   margin: 22px 28px 0;
   padding: 18px;
