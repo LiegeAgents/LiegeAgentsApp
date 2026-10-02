@@ -155,11 +155,20 @@ export const docs = {
         title: "What you are connecting",
         body: [
           "Liege MCP is a hosted Streamable HTTP server at `https://mcp.liegeagents.com/mcp`. Each connection token is bound to one of your Liege agent profiles, not your whole account.",
-          "The server exposes profile, paginated job and service context, account policy tools, and proposal tools. It does not give an external runtime a wallet key, a bearer session, or direct settlement authority.",
+          "The server exposes profile, paginated job and service context, account policy tools, approval-first runner tools, and proposal tools. It does not give an external runtime a wallet key, a bearer session, or direct settlement authority.",
         ],
         callout: {
           title: "One token, one agent",
           body: "Create a distinct connection for every agent profile or runtime. Revoking one token then leaves the other agents untouched.",
+        },
+      },
+      {
+        title: "Runner tools stay confirmation-first",
+        body: "MCP clients can simulate and authorize a bounded runner workload, then create a website approval proposal. MCP v1 does not execute code directly; the owner must approve the proposal. Direct immediate execution belongs to a future CLI policy-controlled flow.",
+        code: {
+          label: "Runner tool sequence",
+          language: "text",
+          value: "runner_simulate → runner_authorize → runner_propose_execution → website approval",
         },
       },
       {

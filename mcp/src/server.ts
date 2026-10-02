@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -44,6 +45,22 @@ async function api(path: string, connectionToken: string, init: RequestInit = {}
 }
 const text = (data: unknown) => ({
   content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
+});
+const runnerInput = {
+  command: z.enum(["node", "bun", "python", "python3"]),
+  args: z.array(z.string()).max(40).optional(),
+  env: z.record(z.string(), z.string()).optional(),
+  files: z.record(z.string(), z.string()).optional(),
+  artifactPaths: z.array(z.string()).max(20).optional(),
+  timeoutMs: z.number().int().min(100).max(120_000).optional(),
+  maxOutputBytes: z.number().int().min(1_024).max(1_000_000).optional(),
+  jobId: z.string().uuid().optional(),
+};
+const digest = (value: Record<string, string>) => createHash("sha256").update(JSON.stringify(Object.keys(value).sort().reduce((out, key) => ({ ...out, [key]: value[key] }), {}))).digest("hex");
+const runnerDetails = (input: Record<string, any>) => ({
+  command: input.command, args: input.args ?? [], jobId: input.jobId ?? null,
+  timeoutMs: input.timeoutMs ?? 30_000, maxOutputBytes: input.maxOutputBytes ?? 256_000,
+  envDigest: digest(input.env ?? {}), filesDigest: digest(input.files ?? {}),
 });
 function serverFor(connectionToken: string) {
   const server = new McpServer({ name: "liege-mcp", version: "0.1.0" });
@@ -136,6 +153,31 @@ function serverFor(connectionToken: string) {
           body: JSON.stringify(input),
         }),
       ),
+  );
+  server.registerTool(
+    "runner_simulate",
+    { description: "Simulate a bounded runner workload against the connected agent policy. This never executes code.", inputSchema: runnerInput },
+    async (input) => text(await api("/v1/internal/mcp/account/simulate", connectionToken, { method: "POST", body: JSON.stringify({ action: "runner.execute", details: runnerDetails(input) }) })),
+  );
+  server.registerTool(
+    "runner_authorize",
+    { description: "Authorize a simulated runner workload. This creates an approval decision but does not execute code.", inputSchema: { ...runnerInput, simulationId: z.string().uuid() } },
+    async (input) => text(await api("/v1/internal/mcp/account/authorize", connectionToken, { method: "POST", body: JSON.stringify({ action: "runner.execute", details: runnerDetails(input), simulationId: input.simulationId }) })),
+  );
+  server.registerTool(
+    "runner_propose_execution",
+    { description: "Create a website approval proposal for an authorized runner workload. Direct MCP execution is intentionally unavailable.", inputSchema: { ...runnerInput, simulationId: z.string().uuid() } },
+    async (input) => text(await api("/v1/internal/mcp/proposals", connectionToken, { method: "POST", body: JSON.stringify({ action: "runner.execute", payload: runnerDetails(input), simulationId: input.simulationId }) })),
+  );
+  server.registerTool(
+    "runner_status",
+    { description: "Read status and artifact metadata for a runner execution owned by this connection's agent.", inputSchema: { runId: z.string().uuid() } },
+    async ({ runId }) => text(await api(`/v1/internal/mcp/runner/${runId}`, connectionToken)),
+  );
+  server.registerTool(
+    "runner_artifact",
+    { description: "Read an encrypted artifact captured by an owned runner execution.", inputSchema: { runId: z.string().uuid(), artifactId: z.string().uuid() } },
+    async ({ runId, artifactId }) => text(await api(`/v1/internal/mcp/runner/${runId}/artifacts/${artifactId}`, connectionToken)),
   );
   server.registerTool(
     "liege_account_mandates",

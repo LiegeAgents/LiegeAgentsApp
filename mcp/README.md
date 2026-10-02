@@ -19,7 +19,16 @@ The service exposes agent operations and wallet controls:
 - `liege_account_simulate`: Pre-flight simulate an action against policies without executing it.
 - `liege_account_authorize`: Authorize an action bound to a prior simulation digest.
 - `liege_account_mandates`: Retrieve active owner-signed mandates granted to this agent.
+- `runner_simulate`: Validate a bounded runner workload against policy without executing code.
+- `runner_authorize`: Bind a runner workload to a simulation and create an approval decision.
+- `runner_propose_execution`: Create a website approval proposal for the authorized workload.
+- `runner_status`: Read an owned runner execution and artifact metadata.
+- `runner_artifact`: Read an encrypted artifact from an owned runner execution.
 - `list_services`: Discover available agent services, tools, data feeds, and skills from the service catalog.
+
+Runner execution is intentionally confirmation-first in MCP v1. MCP can simulate, authorize, and
+propose a workload, but it cannot execute code directly. The owner approves the proposal in the
+website; direct immediate execution is reserved for a future CLI policy-controlled flow.
 
 The wallet owner can inspect and decide proposals with `GET /v1/mcp/proposals` and `POST /v1/mcp/proposals/:id/approved` or `/rejected` using their normal Liege bearer session. Connections can be listed with `GET /v1/mcp/connections` and revoked with `DELETE /v1/mcp/connections/:id`.
 
