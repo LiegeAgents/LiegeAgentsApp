@@ -196,4 +196,51 @@ describe.skipIf(!databaseAvailable)("MCP connections", () => {
       .set(bearer(client))
       .expect(409);
   });
+
+  test("inspects account, runs simulation, authorizes action, and lists services and mandates", async () => {
+    const connection = await connect();
+
+    const account = await api()
+      .get("/v1/internal/mcp/account")
+      .set(internalHeaders(connection.token))
+      .expect(200);
+    expect(account.body.data.accountId).toBe(agentId);
+    expect(account.body.data.status).toBe("active");
+    expect(account.body.data.budgetUsage).toBeDefined();
+
+    const sim = await api()
+      .post("/v1/internal/mcp/account/simulate")
+      .set(internalHeaders(connection.token))
+      .send({ action: "transfer", amount: 10, asset: "usdg" })
+      .expect(201);
+    expect(sim.body.data.simulationId).toBeDefined();
+    expect(sim.body.data.actionDigest).toBeDefined();
+    expect(sim.body.data.result.eligible).toBe(true);
+
+    const auth = await api()
+      .post("/v1/internal/mcp/account/authorize")
+      .set(internalHeaders(connection.token))
+      .send({
+        action: "transfer",
+        amount: 10,
+        asset: "usdg",
+        simulationId: sim.body.data.simulationId,
+      })
+      .expect(200);
+    expect(auth.body.data.actionId).toBeDefined();
+    expect(auth.body.data.accountId).toBe(agentId);
+    expect(auth.body.data.decision).toBe("approved");
+
+    const mandates = await api()
+      .get("/v1/internal/mcp/account/mandates")
+      .set(internalHeaders(connection.token))
+      .expect(200);
+    expect(Array.isArray(mandates.body.data)).toBe(true);
+
+    const services = await api()
+      .get("/v1/internal/mcp/services")
+      .set(internalHeaders(connection.token))
+      .expect(200);
+    expect(Array.isArray(services.body.data)).toBe(true);
+  });
 });

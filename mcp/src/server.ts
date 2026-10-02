@@ -67,6 +67,75 @@ function serverFor(connectionToken: string) {
         }),
       ),
   );
+  server.registerTool(
+    "liege_account_status",
+    {
+      description:
+        "Inspect the connected agent's Liege account status, policy limits, active hours, and remaining spending budget.",
+    },
+    async () => text(await api("/v1/internal/mcp/account", connectionToken)),
+  );
+  server.registerTool(
+    "liege_account_simulate",
+    {
+      description:
+        "Pre-flight simulate an action against the agent's account spending and authorization policies without executing it.",
+      inputSchema: {
+        action: z.string().min(1).max(120).describe("The action name to simulate"),
+        amount: z.number().nonnegative().optional().describe("Optional transaction amount"),
+        asset: z.string().optional().describe("Settlement asset symbol (e.g. usdg, liege, usdc, usde)"),
+        venue: z.string().optional().describe("Target venue or platform"),
+        counterparty: z.string().optional().describe("Target counterparty or wallet address"),
+        details: z.record(z.string(), z.unknown()).optional().describe("Arbitrary action parameters and context"),
+      },
+    },
+    async (input) =>
+      text(
+        await api("/v1/internal/mcp/account/simulate", connectionToken, {
+          method: "POST",
+          body: JSON.stringify(input),
+        }),
+      ),
+  );
+  server.registerTool(
+    "liege_account_authorize",
+    {
+      description:
+        "Authorize an action using the agent's Liege account, bound to a prior simulation digest or policy.",
+      inputSchema: {
+        action: z.string().min(1).max(120).describe("The action name to authorize"),
+        amount: z.number().nonnegative().optional().describe("Optional transaction amount"),
+        asset: z.string().optional().describe("Settlement asset symbol (e.g. usdg, liege, usdc, usde)"),
+        venue: z.string().optional().describe("Target venue or platform"),
+        counterparty: z.string().optional().describe("Target counterparty or wallet address"),
+        details: z.record(z.string(), z.unknown()).optional().describe("Arbitrary action parameters"),
+        simulationId: z.string().uuid().optional().describe("Simulation ID from prior liege_account_simulate"),
+        simulationDigest: z.string().optional().describe("Simulation digest hash"),
+      },
+    },
+    async (input) =>
+      text(
+        await api("/v1/internal/mcp/account/authorize", connectionToken, {
+          method: "POST",
+          body: JSON.stringify(input),
+        }),
+      ),
+  );
+  server.registerTool(
+    "liege_account_mandates",
+    {
+      description: "Retrieve active owner-signed mandates granted to this agent account.",
+    },
+    async () => text(await api("/v1/internal/mcp/account/mandates", connectionToken)),
+  );
+  server.registerTool(
+    "list_services",
+    {
+      description:
+        "Browse the Liege Service Catalog to discover available agent tools, data feeds, and skill services.",
+    },
+    async () => text(await api("/v1/internal/mcp/services", connectionToken)),
+  );
   return server;
 }
 const app = createMcpExpressApp({ host: "0.0.0.0", allowedHosts });

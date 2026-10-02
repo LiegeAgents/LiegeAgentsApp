@@ -77,7 +77,7 @@ async function ownedAgent(agentId: string, userId: string) {
   return result.rows[0].wallet_address;
 }
 
-async function ensureAccount(agentId: string, userId: string) {
+export async function ensureAccount(agentId: string, userId: string) {
   await ownedAgent(agentId, userId);
   await db.query(
     "INSERT INTO agent_accounts (agent_id) VALUES ($1) ON CONFLICT (agent_id) DO NOTHING",
@@ -90,7 +90,7 @@ async function ensureAccount(agentId: string, userId: string) {
   );
 }
 
-const publicAccount = (row: Record<string, unknown>) => ({
+export const publicAccount = (row: Record<string, unknown>) => ({
   accountId: row.agent_id,
   agentId: row.agent_id,
   status: row.status,

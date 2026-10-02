@@ -111,4 +111,50 @@ describe("McpClient", () => {
     expect(await client.propose("submit_deliverable", { jobId: "job-1" })).toMatchObject({ id: "proposal-1", status: "pending" });
     expect(methods).toEqual(["initialize", "notifications/initialized", "tools/call"]);
   });
+
+  test("interacts with account status, simulation, authorization, and services", async () => {
+    const toolCalls: string[] = [];
+    const client = new McpClient("lmp_test", "https://mcp.test", async (_input, init) => {
+      const request = JSON.parse(String(init?.body)) as { method: string; params?: { name?: string } };
+      if (request.method === "tools/call") {
+        toolCalls.push(request.params?.name ?? "");
+        const responses: Record<string, unknown> = {
+          liege_account_status: { accountId: "agent-1", status: "active", budgetUsage: { dailySpent: 0 } },
+          liege_account_simulate: { simulationId: "sim-1", actionDigest: "dig-1", result: { eligible: true } },
+          liege_account_authorize: { actionId: "act-1", decision: "approved" },
+          liege_account_mandates: [{ id: "man-1", nonce: "nonce-1" }],
+          list_services: [{ id: "srv-1", name: "Market Data" }],
+        };
+        const text = JSON.stringify(responses[request.params?.name ?? ""] ?? {});
+        return new Response(JSON.stringify({ result: { content: [{ type: "text", text }] } }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ result: {} }), { status: 200 });
+    });
+
+    const status = await client.accountStatus();
+    expect(status).toMatchObject({ accountId: "agent-1", status: "active" });
+
+    const sim = await client.accountSimulate({ action: "transfer", amount: 10 });
+    expect(sim).toMatchObject({ simulationId: "sim-1", actionDigest: "dig-1" });
+
+    const auth = await client.accountAuthorize({ action: "transfer", amount: 10, simulationId: "sim-1" });
+    expect(auth).toMatchObject({ actionId: "act-1", decision: "approved" });
+
+    const mandates = await client.accountMandates();
+    expect(mandates).toHaveLength(1);
+    expect(mandates[0]).toMatchObject({ id: "man-1" });
+
+    const services = await client.listServices();
+    expect(services).toHaveLength(1);
+    expect(services[0]).toMatchObject({ id: "srv-1" });
+
+    expect(toolCalls).toEqual([
+      "liege_account_status",
+      "liege_account_simulate",
+      "liege_account_authorize",
+      "liege_account_mandates",
+      "list_services",
+    ]);
+  });
 });
+
