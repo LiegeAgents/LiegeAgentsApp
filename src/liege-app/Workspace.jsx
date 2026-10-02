@@ -47,11 +47,12 @@ function read() {
     return initial();
   }
 }
-const tabs = [
+  const tabs = [
   ["overview", "Overview", LayoutGrid],
   ["agents", "Agent market", Globe],
   ["jobs", "Your jobs", BriefcaseBusiness],
   ["invoices", "USDG invoices", ReceiptText],
+  ["services", "Services", Braces],
   ["evaluations", "Evaluations", Activity],
   ["launch", "Launch an agent", Plus],
   ["settings", "Workspace settings", Settings2],
@@ -392,6 +393,14 @@ export default function Workspace() {
               onNotice={notify}
             />
           )}
+          {!paymentInvoiceId && view === "services" && (
+            <ServiceCatalog
+              token={wallet.apiSession ? "cookie" : null}
+              agents={allAgents}
+              ownerAddress={wallet.session.address}
+              onNotice={notify}
+            />
+          )}
           {!paymentInvoiceId && view === "evaluations" && (
             <EvaluationCenter
               token={wallet.apiSession ? "cookie" : null}
@@ -531,6 +540,152 @@ export default function Workspace() {
         />
       )}
     </div>
+  );
+}
+
+const serviceTypes = ["All", "tool", "data", "skill"];
+
+function ServiceCatalog({ token, agents, ownerAddress, onNotice }) {
+  const [services, setServices] = useState([]);
+  const [type, setType] = useState("All");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const ownedAgents = agents.filter(
+    (agent) => agent.owner_wallet?.toLowerCase() === ownerAddress?.toLowerCase(),
+  );
+  const [form, setForm] = useState({
+    agentId: "",
+    name: "",
+    slug: "",
+    description: "",
+    serviceType: "skill",
+    executionMode: "manual",
+    priceUsd: "",
+    slaMinutes: "60",
+    requirementsSchema: "{}",
+    deliverableSchema: "{}",
+  });
+  const load = async () => {
+    setLoading(true);
+    try {
+      const result = await api.services({ type });
+      setServices(result.data || []);
+    } catch (error) {
+      onNotice(error?.message || "Could not load the service catalog.");
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => {
+    load();
+  }, [type]);
+  useEffect(() => {
+    if (!form.agentId && ownedAgents[0]) {
+      setForm((current) => ({ ...current, agentId: ownedAgents[0].id }));
+    }
+  }, [ownedAgents.length, form.agentId]);
+  const set = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  const create = async (event) => {
+    event.preventDefault();
+    let requirementsSchema;
+    let deliverableSchema;
+    try {
+      requirementsSchema = JSON.parse(form.requirementsSchema || "{}");
+      deliverableSchema = JSON.parse(form.deliverableSchema || "{}");
+    } catch {
+      onNotice("Requirements and deliverable schemas must be valid JSON.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.createService(token, {
+        agentId: form.agentId,
+        slug: form.slug.trim(),
+        name: form.name.trim(),
+        description: form.description.trim(),
+        serviceType: form.serviceType,
+        executionMode: form.executionMode,
+        priceUsd: Number(form.priceUsd),
+        slaMinutes: Number(form.slaMinutes),
+        requirementsSchema,
+        deliverableSchema,
+      });
+      setShowCreate(false);
+      setForm((current) => ({ ...current, name: "", slug: "", description: "", priceUsd: "" }));
+      onNotice("Service published to the catalog.");
+      await load();
+    } catch (error) {
+      onNotice(error?.message || "Could not publish this service.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <>
+      <SectionHeading
+        eyebrow="AGENT COMMERCE"
+        title="Your service catalog."
+        action={
+          <Button onClick={() => setShowCreate((value) => !value)} disabled={!token || !ownedAgents.length}>
+            <Plus size={15} /> {showCreate ? "Close form" : "Publish a service"}
+          </Button>
+        }
+      >
+        Publish tools, data, and skills with clear pricing, delivery windows, and execution boundaries.
+      </SectionHeading>
+      {showCreate && (
+        <form className="settings-panel service-create-panel" onSubmit={create}>
+          <div className="service-panel-heading">
+            <div><span className="eyebrow">PUBLISH CAPABILITY</span><h2>New service</h2></div>
+            <span className="mono muted">Owner approval required</span>
+          </div>
+          <Notice>Services are discoverable in the catalog. Publishing does not execute work or move funds.</Notice>
+          <div className="form-grid">
+            <Field label="Agent">
+              <select required value={form.agentId} onChange={set("agentId")}>
+                {ownedAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Service type">
+              <select value={form.serviceType} onChange={set("serviceType")}><option value="tool">Tool</option><option value="data">Data</option><option value="skill">Skill</option></select>
+            </Field>
+          </div>
+          <div className="form-grid">
+            <Field label="Service name"><input required minLength={2} maxLength={120} value={form.name} onChange={set("name")} placeholder="Market research brief" /></Field>
+            <Field label="Slug"><input required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxLength={80} value={form.slug} onChange={set("slug")} placeholder="market-research" /></Field>
+          </div>
+          <Field label="Description" help="Explain inputs, deliverables, and what successful work means."><textarea required minLength={20} maxLength={4000} rows={3} value={form.description} onChange={set("description")} /></Field>
+          <div className="form-grid">
+            <Field label="Price (USD)"><input required type="number" min="0.01" step="0.01" value={form.priceUsd} onChange={set("priceUsd")} /></Field>
+            <Field label="SLA (minutes)"><input required type="number" min="1" max="10080" step="1" value={form.slaMinutes} onChange={set("slaMinutes")} /></Field>
+            <Field label="Execution mode"><select value={form.executionMode} onChange={set("executionMode")}><option value="manual">Manual approval</option><option value="sandboxed_runner">Sandboxed runner</option></select></Field>
+          </div>
+          <div className="form-grid">
+            <Field label="Requirements schema (JSON)"><textarea rows={3} value={form.requirementsSchema} onChange={set("requirementsSchema")} /></Field>
+            <Field label="Deliverable schema (JSON)"><textarea rows={3} value={form.deliverableSchema} onChange={set("deliverableSchema")} /></Field>
+          </div>
+          <Button type="submit" disabled={saving || !form.agentId}>{saving ? "Publishing…" : "Publish service"}<ArrowRight size={14} /></Button>
+        </form>
+      )}
+      <div className="service-catalog-toolbar">
+        <div><span className="eyebrow">LIVE CATALOG</span><strong>{loading ? "Loading…" : `${services.length} service${services.length === 1 ? "" : "s"}`}</strong></div>
+        <div className="service-type-filter" role="group" aria-label="Filter services by type">
+          {serviceTypes.map((value) => <button key={value} className={type === value ? "active" : ""} onClick={() => setType(value)}>{value}</button>)}
+        </div>
+      </div>
+      {loading ? <Empty title="Loading services">Checking the live catalog.</Empty> : services.length === 0 ? <Empty title="No services found">Publish a capability for your agent or try another filter.</Empty> : (
+        <div className="service-grid">
+          {services.map((service) => <article className="service-card" key={service.id}>
+            <div className="service-card-top"><span className="service-type">{service.service_type || service.serviceType}</span><Status value={service.execution_mode || service.executionMode || "manual"} /></div>
+            <h2>{service.name}</h2><p>{service.description}</p>
+            <div className="service-card-meta"><span><small>PRICE</small>${Number(service.price_usd ?? service.priceUsd).toFixed(2)}</span><span><small>SLA</small>{service.sla_minutes ?? service.slaMinutes} min</span></div>
+            <div className="service-card-footer"><span className="mono">/{service.slug}</span><span>{service.agent_name || service.agentName || "Agent service"}</span></div>
+          </article>)}
+        </div>
+      )}
+      {!token && <Notice>Connect your wallet to publish services. The public catalog remains available without sign-in.</Notice>}
+    </>
   );
 }
 

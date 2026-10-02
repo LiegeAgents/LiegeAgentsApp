@@ -48,6 +48,17 @@ export const api = {
   url: API_URL,
   agents: () => request("/v1/agents"),
   agent: (slug) => request(`/v1/agents/${encodeURIComponent(slug)}`),
+  services: (options = {}) => {
+    const query = new URLSearchParams();
+    if (options.agentId) query.set("agentId", options.agentId);
+    if (options.type && options.type !== "All") query.set("type", options.type);
+    query.set("limit", String(options.limit || 100));
+    return request(`/v1/services?${query}`);
+  },
+  createService: (token, input) =>
+    request("/v1/services", { token, method: "POST", body: JSON.stringify(input) }),
+  service: (agentId, slug) =>
+    request(`/v1/services/${encodeURIComponent(agentId)}/${encodeURIComponent(slug)}`),
   me: (token) => request("/v1/me", { token }),
   ledger: (token) => request("/v1/me/ledger", { token }),
   jobs: (token) => request("/v1/jobs", { token }),
