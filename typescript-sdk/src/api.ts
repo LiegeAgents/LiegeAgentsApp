@@ -15,6 +15,9 @@ import {
   type AgentActionSimulation,
   type AgentControlResult,
   type AgentMandate,
+  type RunnerInput,
+  type RunnerResult,
+  type RunnerArtifact,
   type AgentPolicyInput,
   type Ap2MandateExport,
   type Job,
@@ -131,6 +134,40 @@ export class LiegeClient {
     }));
   }
 
+  /** Build the exact approval action required before an account-backed runner execution. */
+  async runnerAction(input: RunnerInput): Promise<AgentActionInput> {
+    const env = input.env ?? {};
+    const files = input.files ?? {};
+    const digest = async (value: Record<string, unknown>) => {
+      const canonical = JSON.stringify(Object.keys(value).sort().reduce((out, key) => ({ ...out, [key]: value[key] }), {}));
+      const bytes = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
+      return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    };
+    return { action: "runner.execute", details: {
+      command: input.command, args: input.args ?? [], jobId: input.jobId ?? null,
+      timeoutMs: input.timeoutMs ?? 30_000, maxOutputBytes: input.maxOutputBytes ?? 256_000,
+      envDigest: await digest(env), filesDigest: await digest(files),
+    } };
+  }
+  async simulateRunnerAction(agentId: string, input: RunnerInput): Promise<AgentActionSimulation> {
+    return this.simulateAction(agentId, await this.runnerAction(input));
+  }
+  async authorizeRunnerAction(agentId: string, input: RunnerInput): Promise<AgentActionAuthorization> {
+    return this.authorizeAction(agentId, await this.runnerAction(input));
+  }
+  executeApprovedRunnerAction(input: RunnerInput & { actionId: string; simulationId: string }): Promise<RunnerResult> {
+    if (!input.actionId || !input.simulationId) throw new Error("actionId and simulationId are required for approved runner execution");
+    return this.call<Record<string, unknown>>("/v1/runners", { method: "POST", body: input }).then((value) => this.mapRunner(value));
+  }
+  getRunner(id: string): Promise<RunnerResult> {
+    return this.call<Record<string, unknown>>(`/v1/runners/${encodeURIComponent(id)}`).then((value) => this.mapRunner(value));
+  }
+  getRunnerArtifact(runId: string, artifactId: string): Promise<RunnerArtifact> {
+    return this.call<Record<string, unknown>>(`/v1/runners/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(artifactId)}`).then((value) => ({
+      ...value, name: String(value.name), sha256: String(value.sha256), contentBase64: String(value.contentBase64 ?? ""),
+    }));
+  }
+
   /** Fetch an x402 resource, asking the application-provided signer to approve a 402 challenge. */
   async requestX402(input: string | URL, signer: X402Signer, init: RequestInit = {}): Promise<Response> {
     const first = await this.request(input, init);
@@ -220,6 +257,9 @@ export class LiegeClient {
   }
   private mapAuthorization(value: Record<string, unknown>): AgentActionAuthorization {
     return { ...value, actionId: String(value.actionId ?? value.id), accountId: String(value.accountId ?? value.agentId), decision: String(value.decision), reasons: (value.reasons ?? []) as string[], policyVersion: Number(value.policyVersion ?? value.policy_version), simulationDigest: (value.simulationDigest ?? value.simulation_digest ?? null) as string | null, createdAt: String(value.createdAt ?? value.created_at ?? "") };
+  }
+  private mapRunner(value: Record<string, unknown>): RunnerResult {
+    return { ...value, id: String(value.id), status: String(value.status), artifacts: Array.isArray(value.artifacts) ? value.artifacts.map((item) => ({ ...(item as Record<string, unknown>), name: String((item as Record<string, unknown>).name), sha256: String((item as Record<string, unknown>).sha256) })) as RunnerArtifact[] : [] } as RunnerResult;
   }
   private async call<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
     const response = await this.request(`${this.baseUrl}${path}`, { method: options.method ?? "GET", headers: { ...this.headers(), ...(options.body ? { "content-type": "application/json" } : {}) }, body: options.body ? JSON.stringify(options.body) : undefined });

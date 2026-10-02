@@ -17,6 +17,9 @@ from .models import (
     JobEvent,
     McpProposal,
     Receipt,
+    RunnerArtifact,
+    RunnerInput,
+    RunnerResult,
     Service,
     ServiceExecutionMode,
     ServiceType,
@@ -44,5 +47,8 @@ __all__ = [
     "ServiceExecutionMode",
     "ServiceType",
     "Session",
+    "RunnerArtifact",
+    "RunnerInput",
+    "RunnerResult",
 ]
-__version__ = "0.1.4"
+__version__ = "0.1.5"

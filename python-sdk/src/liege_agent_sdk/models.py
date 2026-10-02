@@ -34,6 +34,21 @@ class AgentActionInput(TypedDict, total=False):
     simulationDigest: str
     simulate: bool
 
+RunnerCommand = Literal["node", "bun", "python", "python3"]
+
+class RunnerInput(TypedDict, total=False):
+    agentId: str
+    jobId: str
+    command: RunnerCommand
+    args: list[str]
+    env: dict[str, str]
+    files: dict[str, str]
+    artifactPaths: list[str]
+    timeoutMs: int
+    maxOutputBytes: int
+    actionId: str
+    simulationId: str
+
 
 @dataclass(frozen=True)
 class Session:
@@ -260,6 +275,31 @@ class AgentControlResult:
     def from_dict(cls, value: dict[str, Any]) -> "AgentControlResult":
         return cls(value.get("accountId", value.get("agentId", "")), value["status"], value.get("killReason"),
                    int(value.get("revokedConnections", 0)), int(value.get("rejectedProposals", 0)), value)
+
+@dataclass(frozen=True)
+class RunnerArtifact:
+    name: str
+    sha256: str
+    id: str | None = None
+    size_bytes: int | None = None
+    created_at: str | None = None
+    content_base64: str | None = None
+    raw: dict[str, Any] | None = None
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "RunnerArtifact":
+        return cls(str(value.get("name", "")), str(value.get("sha256", "")), value.get("id"), value.get("sizeBytes", value.get("size_bytes")), value.get("createdAt", value.get("created_at")), value.get("contentBase64", value.get("content_base64")), value)
+
+@dataclass(frozen=True)
+class RunnerResult:
+    id: str
+    status: str
+    artifacts: list[RunnerArtifact]
+    raw: dict[str, Any]
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "RunnerResult":
+        return cls(str(value["id"]), str(value.get("status", "")), [RunnerArtifact.from_dict(item) for item in value.get("artifacts", [])], value)
 
 
 @dataclass(frozen=True)

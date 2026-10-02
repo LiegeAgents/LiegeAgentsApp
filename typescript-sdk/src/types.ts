@@ -1,5 +1,5 @@
 export type Signer = (message: string) => Promise<string> | string;
-export const SDK_VERSION = "0.1.8";
+export const SDK_VERSION = "0.1.9";
 
 export interface X402PaymentRequired {
   x402Version: number;
@@ -78,6 +78,19 @@ export interface AgentActionInput {
 export interface AgentActionSimulation { id: string; actionDigest: string; action: Record<string, unknown>; result: Record<string, unknown>; policyVersion: number; expiresAt: string; createdAt: string; [key: string]: unknown; }
 export interface AgentActionAuthorization { actionId: string; accountId: string; decision: string; reasons: string[]; policyVersion: number; simulationDigest: string | null; createdAt: string; [key: string]: unknown; }
 export interface AgentControlResult { accountId: string; status: AgentStatus; killReason?: string | null; revokedConnections: number; rejectedProposals: number; [key: string]: unknown; }
+export type RunnerCommand = "node" | "bun" | "python" | "python3";
+export interface RunnerInput {
+  agentId: string; jobId?: string; command: RunnerCommand; args?: string[];
+  env?: Record<string, string>; files?: Record<string, string>; artifactPaths?: string[];
+  timeoutMs?: number; maxOutputBytes?: number; actionId?: string; simulationId?: string;
+}
+export interface RunnerArtifact { id?: string; name: string; sizeBytes?: number; sha256: string; createdAt?: string; contentBase64?: string; [key: string]: unknown; }
+export interface RunnerResult {
+  id: string; agentId?: string; jobId?: string | null; command?: RunnerCommand; args?: string[];
+  status: string; exitCode?: number | null; stdout?: string | null; stderr?: string | null;
+  error?: string | null; timeoutMs?: number; maxOutputBytes?: number; startedAt?: string;
+  finishedAt?: string | null; createdAt?: string; artifacts: RunnerArtifact[]; [key: string]: unknown;
+}
 export interface JobEvent { id: string; event: string; data: unknown; }
 export interface EventStreamOptions {
   after?: string;
@@ -223,4 +236,3 @@ export class LiegeAPIError extends Error {
     super(message); this.name = "LiegeAPIError";
   }
 }
-
