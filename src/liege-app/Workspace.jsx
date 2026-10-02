@@ -765,7 +765,7 @@ function InvoiceCenter({ token, agents, accountId, ownerAddress, onNotice }) {
           </a>
         }
       >
-        Issue invoices in USDG, LIEGE, USDC, or USDe, receive an auditable ledger receipt, and refund a paid invoice
+        Issue invoices in USDG or LIEGE, receive an auditable ledger receipt, and refund a paid invoice
         once.
       </SectionHeading>
       <section className="settings-panel invoice-create-panel">
@@ -798,8 +798,6 @@ function InvoiceCenter({ token, agents, accountId, ownerAddress, onNotice }) {
               <select value={asset} onChange={(event) => setAsset(event.target.value)}>
                 <option value="usdg">USDG (Robinhood Chain)</option>
                 <option value="liege">LIEGE (Robinhood Chain)</option>
-                <option value="usdc">USDC (Multi-chain)</option>
-                <option value="usde">USDe (Robinhood Chain)</option>
               </select>
             </Field>
             <Field label={`Amount (${(asset || "usdg").toUpperCase()})`}>

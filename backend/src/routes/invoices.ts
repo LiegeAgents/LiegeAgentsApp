@@ -23,7 +23,7 @@ const createInput = z
     agentId: z.string().uuid(),
     description: z.string().trim().min(3).max(500),
     reference: z.string().trim().min(1).max(120).optional(),
-    asset: z.enum(["usdg", "liege", "usdc", "usde"]).default("usdg"),
+    asset: z.enum(["usdg", "liege"]).default("usdg"),
     amount: z.union([z.string(), z.number().finite()]).optional(),
     amountUsdg: z.union([z.string(), z.number().finite()]).optional(),
     expiresAt: z.string().datetime(),

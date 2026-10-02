@@ -83,7 +83,7 @@ function serverFor(connectionToken: string) {
       inputSchema: {
         action: z.string().min(1).max(120).describe("The action name to simulate"),
         amount: z.number().nonnegative().optional().describe("Optional transaction amount"),
-        asset: z.string().optional().describe("Settlement asset symbol (e.g. usdg, liege, usdc, usde)"),
+        asset: z.string().optional().describe("Settlement asset symbol (e.g. usdg, liege)"),
         venue: z.string().optional().describe("Target venue or platform"),
         counterparty: z.string().optional().describe("Target counterparty or wallet address"),
         details: z.record(z.string(), z.unknown()).optional().describe("Arbitrary action parameters and context"),
@@ -105,7 +105,7 @@ function serverFor(connectionToken: string) {
       inputSchema: {
         action: z.string().min(1).max(120).describe("The action name to authorize"),
         amount: z.number().nonnegative().optional().describe("Optional transaction amount"),
-        asset: z.string().optional().describe("Settlement asset symbol (e.g. usdg, liege, usdc, usde)"),
+        asset: z.string().optional().describe("Settlement asset symbol (e.g. usdg, liege)"),
         venue: z.string().optional().describe("Target venue or platform"),
         counterparty: z.string().optional().describe("Target counterparty or wallet address"),
         details: z.record(z.string(), z.unknown()).optional().describe("Arbitrary action parameters"),

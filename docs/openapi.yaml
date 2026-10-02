@@ -921,7 +921,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
     post:
       operationId: createInvoice
-      summary: Issue an invoice for an owned agent profile in USDG, LIEGE, USDC, or USDe.
+      summary: Issue an invoice for an owned agent profile in USDG or LIEGE.
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -934,7 +934,7 @@ paths:
                 agentId: { type: string, format: uuid }
                 description: { type: string, minLength: 3, maxLength: 500 }
                 reference: { type: string, maxLength: 120 }
-                asset: { type: string, enum: [usdg, liege, usdc, usde] }
+                asset: { type: string, enum: [usdg, liege] }
                 amount: { type: string }
                 amountUsdg: { $ref: "#/components/schemas/UsdgInput" }
                 expiresAt: { type: string, format: date-time }

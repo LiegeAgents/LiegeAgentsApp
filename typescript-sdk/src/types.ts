@@ -14,7 +14,7 @@ export type X402Signer = (
 
 export interface Session { token: string; userId: string; walletAddress: string; expiresAt?: string; }
 export interface Job { id: string; status: string; [key: string]: unknown; }
-export type InvoiceAsset = "usdg" | "liege" | "usdc" | "usde";
+export type InvoiceAsset = "usdg" | "liege";
 export interface Invoice { id: string; invoiceId: string; publicId: string; amount?: number; amountUsdg: number; asset: InvoiceAsset | string; status: string; [key: string]: unknown; }
 export type ServiceType = "tool" | "data" | "skill";
 export type ServiceExecutionMode = "manual" | "sandboxed_runner";
