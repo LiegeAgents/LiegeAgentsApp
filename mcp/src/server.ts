@@ -10,6 +10,11 @@ if (!apiUrl || !serviceToken)
   throw new Error("LIEGE_API_URL and MCP_INTERNAL_API_TOKEN are required.");
 const liegeApiUrl = apiUrl;
 const internalToken = serviceToken;
+class McpUpstreamError extends Error {
+  constructor(public readonly details: { code: string; status: number; requestId?: string; retryable: boolean; message: string }) {
+    super(details.message);
+  }
+}
 const allowedHosts = ["localhost", "127.0.0.1"];
 if (process.env.MCP_PUBLIC_URL) allowedHosts.push(new URL(process.env.MCP_PUBLIC_URL).hostname);
 async function api(path: string, connectionToken: string, init: RequestInit = {}) {
@@ -22,8 +27,19 @@ async function api(path: string, connectionToken: string, init: RequestInit = {}
       ...init.headers,
     },
   });
-  const body = await response.json();
-  if (!response.ok) throw new Error(body.error?.message ?? "Liege API request failed.");
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = body.error ?? {};
+    throw new McpUpstreamError({
+      code: error.code ?? "upstream_error",
+      status: response.status,
+      requestId: error.requestId ?? response.headers.get("x-request-id") ?? undefined,
+      retryable: response.status === 408 || response.status === 429 || response.status >= 500,
+      message: error.message ?? "Liege API request failed.",
+    });
+  }
+  if (body.nextCursor !== undefined)
+    return { items: body.data ?? [], nextCursor: body.nextCursor, ...(body.policy ? { policy: body.policy } : {}) };
   return body.data;
 }
 const text = (data: unknown) => ({
@@ -38,8 +54,8 @@ function serverFor(connectionToken: string) {
   );
   server.registerTool(
     "list_agent_jobs",
-    { description: "List jobs assigned to the connected Liege agent." },
-    async () => text(await api("/v1/internal/mcp/jobs", connectionToken)),
+    { description: "List jobs assigned to the connected Liege agent. Use nextCursor to fetch the next page.", inputSchema: { limit: z.number().int().min(1).max(100).optional(), cursor: z.string().optional() } },
+    async ({ limit, cursor }) => text(await api(`/v1/internal/mcp/jobs?${new URLSearchParams({ ...(limit ? { limit: String(limit) } : {}), ...(cursor ? { cursor } : {}) })}`, connectionToken)),
   );
   server.registerTool(
     "get_job_details",
@@ -131,10 +147,10 @@ function serverFor(connectionToken: string) {
   server.registerTool(
     "list_services",
     {
-      description:
-        "Browse the Liege Service Catalog to discover available agent tools, data feeds, and skill services.",
+      description: "Browse the Liege Service Catalog. Use nextCursor to fetch the next page.",
+      inputSchema: { limit: z.number().int().min(1).max(100).optional(), cursor: z.string().optional() },
     },
-    async () => text(await api("/v1/internal/mcp/services", connectionToken)),
+    async ({ limit, cursor }) => text(await api(`/v1/internal/mcp/services?${new URLSearchParams({ ...(limit ? { limit: String(limit) } : {}), ...(cursor ? { cursor } : {}) })}`, connectionToken)),
   );
   return server;
 }
@@ -152,15 +168,18 @@ app.post("/mcp", async (request, response) => {
     await server.connect(transport);
     await transport.handleRequest(request, response, request.body);
   } catch (error) {
-    if (!response.headersSent)
-      response.status(500).json({
+    if (!response.headersSent) {
+      const details = error instanceof McpUpstreamError ? error.details : { code: "internal_error", status: 500, retryable: false, message: error instanceof Error ? error.message : "Internal error" };
+      response.status(200).json({
         jsonrpc: "2.0",
         error: {
-          code: -32603,
-          message: error instanceof Error ? error.message : "Internal error",
+          code: details.status === 400 ? -32602 : -32000,
+          message: details.message,
+          data: { code: details.code, status: details.status, requestId: details.requestId, retryable: details.retryable },
         },
         id: null,
       });
+    }
   } finally {
     await transport.close();
     await server.close();

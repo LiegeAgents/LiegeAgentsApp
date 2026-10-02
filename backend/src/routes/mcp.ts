@@ -284,6 +284,20 @@ mcpRouter.post(
 );
 
 export const mcpInternalRouter = Router();
+const cursorFor = (createdAt: Date | string, id: string) =>
+  Buffer.from(JSON.stringify({ createdAt: new Date(createdAt).toISOString(), id })).toString(
+    "base64url",
+  );
+const parseCursor = (value: unknown) => {
+  if (typeof value !== "string" || !value) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+    if (typeof parsed.createdAt !== "string" || typeof parsed.id !== "string") throw new Error();
+    return parsed as { createdAt: string; id: string };
+  } catch {
+    throw new ApiError(400, "invalid_cursor", "The pagination cursor is invalid or expired.");
+  }
+};
 mcpInternalRouter.get(
   "/session",
   asyncRoute(async (request, response) => {
@@ -296,11 +310,26 @@ mcpInternalRouter.get(
   asyncRoute(async (request, response) => {
     const c = await connection(request);
     const policy = await policyFor(c.agent_id);
+    const query = z
+      .object({
+        limit: z.coerce.number().int().min(1).max(100).default(50),
+        cursor: z.string().optional(),
+      })
+      .parse(request.query);
+    const cursor = parseCursor(query.cursor);
     const jobs = await db.query(
-      "SELECT id, public_id, title, status, kind, settlement_asset, budget_amount, budget_usdg, deadline_at, expires_at, created_at FROM jobs WHERE agent_id = $1 ORDER BY created_at DESC LIMIT 100",
-      [c.agent_id],
+      `SELECT id, public_id, title, status, kind, settlement_asset, budget_amount, budget_usdg, deadline_at, expires_at, created_at
+       FROM jobs WHERE agent_id = $1 AND ($2::timestamptz IS NULL OR (created_at,id) < ($2::timestamptz,$3::uuid))
+       ORDER BY created_at DESC, id DESC LIMIT $4`,
+      [c.agent_id, cursor?.createdAt ?? null, cursor?.id ?? null, query.limit + 1],
     );
-    response.json({ data: jobs.rows, policy });
+    const rows = jobs.rows.slice(0, query.limit);
+    response.json({
+      data: rows,
+      policy,
+      nextCursor:
+        jobs.rows.length > query.limit ? cursorFor(rows.at(-1).created_at, rows.at(-1).id) : null,
+    });
   }),
 );
 mcpInternalRouter.get(
@@ -869,15 +898,28 @@ mcpInternalRouter.get(
   "/services",
   asyncRoute(async (request, response) => {
     await connection(request);
+    const query = z
+      .object({
+        limit: z.coerce.number().int().min(1).max(100).default(50),
+        cursor: z.string().optional(),
+      })
+      .parse(request.query);
+    const cursor = parseCursor(query.cursor);
     const result = await db.query(
       `SELECT s.id, s.agent_id, s.slug, s.name, s.description, s.service_type, s.execution_mode,
         s.price_usd, s.sla_minutes, s.requirements_schema, s.deliverable_schema, a.name AS agent_name
        FROM commerce_services s
        JOIN agents a ON a.id = s.agent_id
-       WHERE s.active = true
-       ORDER BY s.created_at DESC
-       LIMIT 50`,
+       WHERE s.active = true AND ($1::timestamptz IS NULL OR (s.created_at,s.id) < ($1::timestamptz,$2::uuid))
+       ORDER BY s.created_at DESC, s.id DESC
+       LIMIT $3`,
+      [cursor?.createdAt ?? null, cursor?.id ?? null, query.limit + 1],
     );
-    response.json({ data: result.rows });
+    const rows = result.rows.slice(0, query.limit);
+    response.json({
+      data: rows,
+      nextCursor:
+        result.rows.length > query.limit ? cursorFor(rows.at(-1).created_at, rows.at(-1).id) : null,
+    });
   }),
 );
