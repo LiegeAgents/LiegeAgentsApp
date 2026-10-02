@@ -594,6 +594,64 @@ mcpInternalRouter.get(
   }),
 );
 mcpInternalRouter.get(
+  "/proposals",
+  asyncRoute(async (request, response) => {
+    const c = await connection(request);
+    const query = z
+      .object({
+        limit: z.coerce.number().int().min(1).max(100).default(50),
+        status: z.enum(["all", "pending", "approved", "rejected", "expired"]).default("all"),
+      })
+      .parse(request.query);
+    const result = await db.query(
+      `SELECT id, agent_id, action, payload, status,
+        CASE WHEN status='pending' AND expires_at <= now() THEN 'expired' ELSE status END AS effective_status,
+        expires_at, created_at, decided_at
+       FROM mcp_proposals
+       WHERE user_id=$1 AND agent_id=$2
+         AND ($3='all' OR status=$3 OR ($3='expired' AND status='pending' AND expires_at <= now()))
+       ORDER BY created_at DESC LIMIT $4`,
+      [c.user_id, c.agent_id, query.status, query.limit],
+    );
+    await audit(db, {
+      actorId: c.user_id,
+      action: "mcp.proposals_read",
+      targetType: "mcp_proposals",
+      targetId: c.agent_id,
+      metadata: { agentId: c.agent_id, status: query.status, count: result.rowCount },
+    });
+    response.json({ data: result.rows });
+  }),
+);
+mcpInternalRouter.get(
+  "/proposals/:id",
+  asyncRoute(async (request, response) => {
+    const c = await connection(request);
+    const id = z.string().uuid().parse(request.params.id);
+    const result = await db.query(
+      `SELECT id, agent_id, action, payload, status,
+        CASE WHEN status='pending' AND expires_at <= now() THEN 'expired' ELSE status END AS effective_status,
+        expires_at, created_at, decided_at
+       FROM mcp_proposals WHERE id=$1 AND user_id=$2 AND agent_id=$3`,
+      [id, c.user_id, c.agent_id],
+    );
+    if (!result.rowCount)
+      throw new ApiError(
+        404,
+        "proposal_not_found",
+        "This proposal is unavailable to the connected agent.",
+      );
+    await audit(db, {
+      actorId: c.user_id,
+      action: "mcp.proposal_read",
+      targetType: "mcp_proposal",
+      targetId: id,
+      metadata: { agentId: c.agent_id },
+    });
+    response.json({ data: result.rows[0] });
+  }),
+);
+mcpInternalRouter.get(
   "/jobs",
   asyncRoute(async (request, response) => {
     const c = await connection(request);

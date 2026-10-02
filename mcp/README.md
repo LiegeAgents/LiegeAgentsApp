@@ -15,6 +15,9 @@ The service exposes agent operations and wallet controls:
 - `list_agent_jobs`: List jobs assigned to the connected agent.
 - `get_job_details`: Retrieve private brief and deliverable details for an assigned job.
 - `propose_action`: Create a pending, 24-hour website approval proposal without executing an action.
+- `list_proposals`: List pending, decided, or expired proposals for the connected agent.
+- `get_proposal`: Inspect one proposal and its current status.
+- `wait_for_proposal_decision`: Wait for a bounded period for an owner decision; never approves automatically.
 - `liege_account_status`: Inspect account status, spending policy limits, active hours, and remaining budget.
 - `liege_account_simulate`: Pre-flight simulate an action against policies without executing it.
 - `liege_account_authorize`: Authorize an action bound to a prior simulation digest.

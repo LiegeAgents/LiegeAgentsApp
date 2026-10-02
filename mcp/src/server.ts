@@ -12,7 +12,15 @@ if (!apiUrl || !serviceToken)
 const liegeApiUrl = apiUrl;
 const internalToken = serviceToken;
 class McpUpstreamError extends Error {
-  constructor(public readonly details: { code: string; status: number; requestId?: string; retryable: boolean; message: string }) {
+  constructor(
+    public readonly details: {
+      code: string;
+      status: number;
+      requestId?: string;
+      retryable: boolean;
+      message: string;
+    },
+  ) {
     super(details.message);
   }
 }
@@ -40,7 +48,11 @@ async function api(path: string, connectionToken: string, init: RequestInit = {}
     });
   }
   if (body.nextCursor !== undefined)
-    return { items: body.data ?? [], nextCursor: body.nextCursor, ...(body.policy ? { policy: body.policy } : {}) };
+    return {
+      items: body.data ?? [],
+      nextCursor: body.nextCursor,
+      ...(body.policy ? { policy: body.policy } : {}),
+    };
   return body.data;
 }
 const text = (data: unknown) => ({
@@ -56,11 +68,24 @@ const runnerInput = {
   maxOutputBytes: z.number().int().min(1_024).max(1_000_000).optional(),
   jobId: z.string().uuid().optional(),
 };
-const digest = (value: Record<string, string>) => createHash("sha256").update(JSON.stringify(Object.keys(value).sort().reduce((out, key) => ({ ...out, [key]: value[key] }), {}))).digest("hex");
+const digest = (value: Record<string, string>) =>
+  createHash("sha256")
+    .update(
+      JSON.stringify(
+        Object.keys(value)
+          .sort()
+          .reduce((out, key) => ({ ...out, [key]: value[key] }), {}),
+      ),
+    )
+    .digest("hex");
 const runnerDetails = (input: Record<string, any>) => ({
-  command: input.command, args: input.args ?? [], jobId: input.jobId ?? null,
-  timeoutMs: input.timeoutMs ?? 30_000, maxOutputBytes: input.maxOutputBytes ?? 256_000,
-  envDigest: digest(input.env ?? {}), filesDigest: digest(input.files ?? {}),
+  command: input.command,
+  args: input.args ?? [],
+  jobId: input.jobId ?? null,
+  timeoutMs: input.timeoutMs ?? 30_000,
+  maxOutputBytes: input.maxOutputBytes ?? 256_000,
+  envDigest: digest(input.env ?? {}),
+  filesDigest: digest(input.files ?? {}),
 });
 function serverFor(connectionToken: string) {
   const server = new McpServer({ name: "liege-mcp", version: "0.1.0" });
@@ -71,8 +96,21 @@ function serverFor(connectionToken: string) {
   );
   server.registerTool(
     "list_agent_jobs",
-    { description: "List jobs assigned to the connected Liege agent. Use nextCursor to fetch the next page.", inputSchema: { limit: z.number().int().min(1).max(100).optional(), cursor: z.string().optional() } },
-    async ({ limit, cursor }) => text(await api(`/v1/internal/mcp/jobs?${new URLSearchParams({ ...(limit ? { limit: String(limit) } : {}), ...(cursor ? { cursor } : {}) })}`, connectionToken)),
+    {
+      description:
+        "List jobs assigned to the connected Liege agent. Use nextCursor to fetch the next page.",
+      inputSchema: {
+        limit: z.number().int().min(1).max(100).optional(),
+        cursor: z.string().optional(),
+      },
+    },
+    async ({ limit, cursor }) =>
+      text(
+        await api(
+          `/v1/internal/mcp/jobs?${new URLSearchParams({ ...(limit ? { limit: String(limit) } : {}), ...(cursor ? { cursor } : {}) })}`,
+          connectionToken,
+        ),
+      ),
   );
   server.registerTool(
     "get_job_details",
@@ -101,6 +139,60 @@ function serverFor(connectionToken: string) {
       ),
   );
   server.registerTool(
+    "list_proposals",
+    {
+      description:
+        "List approval proposals for the connected agent, including expired and decided proposals.",
+      inputSchema: {
+        limit: z.number().int().min(1).max(100).optional(),
+        status: z.enum(["all", "pending", "approved", "rejected", "expired"]).optional(),
+      },
+    },
+    async ({ limit, status }) =>
+      text(
+        await api(
+          `/v1/internal/mcp/proposals?${new URLSearchParams({ ...(limit ? { limit: String(limit) } : {}), ...(status ? { status } : {}) })}`,
+          connectionToken,
+        ),
+      ),
+  );
+  server.registerTool(
+    "get_proposal",
+    {
+      description:
+        "Inspect one approval proposal and its current lifecycle status for the connected agent.",
+      inputSchema: { proposalId: z.string().uuid() },
+    },
+    async ({ proposalId }) =>
+      text(await api(`/v1/internal/mcp/proposals/${proposalId}`, connectionToken)),
+  );
+  server.registerTool(
+    "wait_for_proposal_decision",
+    {
+      description:
+        "Wait for a bounded period until a proposal is approved, rejected, or expired. This never approves a proposal.",
+      inputSchema: {
+        proposalId: z.string().uuid(),
+        timeoutMs: z.number().int().min(500).max(120_000).optional(),
+        pollMs: z.number().int().min(250).max(5_000).optional(),
+      },
+    },
+    async ({ proposalId, timeoutMs = 30_000, pollMs = 1_000 }) => {
+      const deadline = Date.now() + timeoutMs;
+      for (;;) {
+        const proposal = (await api(
+          `/v1/internal/mcp/proposals/${proposalId}`,
+          connectionToken,
+        )) as Record<string, unknown>;
+        if (proposal.effective_status !== "pending" || Date.now() >= deadline)
+          return text({ ...proposal, timedOut: proposal.effective_status === "pending" });
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.min(pollMs, Math.max(0, deadline - Date.now()))),
+        );
+      }
+    },
+  );
+  server.registerTool(
     "liege_account_status",
     {
       description:
@@ -119,7 +211,10 @@ function serverFor(connectionToken: string) {
         asset: z.string().optional().describe("Settlement asset symbol (e.g. usdg, liege)"),
         venue: z.string().optional().describe("Target venue or platform"),
         counterparty: z.string().optional().describe("Target counterparty or wallet address"),
-        details: z.record(z.string(), z.unknown()).optional().describe("Arbitrary action parameters and context"),
+        details: z
+          .record(z.string(), z.unknown())
+          .optional()
+          .describe("Arbitrary action parameters and context"),
       },
     },
     async (input) =>
@@ -141,8 +236,15 @@ function serverFor(connectionToken: string) {
         asset: z.string().optional().describe("Settlement asset symbol (e.g. usdg, liege)"),
         venue: z.string().optional().describe("Target venue or platform"),
         counterparty: z.string().optional().describe("Target counterparty or wallet address"),
-        details: z.record(z.string(), z.unknown()).optional().describe("Arbitrary action parameters"),
-        simulationId: z.string().uuid().optional().describe("Simulation ID from prior liege_account_simulate"),
+        details: z
+          .record(z.string(), z.unknown())
+          .optional()
+          .describe("Arbitrary action parameters"),
+        simulationId: z
+          .string()
+          .uuid()
+          .optional()
+          .describe("Simulation ID from prior liege_account_simulate"),
         simulationDigest: z.string().optional().describe("Simulation digest hash"),
       },
     },
@@ -156,28 +258,74 @@ function serverFor(connectionToken: string) {
   );
   server.registerTool(
     "runner_simulate",
-    { description: "Simulate a bounded runner workload against the connected agent policy. This never executes code.", inputSchema: runnerInput },
-    async (input) => text(await api("/v1/internal/mcp/account/simulate", connectionToken, { method: "POST", body: JSON.stringify({ action: "runner.execute", details: runnerDetails(input) }) })),
+    {
+      description:
+        "Simulate a bounded runner workload against the connected agent policy. This never executes code.",
+      inputSchema: runnerInput,
+    },
+    async (input) =>
+      text(
+        await api("/v1/internal/mcp/account/simulate", connectionToken, {
+          method: "POST",
+          body: JSON.stringify({ action: "runner.execute", details: runnerDetails(input) }),
+        }),
+      ),
   );
   server.registerTool(
     "runner_authorize",
-    { description: "Authorize a simulated runner workload. This creates an approval decision but does not execute code.", inputSchema: { ...runnerInput, simulationId: z.string().uuid() } },
-    async (input) => text(await api("/v1/internal/mcp/account/authorize", connectionToken, { method: "POST", body: JSON.stringify({ action: "runner.execute", details: runnerDetails(input), simulationId: input.simulationId }) })),
+    {
+      description:
+        "Authorize a simulated runner workload. This creates an approval decision but does not execute code.",
+      inputSchema: { ...runnerInput, simulationId: z.string().uuid() },
+    },
+    async (input) =>
+      text(
+        await api("/v1/internal/mcp/account/authorize", connectionToken, {
+          method: "POST",
+          body: JSON.stringify({
+            action: "runner.execute",
+            details: runnerDetails(input),
+            simulationId: input.simulationId,
+          }),
+        }),
+      ),
   );
   server.registerTool(
     "runner_propose_execution",
-    { description: "Create a website approval proposal for an authorized runner workload. Direct MCP execution is intentionally unavailable.", inputSchema: { ...runnerInput, simulationId: z.string().uuid() } },
-    async (input) => text(await api("/v1/internal/mcp/proposals", connectionToken, { method: "POST", body: JSON.stringify({ action: "runner.execute", payload: runnerDetails(input), simulationId: input.simulationId }) })),
+    {
+      description:
+        "Create a website approval proposal for an authorized runner workload. Direct MCP execution is intentionally unavailable.",
+      inputSchema: { ...runnerInput, simulationId: z.string().uuid() },
+    },
+    async (input) =>
+      text(
+        await api("/v1/internal/mcp/proposals", connectionToken, {
+          method: "POST",
+          body: JSON.stringify({
+            action: "runner.execute",
+            payload: runnerDetails(input),
+            simulationId: input.simulationId,
+          }),
+        }),
+      ),
   );
   server.registerTool(
     "runner_status",
-    { description: "Read status and artifact metadata for a runner execution owned by this connection's agent.", inputSchema: { runId: z.string().uuid() } },
+    {
+      description:
+        "Read status and artifact metadata for a runner execution owned by this connection's agent.",
+      inputSchema: { runId: z.string().uuid() },
+    },
     async ({ runId }) => text(await api(`/v1/internal/mcp/runner/${runId}`, connectionToken)),
   );
   server.registerTool(
     "runner_artifact",
-    { description: "Read an encrypted artifact captured by an owned runner execution.", inputSchema: { runId: z.string().uuid(), artifactId: z.string().uuid() } },
-    async ({ runId, artifactId }) => text(await api(`/v1/internal/mcp/runner/${runId}/artifacts/${artifactId}`, connectionToken)),
+    {
+      description: "Read an encrypted artifact captured by an owned runner execution.",
+      inputSchema: { runId: z.string().uuid(), artifactId: z.string().uuid() },
+    },
+    async ({ runId, artifactId }) =>
+      text(await api(`/v1/internal/mcp/runner/${runId}/artifacts/${artifactId}`, connectionToken)),
   );
   server.registerTool(
     "liege_account_mandates",
@@ -190,9 +338,18 @@ function serverFor(connectionToken: string) {
     "list_services",
     {
       description: "Browse the Liege Service Catalog. Use nextCursor to fetch the next page.",
-      inputSchema: { limit: z.number().int().min(1).max(100).optional(), cursor: z.string().optional() },
+      inputSchema: {
+        limit: z.number().int().min(1).max(100).optional(),
+        cursor: z.string().optional(),
+      },
     },
-    async ({ limit, cursor }) => text(await api(`/v1/internal/mcp/services?${new URLSearchParams({ ...(limit ? { limit: String(limit) } : {}), ...(cursor ? { cursor } : {}) })}`, connectionToken)),
+    async ({ limit, cursor }) =>
+      text(
+        await api(
+          `/v1/internal/mcp/services?${new URLSearchParams({ ...(limit ? { limit: String(limit) } : {}), ...(cursor ? { cursor } : {}) })}`,
+          connectionToken,
+        ),
+      ),
   );
   return server;
 }
@@ -211,13 +368,26 @@ app.post("/mcp", async (request, response) => {
     await transport.handleRequest(request, response, request.body);
   } catch (error) {
     if (!response.headersSent) {
-      const details = error instanceof McpUpstreamError ? error.details : { code: "internal_error", status: 500, retryable: false, message: error instanceof Error ? error.message : "Internal error" };
+      const details =
+        error instanceof McpUpstreamError
+          ? error.details
+          : {
+              code: "internal_error",
+              status: 500,
+              retryable: false,
+              message: error instanceof Error ? error.message : "Internal error",
+            };
       response.status(200).json({
         jsonrpc: "2.0",
         error: {
           code: details.status === 400 ? -32602 : -32000,
           message: details.message,
-          data: { code: details.code, status: details.status, requestId: details.requestId, retryable: details.retryable },
+          data: {
+            code: details.code,
+            status: details.status,
+            requestId: details.requestId,
+            retryable: details.retryable,
+          },
         },
         id: null,
       });
