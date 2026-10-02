@@ -47,10 +47,15 @@ class Invoice:
     public_id: str
     amount_usdg: float
     status: str
+    amount: float | None = None
+    asset: str = "usdg"
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> "Invoice":
-        return cls(value["id"], value.get("publicId", value["id"]), float(value["amountUsdg"]), value["status"])
+        amount_usdg = float(value.get("amountUsdg") or value.get("amount", 0))
+        amount = float(value.get("amount") or amount_usdg)
+        asset = str(value.get("asset", "usdg"))
+        return cls(value["id"], value.get("publicId", value["id"]), amount_usdg, value["status"], amount, asset)
 
 
 @dataclass(frozen=True)

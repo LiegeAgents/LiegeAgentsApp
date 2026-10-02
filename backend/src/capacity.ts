@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { env } from "./config.js";
+import type { SettlementAsset } from "./assets.js";
 
 export const MINIMUM_EVALUATOR_STAKE_USDG = 5000;
 // An evaluator's stake must be at least this multiple of the budgets they are judging at once.
@@ -7,7 +8,7 @@ export const STAKE_COVERAGE = 5;
 // A job without an independent evaluator is settled by its client, which is allowed only below
 // this budget: otherwise a client could take delivery, reject it, and refund themselves.
 export const SELF_SETTLEMENT_LIMIT_USDG = 50;
-export const selfSettlementLimit = (asset: "usdg" | "liege") =>
+export const selfSettlementLimit = (asset: SettlementAsset) =>
   asset === "liege" ? env.SELF_SETTLEMENT_LIMIT_LIEGE : SELF_SETTLEMENT_LIMIT_USDG;
 
 // Jobs whose budget still counts against the evaluator's stake. Exposure is released when a job

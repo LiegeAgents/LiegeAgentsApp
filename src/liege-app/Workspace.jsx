@@ -693,7 +693,8 @@ function InvoiceCenter({ token, agents, accountId, ownerAddress, onNotice }) {
   const [invoices, setInvoices] = useState([]);
   const [agentId, setAgentId] = useState("");
   const [description, setDescription] = useState("Agent services");
-  const [amountUsdg, setAmountUsdg] = useState("10");
+  const [asset, setAsset] = useState("usdg");
+  const [amount, setAmount] = useState("10");
   const [expiresAt, setExpiresAt] = useState(() =>
     new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 16),
   );
@@ -722,11 +723,13 @@ function InvoiceCenter({ token, agents, accountId, ownerAddress, onNotice }) {
       const result = await api.createInvoice(token, {
         agentId,
         description,
-        amountUsdg,
+        asset,
+        amount,
+        amountUsdg: amount,
         expiresAt: new Date(expiresAt).toISOString(),
       });
       setInvoices((items) => [result.data, ...items]);
-      onNotice("USDG invoice issued. Share its payment link with the payer.");
+      onNotice(`${(asset || "usdg").toUpperCase()} invoice issued. Share its payment link with the payer.`);
     } catch (error) {
       onNotice(error?.message || "Could not issue invoice.");
     } finally {
@@ -754,7 +757,7 @@ function InvoiceCenter({ token, agents, accountId, ownerAddress, onNotice }) {
   return (
     <>
       <SectionHeading
-        eyebrow="LIEGE PAY · USDG"
+        eyebrow="LIEGE PAY · MULTI-ASSET"
         title="Invoice agent work."
         action={
           <a className="button secondary" href="/docs/payments">
@@ -762,8 +765,8 @@ function InvoiceCenter({ token, agents, accountId, ownerAddress, onNotice }) {
           </a>
         }
       >
-        Issue fixed USDG invoices, receive an auditable ledger receipt, and refund a paid invoice
-        once. x402 checkout is intentionally not enabled yet.
+        Issue invoices in USDG, LIEGE, USDC, or USDe, receive an auditable ledger receipt, and refund a paid invoice
+        once.
       </SectionHeading>
       <section className="settings-panel invoice-create-panel">
         <h2>Create invoice</h2>
@@ -790,13 +793,23 @@ function InvoiceCenter({ token, agents, accountId, ownerAddress, onNotice }) {
               maxLength={500}
             />
           </Field>
-          <Field label="Amount (USDG)">
-            <input
-              value={amountUsdg}
-              onChange={(event) => setAmountUsdg(event.target.value)}
-              inputMode="decimal"
-            />
-          </Field>
+          <div className="form-grid">
+            <Field label="Settlement asset">
+              <select value={asset} onChange={(event) => setAsset(event.target.value)}>
+                <option value="usdg">USDG (Robinhood Chain)</option>
+                <option value="liege">LIEGE (Robinhood Chain)</option>
+                <option value="usdc">USDC (Multi-chain)</option>
+                <option value="usde">USDe (Robinhood Chain)</option>
+              </select>
+            </Field>
+            <Field label={`Amount (${(asset || "usdg").toUpperCase()})`}>
+              <input
+                value={amount}
+                onChange={(event) => setAmount(event.target.value)}
+                inputMode="decimal"
+              />
+            </Field>
+          </div>
           <Field label="Expiry">
             <input
               type="datetime-local"
@@ -806,7 +819,7 @@ function InvoiceCenter({ token, agents, accountId, ownerAddress, onNotice }) {
           </Field>
           <div className="form-actions">
             <Button type="submit" disabled={loading || !agentId}>
-              {loading ? "Issuing…" : "Issue USDG invoice"}
+              {loading ? "Issuing…" : `Issue ${(asset || "usdg").toUpperCase()} invoice`}
             </Button>
           </div>
         </form>
@@ -828,7 +841,7 @@ function InvoiceCenter({ token, agents, accountId, ownerAddress, onNotice }) {
                 <div>
                   <strong>{invoice.description}</strong>
                   <small>
-                    {invoice.publicId} · {Number(invoice.amountUsdg).toLocaleString()} USDG ·{" "}
+                    {invoice.publicId} · {Number(invoice.amount ?? invoice.amountUsdg).toLocaleString()} {(invoice.asset || "usdg").toUpperCase()} ·{" "}
                     {invoice.status}
                   </small>
                 </div>
@@ -894,15 +907,14 @@ function InvoicePayment({ invoiceId, token, onNotice }) {
     );
   return (
     <section className="settings-panel invoice-payment-panel">
-      <span className="eyebrow">LIEGE PAY · USDG INVOICE</span>
+      <span className="eyebrow">LIEGE PAY · {(invoice.asset || "usdg").toUpperCase()} INVOICE</span>
       <h1>{invoice.description}</h1>
       <p className="mono muted">{invoice.publicId}</p>
       <div className="invoice-payment-amount">
-        {Number(invoice.amountUsdg).toLocaleString()} <small>USDG</small>
+        {Number(invoice.amount ?? invoice.amountUsdg).toLocaleString()} <small>{(invoice.asset || "usdg").toUpperCase()}</small>
       </div>
       <p>
-        Issued for agent work. This payment is a fixed internal USDG ledger transfer and is not an
-        on-chain x402 authorization.
+        Issued for agent work. This payment is settled via the internal Liege ledger.
       </p>
       <p>
         Expires {new Date(invoice.expiresAt).toLocaleString()} · Status:{" "}
@@ -915,7 +927,7 @@ function InvoicePayment({ invoiceId, token, onNotice }) {
           </Button>
         ) : (
           <Notice>
-            Connect and sign in with the wallet that holds the USDG balance to pay this invoice.
+            Connect and sign in with the wallet that holds the {(invoice.asset || "usdg").toUpperCase()} balance to pay this invoice.
           </Notice>
         ))}
       {invoice.status !== "issued" && (

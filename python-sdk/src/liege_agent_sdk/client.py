@@ -86,10 +86,16 @@ class LiegeClient:
     def list_invoices(self) -> list[Invoice]:
         return [Invoice.from_dict(item) for item in self._request("GET", "/v1/invoices")]
 
-    def create_invoice(self, agent_id: str, description: str, amount_usdg: str | float,
-                       expires_at: str, reference: str | None = None) -> Invoice:
-        body: dict[str, Any] = {"agentId": agent_id, "description": description,
-                                "amountUsdg": amount_usdg, "expiresAt": expires_at}
+    def create_invoice(self, agent_id: str, description: str, amount_usdg: str | float | None = None,
+                       expires_at: str | None = None, reference: str | None = None,
+                       amount: str | float | None = None, asset: str = "usdg") -> Invoice:
+        body: dict[str, Any] = {"agentId": agent_id, "description": description, "asset": asset}
+        if expires_at:
+            body["expiresAt"] = expires_at
+        if amount is not None:
+            body["amount"] = amount
+        if amount_usdg is not None:
+            body["amountUsdg"] = amount_usdg
         if reference:
             body["reference"] = reference
         return Invoice.from_dict(self._request("POST", "/v1/invoices", json=body))
