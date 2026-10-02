@@ -1072,11 +1072,133 @@ function InvoicePayment({ invoiceId, token, onNotice }) {
   );
 }
 
+function HarnessExportModal({ configData, onClose, onNotice }) {
+  const [selectedTarget, setSelectedTarget] = useState("claude_desktop");
+  const [customToken, setCustomToken] = useState(configData.token || "");
+  const [copied, setCopied] = useState(false);
+
+  const targets = [
+    { id: "claude_desktop", label: "Claude Desktop" },
+    { id: "cursor", label: "Cursor" },
+    { id: "elizaos", label: "ElizaOS" },
+    { id: "hermes", label: "Hermes" },
+    { id: "openclaw", label: "OpenClaw" },
+  ];
+
+  const presets = configData.presets || {};
+  const currentPreset = presets[selectedTarget] || {};
+
+  const displayedConfig = useMemo(() => {
+    if (!currentPreset.config) return {};
+    const raw = JSON.stringify(currentPreset.config, null, 2);
+    const effectiveToken = customToken.trim() || "<YOUR_LIEGE_MCP_TOKEN>";
+    const replaced = raw.replace(/(Bearer\s+)[^"\s]+/g, `$1${effectiveToken}`);
+    try {
+      return JSON.parse(replaced);
+    } catch {
+      return currentPreset.config;
+    }
+  }, [currentPreset, customToken]);
+
+  const jsonString = useMemo(() => JSON.stringify(displayedConfig, null, 2), [displayedConfig]);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(jsonString);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      onNotice(`${currentPreset.name || selectedTarget} configuration copied.`);
+    } catch {
+      onNotice("Copy failed. Select the text and copy manually.");
+    }
+  };
+
+  const download = () => {
+    try {
+      const filename = currentPreset.filename || `${selectedTarget}.json`;
+      const blob = new Blob([jsonString], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+      onNotice(`Downloaded ${filename}`);
+    } catch (err) {
+      onNotice(err?.message || "Failed to download configuration.");
+    }
+  };
+
+  return (
+    <Modal title="Export MCP Harness Config" onClose={onClose} wide>
+      <div className="harness-modal-content">
+        <div className="harness-modal-header">
+          <p>
+            Ready-to-paste configurations for popular AI agent frameworks connecting to{" "}
+            <strong>{configData.agentName || "Liege Agent"}</strong>.
+          </p>
+        </div>
+
+        <div className="harness-tabs" role="tablist">
+          {targets.map((target) => (
+            <button
+              key={target.id}
+              role="tab"
+              type="button"
+              aria-selected={selectedTarget === target.id}
+              className={`harness-tab-btn ${selectedTarget === target.id ? "active" : ""}`}
+              onClick={() => setSelectedTarget(target.id)}
+            >
+              {target.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="harness-meta">
+          <div className="harness-instructions">
+            <strong>Target file:</strong>{" "}
+            <code>{currentPreset.filename || `${selectedTarget}.json`}</code>
+            <p>{currentPreset.instructions || currentPreset.description}</p>
+          </div>
+          <div className="harness-token-input">
+            <Field label="MCP Connection Token (lmp_...)">
+              <input
+                type="text"
+                placeholder="Paste token or leave placeholder"
+                value={customToken}
+                onChange={(e) => setCustomToken(e.target.value)}
+              />
+            </Field>
+          </div>
+        </div>
+
+        <div className="harness-code-block">
+          <pre>
+            <code>{jsonString}</code>
+          </pre>
+        </div>
+
+        <div className="harness-actions">
+          <Button onClick={copy}>
+            {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? "Copied!" : "Copy Config"}
+          </Button>
+          <Button secondary onClick={download}>
+            <Download size={14} /> Download JSON
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function McpConnections({ token, agents, ownerAddress, onNotice }) {
   const [connections, setConnections] = useState([]);
   const [name, setName] = useState("My agent runtime");
   const [agentId, setAgentId] = useState("");
   const [newToken, setNewToken] = useState("");
+  const [createdConnectionId, setCreatedConnectionId] = useState("");
+  const [createdPresets, setCreatedPresets] = useState(null);
+  const [exportData, setExportData] = useState(null);
   const [loading, setLoading] = useState(false);
   const ownedAgents = agents.filter(
     (agent) => agent.owner_wallet?.toLowerCase() === ownerAddress?.toLowerCase(),
@@ -1100,6 +1222,8 @@ function McpConnections({ token, agents, ownerAddress, onNotice }) {
     try {
       const result = await api.createMcpConnection(token, { agentId, name: name.trim() });
       setNewToken(result.data.token);
+      setCreatedConnectionId(result.data.id);
+      setCreatedPresets(result.data.presets);
       setConnections((items) => [
         {
           ...result.data,
@@ -1137,6 +1261,30 @@ function McpConnections({ token, agents, ownerAddress, onNotice }) {
       onNotice("Copy failed. Select the token and copy it manually.");
     }
   };
+  const openExport = async (connectionId, explicitToken, agentName, connName, presetObj) => {
+    try {
+      if (presetObj) {
+        setExportData({
+          connectionId,
+          agentName,
+          connectionName: connName,
+          token: explicitToken || "",
+          presets: presetObj,
+        });
+        return;
+      }
+      const res = await api.mcpPresets(token, connectionId, explicitToken || undefined);
+      setExportData({
+        connectionId,
+        agentName: res.data?.agentName || agentName,
+        connectionName: res.data?.connectionName || connName,
+        token: explicitToken || "",
+        presets: res.data?.presets || {},
+      });
+    } catch (error) {
+      onNotice(error?.message || "Could not load harness presets.");
+    }
+  };
   return (
     <section className="settings-panel mcp-settings-panel">
       <div className="mcp-settings-heading">
@@ -1163,6 +1311,20 @@ function McpConnections({ token, agents, ownerAddress, onNotice }) {
             <code>{newToken}</code>
             <Button secondary onClick={copy}>
               <Copy size={14} /> Copy
+            </Button>
+            <Button
+              secondary
+              onClick={() =>
+                openExport(
+                  createdConnectionId,
+                  newToken,
+                  ownedAgents.find((a) => a.id === agentId)?.name,
+                  name,
+                  createdPresets,
+                )
+              }
+            >
+              <Download size={14} /> Export Config
             </Button>
           </div>
         </div>
@@ -1224,16 +1386,41 @@ function McpConnections({ token, agents, ownerAddress, onNotice }) {
                   </small>
                 </div>
               </div>
-              {connection.revoked_at ? (
-                <span className="mcp-revoked-label">Revoked</span>
-              ) : (
-                <Button secondary small onClick={() => revoke(connection.id)}>
-                  Revoke
-                </Button>
-              )}
+              <div className="mcp-row-actions">
+                {!connection.revoked_at && (
+                  <Button
+                    secondary
+                    small
+                    onClick={() =>
+                      openExport(
+                        connection.id,
+                        connection.id === createdConnectionId ? newToken : "",
+                        ownedAgents.find((agent) => agent.id === connection.agent_id)?.name,
+                        connection.name,
+                      )
+                    }
+                  >
+                    <Download size={13} /> Export Config
+                  </Button>
+                )}
+                {connection.revoked_at ? (
+                  <span className="mcp-revoked-label">Revoked</span>
+                ) : (
+                  <Button secondary small onClick={() => revoke(connection.id)}>
+                    Revoke
+                  </Button>
+                )}
+              </div>
             </div>
           ))}
         </div>
+      )}
+      {exportData && (
+        <HarnessExportModal
+          configData={exportData}
+          onClose={() => setExportData(null)}
+          onNotice={onNotice}
+        />
       )}
     </section>
   );

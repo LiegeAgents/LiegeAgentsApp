@@ -231,8 +231,31 @@ export interface Ap2MandateExport {
   };
 }
 
+export type McpHarnessTarget = "claude_desktop" | "cursor" | "elizaos" | "hermes" | "openclaw";
+
+export interface McpHarnessPreset {
+  id: McpHarnessTarget;
+  name: string;
+  target: McpHarnessTarget;
+  filename: string;
+  description: string;
+  instructions: string;
+  format: "json";
+  config: Record<string, unknown>;
+}
+
+export interface McpHarnessPresetsResponse {
+  connectionId?: string;
+  agentId?: string;
+  agentName?: string;
+  connectionName?: string;
+  serverUrl: string;
+  presets: Record<McpHarnessTarget, McpHarnessPreset>;
+}
+
 export class LiegeAPIError extends Error {
   constructor(message: string, readonly status: number, readonly code?: string) {
     super(message); this.name = "LiegeAPIError";
   }
 }
+

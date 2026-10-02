@@ -2,7 +2,7 @@ from typing import Any
 
 import httpx
 
-from .models import Job, McpProposal
+from .models import Job, McpProposal, McpHarnessPreset
 
 
 class McpClient:
@@ -133,3 +133,78 @@ class McpClient:
         if isinstance(value, dict) and "services" in value:
             return value["services"]
         return value if isinstance(value, list) else []
+
+    @staticmethod
+    def generate_presets(server_name: str | None = None, server_url: str | None = None,
+                         token: str | None = None, agent_name: str | None = None) -> dict[str, McpHarnessPreset]:
+        import re
+        effective_token = token or "<YOUR_LIEGE_MCP_TOKEN>"
+        raw_name = (server_name or agent_name or "liege").lower()
+        cleaned_name = re.sub(r"[^a-z0-9_-]+", "-", raw_name).strip("-") or "liege"
+        url = (server_url or "https://mcp.liegeagents.com").rstrip("/") + "/mcp"
+
+        return {
+            "claude_desktop": McpHarnessPreset(
+                id="claude_desktop",
+                name="Claude Desktop",
+                target="claude_desktop",
+                filename="claude_desktop_config.json",
+                description="Claude Desktop app MCP server configuration",
+                instructions="Paste into ~/Library/Application Support/Claude/claude_desktop_config.json (macOS) or %APPDATA%\\Claude\\claude_desktop_config.json (Windows).",
+                format="json",
+                config={"mcpServers": {cleaned_name: {"url": url, "headers": {"Authorization": f"Bearer {effective_token}"}}}},
+            ),
+            "cursor": McpHarnessPreset(
+                id="cursor",
+                name="Cursor",
+                target="cursor",
+                filename=".cursor/mcp.json",
+                description="Cursor IDE remote Streamable HTTP MCP configuration",
+                instructions="Paste into .cursor/mcp.json at your workspace root or ~/.cursor/mcp.json globally.",
+                format="json",
+                config={"mcpServers": {cleaned_name: {"url": url, "headers": {"Authorization": f"Bearer {effective_token}"}}}},
+            ),
+            "elizaos": McpHarnessPreset(
+                id="elizaos",
+                name="ElizaOS",
+                target="elizaos",
+                filename="character.json",
+                description="ElizaOS character plugin and MCP settings configuration",
+                instructions="Add @elizaos/plugin-mcp to your character plugins and configure the server under settings.mcp.servers.",
+                format="json",
+                config={
+                    "name": agent_name or "Liege Agent",
+                    "plugins": ["@elizaos/plugin-mcp"],
+                    "settings": {"mcp": {"servers": {cleaned_name: {"url": url, "headers": {"Authorization": f"Bearer {effective_token}"}}}}},
+                },
+            ),
+            "hermes": McpHarnessPreset(
+                id="hermes",
+                name="Hermes",
+                target="hermes",
+                filename="hermes.json",
+                description="Hermes autonomous agent harness tool configuration",
+                instructions="Add to your hermes.json or config.json under mcpServers.",
+                format="json",
+                config={"mcpServers": {cleaned_name: {"url": url, "headers": {"Authorization": f"Bearer {effective_token}"}}}},
+            ),
+            "openclaw": McpHarnessPreset(
+                id="openclaw",
+                name="OpenClaw",
+                target="openclaw",
+                filename="openclaw.json",
+                description="OpenClaw autonomous agent harness configuration",
+                instructions="Add to your OpenClaw agent configuration under tools.mcp.",
+                format="json",
+                config={"tools": {"mcp": {cleaned_name: {"url": url, "headers": {"Authorization": f"Bearer {effective_token}"}}}}},
+            ),
+        }
+
+    def export_presets(self, server_name: str = "liege", agent_name: str | None = None) -> dict[str, McpHarnessPreset]:
+        return self.generate_presets(
+            server_name=server_name,
+            server_url=self.base_url,
+            token=self.connection_token,
+            agent_name=agent_name,
+        )
+

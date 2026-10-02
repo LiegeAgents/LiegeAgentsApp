@@ -53,6 +53,7 @@ const env = z
     // Shared only with the separately deployed MCP service. It authenticates
     // service-to-service calls; it never authenticates an end user or wallet.
     MCP_INTERNAL_API_TOKEN: z.string().min(32).optional(),
+    MCP_PUBLIC_URL: z.string().url().default("https://mcp.liegeagents.com"),
     RUNNER_WORKER_URL: z.string().url().optional(),
     RUNNER_WORKER_TOKEN: z.string().min(32).optional(),
     // Virtuals ACP is an opt-in provider adapter. Credentials are never required

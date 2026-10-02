@@ -360,3 +360,56 @@ class AgentMandate:
             revoked_at=value.get("revoked_at", value.get("revokedAt")),
             raw=value,
         )
+
+
+@dataclass(frozen=True)
+class McpHarnessPreset:
+    id: str
+    name: str
+    target: str
+    filename: str
+    description: str
+    instructions: str
+    format: str
+    config: dict[str, Any]
+    raw: dict[str, Any] = None
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "McpHarnessPreset":
+        return cls(
+            id=value.get("id", ""),
+            name=value.get("name", ""),
+            target=value.get("target", value.get("id", "")),
+            filename=value.get("filename", ""),
+            description=value.get("description", ""),
+            instructions=value.get("instructions", ""),
+            format=value.get("format", "json"),
+            config=value.get("config", {}),
+            raw=value,
+        )
+
+
+@dataclass(frozen=True)
+class McpHarnessPresetsResponse:
+    server_url: str
+    presets: dict[str, McpHarnessPreset]
+    connection_id: str | None = None
+    agent_id: str | None = None
+    agent_name: str | None = None
+    connection_name: str | None = None
+    raw: dict[str, Any] = None
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "McpHarnessPresetsResponse":
+        raw_presets = value.get("presets", {})
+        presets = {k: McpHarnessPreset.from_dict(v) for k, v in raw_presets.items()}
+        return cls(
+            server_url=value.get("serverUrl", value.get("server_url", "")),
+            presets=presets,
+            connection_id=value.get("connectionId", value.get("connection_id")),
+            agent_id=value.get("agentId", value.get("agent_id")),
+            agent_name=value.get("agentName", value.get("agent_name")),
+            connection_name=value.get("connectionName", value.get("connection_name")),
+            raw=value,
+        )
+

@@ -20,6 +20,9 @@ import {
   type RunnerArtifact,
   type AgentPolicyInput,
   type Ap2MandateExport,
+  type McpHarnessPreset,
+  type McpHarnessPresetsResponse,
+  type McpHarnessTarget,
   type Job,
   type JobEvent,
   type Session,
@@ -167,6 +170,21 @@ export class LiegeClient {
       ...value, name: String(value.name), sha256: String(value.sha256), contentBase64: String(value.contentBase64 ?? ""),
     }));
   }
+
+  getMcpPresets(connectionId: string, token?: string): Promise<McpHarnessPresetsResponse> {
+    const query = token ? `?token=${encodeURIComponent(token)}` : "";
+    return this.call<McpHarnessPresetsResponse>(`/v1/mcp/connections/${encodeURIComponent(connectionId)}/presets${query}`);
+  }
+
+  getGeneralMcpPresets(options: { name?: string; agentId?: string; token?: string } = {}): Promise<{ serverUrl: string; presets: Record<McpHarnessTarget, McpHarnessPreset> }> {
+    const params = new URLSearchParams();
+    if (options.name) params.set("name", options.name);
+    if (options.agentId) params.set("agentId", options.agentId);
+    if (options.token) params.set("token", options.token);
+    const qs = params.toString();
+    return this.call(`/v1/mcp/presets${qs ? `?${qs}` : ""}`);
+  }
+
 
   /** Fetch an x402 resource, asking the application-provided signer to approve a 402 challenge. */
   async requestX402(input: string | URL, signer: X402Signer, init: RequestInit = {}): Promise<Response> {

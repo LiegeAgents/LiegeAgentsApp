@@ -2938,6 +2938,107 @@ section[id] {
     monospace;
   color: var(--l-muted);
 }
+.mcp-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.harness-modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.harness-modal-header p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--l-muted);
+  line-height: 1.5;
+}
+.harness-modal-header strong {
+  color: var(--l-text);
+}
+.harness-tabs {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid var(--l-border);
+  padding-bottom: 10px;
+  overflow-x: auto;
+}
+.harness-tab-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font: 11px var(--font-paper-mono);
+  color: var(--l-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+.harness-tab-btn:hover {
+  color: var(--l-text);
+  background: var(--l-soft);
+}
+.harness-tab-btn.active {
+  color: var(--l-green);
+  border-color: color-mix(in srgb, var(--l-green) 35%, var(--l-border));
+  background: var(--l-soft);
+}
+.harness-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--l-soft);
+  border: 1px solid var(--l-border);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+.harness-instructions {
+  font-size: 11px;
+  color: var(--l-muted);
+  line-height: 1.5;
+}
+.harness-instructions strong {
+  color: var(--l-text);
+}
+.harness-instructions code {
+  color: var(--l-green);
+  font-size: 11px;
+}
+.harness-instructions p {
+  margin: 4px 0 0;
+}
+.harness-token-input {
+  margin-top: 4px;
+}
+.harness-token-input input {
+  font-family: var(--font-paper-mono);
+  font-size: 11px;
+}
+.harness-code-block {
+  background: #080d0a;
+  border: 1px solid var(--l-border);
+  border-radius: 6px;
+  padding: 14px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.harness-code-block pre {
+  margin: 0;
+}
+.harness-code-block code {
+  font-family: var(--font-paper-mono);
+  font-size: 11px;
+  color: #c5e1cd;
+  line-height: 1.6;
+}
+.harness-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
 .receipts-exports {
   display: flex;
   flex: 0 0 auto;
