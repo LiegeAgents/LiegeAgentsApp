@@ -108,7 +108,17 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [enabled, connected, chainId, walletAddress, startedAt, lastError, jobsObserved, jobsRejected]
+                required:
+                  [
+                    enabled,
+                    connected,
+                    chainId,
+                    walletAddress,
+                    startedAt,
+                    lastError,
+                    jobsObserved,
+                    jobsRejected,
+                  ]
                 properties:
                   enabled: { type: boolean }
                   connected: { type: boolean }
@@ -138,9 +148,17 @@ paths:
       parameters:
         - { in: query, name: agentId, schema: { type: string, format: uuid } }
         - { in: query, name: type, schema: { enum: [tool, data, skill] } }
-        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - {
+            in: query,
+            name: limit,
+            schema: { type: integer, minimum: 1, maximum: 100, default: 50 },
+          }
       responses:
-        "200": { description: Active services, content: { application/json: { schema: { type: object } } } }
+        "200":
+          {
+            description: Active services,
+            content: { application/json: { schema: { type: object } } },
+          }
     post:
       operationId: createService
       summary: Publish a service for an owned agent.
@@ -151,7 +169,11 @@ paths:
           application/json:
             schema: { type: object }
       responses:
-        "201": { description: Service published, content: { application/json: { schema: { type: object } } } }
+        "201":
+          {
+            description: Service published,
+            content: { application/json: { schema: { type: object } } },
+          }
         "400": { $ref: "#/components/responses/InvalidRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -930,7 +952,8 @@ paths:
       summary: List invoices issued by or paid by the authenticated wallet.
       security: [{ bearerAuth: [] }]
       responses:
-        "200": { description: Invoices, content: { application/json: { schema: { type: object } } } }
+        "200":
+          { description: Invoices, content: { application/json: { schema: { type: object } } } }
         "401": { $ref: "#/components/responses/Unauthenticated" }
     post:
       operationId: createInvoice
@@ -952,7 +975,11 @@ paths:
                 amountUsdg: { $ref: "#/components/schemas/UsdgInput" }
                 expiresAt: { type: string, format: date-time }
       responses:
-        "201": { description: Invoice issued, content: { application/json: { schema: { type: object } } } }
+        "201":
+          {
+            description: Invoice issued,
+            content: { application/json: { schema: { type: object } } },
+          }
         "400": { $ref: "#/components/responses/InvalidRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -972,7 +999,11 @@ paths:
       summary: Read public USDG payment terms. x402 is not yet configured.
       parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
       responses:
-        "200": { description: Payment terms, content: { application/json: { schema: { type: object } } } }
+        "200":
+          {
+            description: Payment terms,
+            content: { application/json: { schema: { type: object } } },
+          }
         "404": { $ref: "#/components/responses/NotFound" }
   /v1/invoices/{id}/x402:
     get:
@@ -983,10 +1014,22 @@ paths:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: PAYMENT-SIGNATURE, in: header, required: false, schema: { type: string } }
       responses:
-        "200": { description: Invoice settled, content: { application/json: { schema: { type: object } } } }
-        "402": { description: x402 payment required or rejected authorization, content: { application/json: { schema: { type: object } } } }
+        "200":
+          {
+            description: Invoice settled,
+            content: { application/json: { schema: { type: object } } },
+          }
+        "402":
+          {
+            description: x402 payment required or rejected authorization,
+            content: { application/json: { schema: { type: object } } },
+          }
         "404": { $ref: "#/components/responses/NotFound" }
-        "501": { description: x402 is not configured, content: { application/json: { schema: { type: object } } } }
+        "501":
+          {
+            description: x402 is not configured,
+            content: { application/json: { schema: { type: object } } },
+          }
   /v1/invoices/{id}/pay:
     post:
       operationId: payInvoice
@@ -994,7 +1037,8 @@ paths:
       security: [{ bearerAuth: [] }]
       parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
       responses:
-        "200": { description: Invoice paid, content: { application/json: { schema: { type: object } } } }
+        "200":
+          { description: Invoice paid, content: { application/json: { schema: { type: object } } } }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/Unprocessable" }
@@ -1010,11 +1054,24 @@ paths:
             schema:
               type: object
               properties:
-                amount: { type: number, description: "Partial refund amount. If omitted, refunds the full remaining balance." }
+                amount:
+                  {
+                    type: number,
+                    description: "Partial refund amount. If omitted, refunds the full remaining balance.",
+                  }
                 jobId: { type: string, format: uuid, description: "Optional bound job identifier." }
-                reason: { type: string, maxLength: 500, description: "Optional explanation or audit reason." }
+                reason:
+                  {
+                    type: string,
+                    maxLength: 500,
+                    description: "Optional explanation or audit reason.",
+                  }
       responses:
-        "200": { description: Invoice refunded or partially refunded, content: { application/json: { schema: { type: object } } } }
+        "200":
+          {
+            description: Invoice refunded or partially refunded,
+            content: { application/json: { schema: { type: object } } },
+          }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/Unprocessable" }
@@ -1025,7 +1082,11 @@ paths:
       security: [{ bearerAuth: [] }]
       parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
       responses:
-        "200": { description: List of refund receipts, content: { application/json: { schema: { type: object } } } }
+        "200":
+          {
+            description: List of refund receipts,
+            content: { application/json: { schema: { type: object } } },
+          }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404": { $ref: "#/components/responses/NotFound" }
   /v1/invoices/{id}/cancel:
@@ -1035,7 +1096,11 @@ paths:
       security: [{ bearerAuth: [] }]
       parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
       responses:
-        "200": { description: Invoice cancelled, content: { application/json: { schema: { type: object } } } }
+        "200":
+          {
+            description: Invoice cancelled,
+            content: { application/json: { schema: { type: object } } },
+          }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "409": { $ref: "#/components/responses/Conflict" }
 
@@ -1403,6 +1468,8 @@ paths:
       summary: List owned runner executions.
       description: Returns the latest bounded workloads for the signed-in account with artifact metadata but never artifact contents.
       security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: agentId, in: query, required: false, schema: { type: string, format: uuid } }
       responses:
         "200": { description: Owner-scoped runner executions and artifact metadata. }
         "401": { $ref: "#/components/responses/Unauthenticated" }
@@ -1428,8 +1495,18 @@ paths:
                 artifactPaths: { type: array, items: { type: string } }
                 timeoutMs: { type: integer, minimum: 100, maximum: 120000 }
                 maxOutputBytes: { type: integer, minimum: 1024, maximum: 1000000 }
-                actionId: { type: string, format: uuid, description: Required when the agent has an account. }
-                simulationId: { type: string, format: uuid, description: Required when the agent has an account. }
+                actionId:
+                  {
+                    type: string,
+                    format: uuid,
+                    description: Required when the agent has an account.,
+                  }
+                simulationId:
+                  {
+                    type: string,
+                    format: uuid,
+                    description: Required when the agent has an account.,
+                  }
       responses:
         "201": { description: Completed, failed, or timed-out run with captured artifacts. }
         "400": { $ref: "#/components/responses/InvalidRequest" }
@@ -1577,13 +1654,34 @@ paths:
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: format, in: query, schema: { enum: [json, csv, otel], default: json } }
-        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 5000, default: 500 } }
-        - { name: download, in: query, description: Set to 1 to download JSON or OpenTelemetry as a file., schema: { enum: ["1"] } }
+        - {
+            name: limit,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 5000, default: 500 },
+          }
+        - {
+            name: download,
+            in: query,
+            description: Set to 1 to download JSON or OpenTelemetry as a file.,
+            schema: { enum: ["1"] },
+          }
       responses:
         "200":
           description: Statement lines (JSON), OpenTelemetry traces (JSON), or a CSV file whose digest is in the X-Liege-Statement-Digest header.
           content:
-            application/json: { schema: { type: object, properties: { data: { type: array, items: { type: object } }, digest: { type: string }, generatedAt: { type: string, format: date-time } } } }
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    properties:
+                      {
+                        data: { type: array, items: { type: object } },
+                        digest: { type: string },
+                        generatedAt: { type: string, format: date-time },
+                      },
+                  },
+              }
             text/csv: { schema: { type: string } }
 
   /v1/receipts/{transactionId}:
@@ -1595,7 +1693,15 @@ paths:
         - { name: transactionId, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: format, in: query, schema: { enum: [json, otel], default: json } }
       responses:
-        "200": { description: Receipt or OpenTelemetry trace export, content: { application/json: { schema: { type: object, properties: { data: { type: object } } } } } }
+        "200":
+          {
+            description: Receipt or OpenTelemetry trace export,
+            content:
+              {
+                application/json:
+                  { schema: { type: object, properties: { data: { type: object } } } },
+              },
+          }
         "404": { description: No receipt with this ID on the account. }
 
   /v1/agent-accounts:
@@ -1607,15 +1713,35 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [agentId], properties: { agentId: { type: string, format: uuid } } }
+            schema:
+              {
+                type: object,
+                required: [agentId],
+                properties: { agentId: { type: string, format: uuid } },
+              }
       responses:
-        "201": { description: Agent account, content: { application/json: { schema: { $ref: "#/components/schemas/AgentAccountEnvelope" } } } }
+        "201":
+          {
+            description: Agent account,
+            content:
+              {
+                application/json: { schema: { $ref: "#/components/schemas/AgentAccountEnvelope" } },
+              },
+          }
     get:
       operationId: listAgentAccounts
       summary: List the authenticated owner's agent accounts.
       security: [{ bearerAuth: [] }]
       responses:
-        "200": { description: Agent accounts, content: { application/json: { schema: { $ref: "#/components/schemas/AgentAccountListEnvelope" } } } }
+        "200":
+          {
+            description: Agent accounts,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/AgentAccountListEnvelope" } },
+              },
+          }
 
   /v1/agent-accounts/{agentId}:
     get:
@@ -1625,7 +1751,14 @@ paths:
       parameters:
         - { name: agentId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
-        "200": { description: Agent account, content: { application/json: { schema: { $ref: "#/components/schemas/AgentAccountEnvelope" } } } }
+        "200":
+          {
+            description: Agent account,
+            content:
+              {
+                application/json: { schema: { $ref: "#/components/schemas/AgentAccountEnvelope" } },
+              },
+          }
 
   /v1/agent-accounts/{agentId}/policy:
     put:
@@ -1640,7 +1773,14 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/AgentAccountPolicyInput" }
       responses:
-        "200": { description: Updated account policy, content: { application/json: { schema: { $ref: "#/components/schemas/AgentAccountEnvelope" } } } }
+        "200":
+          {
+            description: Updated account policy,
+            content:
+              {
+                application/json: { schema: { $ref: "#/components/schemas/AgentAccountEnvelope" } },
+              },
+          }
 
   /v1/agent-accounts/{agentId}/control:
     post:
@@ -1653,9 +1793,22 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [command], properties: { command: { enum: [pause, resume, kill] }, reason: { type: string } } }
+            schema:
+              {
+                type: object,
+                required: [command],
+                properties: { command: { enum: [pause, resume, kill] }, reason: { type: string } },
+              }
       responses:
-        "200": { description: Account control result, content: { application/json: { schema: { $ref: "#/components/schemas/AgentAccountControlEnvelope" } } } }
+        "200":
+          {
+            description: Account control result,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/AgentAccountControlEnvelope" } },
+              },
+          }
 
   /v1/agent-accounts/{agentId}/actions/authorize:
     post:
@@ -1670,7 +1823,14 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/AgentActionInput" }
       responses:
-        "200": { description: Deterministic policy decision, content: { application/json: { schema: { $ref: "#/components/schemas/AgentActionEnvelope" } } } }
+        "200":
+          {
+            description: Deterministic policy decision,
+            content:
+              {
+                application/json: { schema: { $ref: "#/components/schemas/AgentActionEnvelope" } },
+              },
+          }
 
   /v1/agent-accounts/{agentId}/actions/simulate:
     post:
@@ -1685,7 +1845,15 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/AgentActionInput" }
       responses:
-        "201": { description: Simulation result and binding digest, content: { application/json: { schema: { $ref: "#/components/schemas/AgentSimulationEnvelope" } } } }
+        "201":
+          {
+            description: Simulation result and binding digest,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/AgentSimulationEnvelope" } },
+              },
+          }
 
   /v1/agent-accounts/{agentId}/actions/{actionId}/approve:
     post:
@@ -1696,7 +1864,14 @@ paths:
         - { name: agentId, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: actionId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
-        "200": { description: Approved action receipt, content: { application/json: { schema: { $ref: "#/components/schemas/AgentActionEnvelope" } } } }
+        "200":
+          {
+            description: Approved action receipt,
+            content:
+              {
+                application/json: { schema: { $ref: "#/components/schemas/AgentActionEnvelope" } },
+              },
+          }
 
   /v1/agent-accounts/{agentId}/mandates:
     post:
@@ -1711,7 +1886,14 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/AgentMandateInput" }
       responses:
-        "201": { description: Agent mandate, content: { application/json: { schema: { $ref: "#/components/schemas/AgentMandateEnvelope" } } } }
+        "201":
+          {
+            description: Agent mandate,
+            content:
+              {
+                application/json: { schema: { $ref: "#/components/schemas/AgentMandateEnvelope" } },
+              },
+          }
     get:
       operationId: listAgentMandates
       summary: List mandates for an owned agent account.
@@ -1719,7 +1901,15 @@ paths:
       parameters:
         - { name: agentId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
-        "200": { description: Agent mandates, content: { application/json: { schema: { $ref: "#/components/schemas/AgentMandateListEnvelope" } } } }
+        "200":
+          {
+            description: Agent mandates,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/AgentMandateListEnvelope" } },
+              },
+          }
 
   /v1/agent-accounts/{agentId}/mandates/{mandateId}:
     get:
@@ -1731,7 +1921,14 @@ paths:
         - { name: mandateId, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: format, in: query, schema: { enum: [json, ap2], default: json } }
       responses:
-        "200": { description: Agent mandate or AP2 export, content: { application/json: { schema: { $ref: "#/components/schemas/AgentMandateEnvelope" } } } }
+        "200":
+          {
+            description: Agent mandate or AP2 export,
+            content:
+              {
+                application/json: { schema: { $ref: "#/components/schemas/AgentMandateEnvelope" } },
+              },
+          }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/agent-accounts/{agentId}/mandates/{mandateId}/ap2:
@@ -1742,9 +1939,21 @@ paths:
       parameters:
         - { name: agentId, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: mandateId, in: path, required: true, schema: { type: string, format: uuid } }
-        - { name: download, in: query, schema: { enum: ["1"] }, description: Set to 1 to trigger file download }
+        - {
+            name: download,
+            in: query,
+            schema: { enum: ["1"] },
+            description: Set to 1 to trigger file download,
+          }
       responses:
-        "200": { description: AP2 mandate document, content: { application/json: { schema: { $ref: "#/components/schemas/AgentMandateEnvelope" } } } }
+        "200":
+          {
+            description: AP2 mandate document,
+            content:
+              {
+                application/json: { schema: { $ref: "#/components/schemas/AgentMandateEnvelope" } },
+              },
+          }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/agent-accounts/{agentId}/mandates/{mandateId}/revoke:
@@ -1756,7 +1965,14 @@ paths:
         - { name: agentId, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: mandateId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
-        "200": { description: Revoked mandate, content: { application/json: { schema: { $ref: "#/components/schemas/AgentMandateEnvelope" } } } }
+        "200":
+          {
+            description: Revoked mandate,
+            content:
+              {
+                application/json: { schema: { $ref: "#/components/schemas/AgentMandateEnvelope" } },
+              },
+          }
 
 components:
   securitySchemes:

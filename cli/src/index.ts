@@ -1,5 +1,7 @@
 #!/usr/bin/env bun
 
+import { createHash } from "node:crypto";
+
 export type Json = Record<string, unknown>;
 
 export const getApiUrl = () =>
@@ -15,6 +17,12 @@ Usage:
   liege health
   liege agents list
   liege jobs list
+  liege runner simulate <agent-id> '<json-workload>'
+  liege runner authorize <agent-id> '<json-workload>' --simulation-id <id>
+  liege runner execute '<json-workload>' --action-id <id> --simulation-id <id>
+  liege runner list [--agent-id <id>]
+  liege runner status <run-id>
+  liege runner artifact <run-id> <artifact-id>
   liege invoices list
   liege invoices issue '<json-invoice>'
   liege invoices pay <invoice-id>
@@ -34,7 +42,9 @@ Usage:
   liege mcp revoke <connection-id>
   liege policy get <agent-id>
   liege policy set <agent-id> '<json-policy>'
-  liege proposals list
+  liege proposals list [--status pending|approved|rejected|expired]
+  liege proposals get <proposal-id>
+  liege proposals wait <proposal-id> [--timeout-ms <n>] [--poll-ms <n>]
   liege proposals approve <proposal-id>
   liege proposals reject <proposal-id>
 
@@ -57,8 +67,17 @@ export async function request(path: string, init: RequestInit = {}, authenticate
   const response = await fetch(`${getApiUrl()}${path}`, { ...init, headers });
   const body = response.status === 204 ? null : ((await response.json()) as Json);
   if (!response.ok) {
-    const error = (body?.error as Json | undefined)?.message;
-    throw new Error(error ? String(error) : `API request failed (${response.status}).`);
+    const details = (body?.error as Json | undefined) ?? {};
+    const error = new Error(
+      details.message ? String(details.message) : `API request failed (${response.status}).`,
+    );
+    Object.assign(error, {
+      status: response.status,
+      code: details.code,
+      requestId: response.headers.get("x-request-id") ?? details.requestId,
+      retryable: response.status === 429 || response.status >= 500,
+    });
+    throw error;
   }
   return body?.data ?? body;
 }
@@ -100,6 +119,45 @@ export function parseFlags(args: string[]): {
   return { flags, positional };
 }
 
+function jsonArgument(value: string | undefined, label: string): Json {
+  if (!value) throw new Error(`${label} must be provided as JSON.`);
+  try {
+    const parsed = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
+    return parsed as Json;
+  } catch {
+    throw new Error(`The ${label} argument must be valid JSON.`);
+  }
+}
+
+function digest(value: Record<string, string>): string {
+  const canonical = JSON.stringify(
+    Object.keys(value)
+      .sort()
+      .reduce<Record<string, string>>((out, key) => {
+        out[key] = value[key];
+        return out;
+      }, {}),
+  );
+  return createHash("sha256").update(canonical).digest("hex");
+}
+
+function runnerDetails(input: Json): Json {
+  const env = (input.env as Record<string, string> | undefined) ?? {};
+  const files = (input.files as Record<string, string> | undefined) ?? {};
+  return {
+    command: input.command,
+    args: input.args ?? [],
+    jobId: input.jobId ?? null,
+    timeoutMs: input.timeoutMs ?? 30_000,
+    maxOutputBytes: input.maxOutputBytes ?? 256_000,
+    envDigest: digest(env),
+    filesDigest: digest(files),
+  };
+}
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export async function execute(args: string[]): Promise<unknown> {
   const { flags, positional } = parseFlags(args);
   const [resource, action, id] = positional;
@@ -109,6 +167,47 @@ export async function execute(args: string[]): Promise<unknown> {
   if (resource === "health") return request("/health", {}, false);
   if (resource === "agents" && action === "list") return request("/v1/agents");
   if (resource === "jobs" && action === "list") return request("/v1/jobs");
+  if (resource === "runner" || resource === "runners") {
+    if (action === "simulate" && id) {
+      const input = jsonArgument(positional[3], "runner workload");
+      return request(`/v1/agent-accounts/${encodeURIComponent(id)}/actions/simulate`, {
+        method: "POST",
+        body: JSON.stringify({ action: "runner.execute", details: runnerDetails(input) }),
+      });
+    }
+    if (action === "authorize" && id) {
+      const input = jsonArgument(positional[3], "runner workload");
+      const simulationId = flags["simulation-id"] ?? flags.simulationId;
+      if (!simulationId) throw new Error("--simulation-id is required for runner authorization.");
+      return request(`/v1/agent-accounts/${encodeURIComponent(id)}/actions/authorize`, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "runner.execute",
+          details: runnerDetails(input),
+          simulationId,
+        }),
+      });
+    }
+    if (action === "execute") {
+      const input = jsonArgument(id, "runner workload");
+      const actionId = flags["action-id"] ?? flags.actionId;
+      const simulationId = flags["simulation-id"] ?? flags.simulationId;
+      const approval = actionId && simulationId ? { actionId, simulationId } : {};
+      return request("/v1/runners", {
+        method: "POST",
+        body: JSON.stringify({ ...input, ...approval }),
+      });
+    }
+    if (action === "list") {
+      const agentId = flags["agent-id"] ?? flags.agentId;
+      return request(`/v1/runners${agentId ? `?agentId=${encodeURIComponent(agentId)}` : ""}`);
+    }
+    if (action === "status" && id) return request(`/v1/runners/${encodeURIComponent(id)}`);
+    if (action === "artifact" && id && positional[3])
+      return request(
+        `/v1/runners/${encodeURIComponent(id)}/artifacts/${encodeURIComponent(positional[3])}`,
+      );
+  }
   if (resource === "invoices" && action === "list") return request("/v1/invoices");
   if (resource === "invoices" && action === "issue" && positional[2]) {
     let invoice: unknown;
@@ -297,7 +396,27 @@ export async function execute(args: string[]): Promise<unknown> {
     }
     return request(`/v1/mcp/policies/${id}`, { method: "PUT", body: JSON.stringify(policy) });
   }
-  if (resource === "proposals" && action === "list") return request("/v1/mcp/proposals");
+  if (resource === "proposals" && action === "list") {
+    const status = flags.status;
+    return request(`/v1/mcp/proposals${status ? `?status=${encodeURIComponent(status)}` : ""}`);
+  }
+  if (resource === "proposals" && action === "get" && id)
+    return request(`/v1/mcp/proposals/${encodeURIComponent(id)}`);
+  if (resource === "proposals" && action === "wait" && id) {
+    const timeoutMs = Number(flags["timeout-ms"] ?? flags.timeoutMs ?? 30_000);
+    const pollMs = Number(flags["poll-ms"] ?? flags.pollMs ?? 1_000);
+    if (!Number.isInteger(timeoutMs) || timeoutMs < 500 || timeoutMs > 120_000)
+      throw new Error("--timeout-ms must be an integer between 500 and 120000.");
+    if (!Number.isInteger(pollMs) || pollMs < 250 || pollMs > 5_000)
+      throw new Error("--poll-ms must be an integer between 250 and 5000.");
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const proposal = (await request(`/v1/mcp/proposals/${encodeURIComponent(id)}`)) as Json;
+      if (proposal.effective_status !== "pending" || Date.now() >= deadline)
+        return { ...proposal, timedOut: proposal.effective_status === "pending" };
+      await wait(Math.min(pollMs, Math.max(0, deadline - Date.now())));
+    }
+  }
   if (resource === "proposals" && (action === "approve" || action === "reject") && id)
     return request(`/v1/mcp/proposals/${id}/${action === "approve" ? "approved" : "rejected"}`, {
       method: "POST",

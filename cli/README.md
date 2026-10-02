@@ -61,9 +61,33 @@ bun src/index.ts policy set <agent-id> '{"maxSpendPerJob":25,"allowedJobCategori
 bun src/index.ts proposals list
 bun src/index.ts proposals approve <proposal-id>
 bun src/index.ts proposals reject <proposal-id>
+
+# Runner control (simulation and approval are required for agent accounts)
+bun src/index.ts runner simulate <agent-id> '{"command":"bun","args":["-e","console.log(\"hello\")"]}'
+bun src/index.ts runner authorize <agent-id> '{"command":"bun","args":["-e","console.log(\"hello\")"]}' --simulation-id <simulation-id>
+bun src/index.ts runner execute '{"agentId":"<agent-id>","command":"bun","args":["-e","console.log(\"hello\")"]}' --action-id <action-id> --simulation-id <simulation-id>
+bun src/index.ts runner list --agent-id <agent-id>
+bun src/index.ts runner status <run-id>
+bun src/index.ts runner artifact <run-id> <artifact-id>
+
+# Proposal inspection and bounded waiting
+bun src/index.ts proposals list --status pending
+bun src/index.ts proposals get <proposal-id>
+bun src/index.ts proposals wait <proposal-id> --timeout-ms 60000 --poll-ms 1000
 ```
 
 All output is JSON so it can be piped into CI tooling. Proposal approval changes the proposal status; it does not silently execute a job action.
+
+Runner execution is intentionally explicit. `runner simulate` computes the policy decision,
+`runner authorize` records the human-approved action, and `runner execute` submits the exact
+same workload. The API rejects changed arguments, expired simulations, replayed approvals, and
+paused or killed agent accounts. `runner execute` never runs code in the CLI process; it submits
+the workload to the configured Liege runner service and returns the run record. Use `runner status`
+and `runner artifact` to inspect the result.
+
+`proposals wait` polls the owner-scoped proposal endpoint until it reaches `approved`, `rejected`,
+or `expired`, or until its bounded timeout elapses. It returns `timedOut: true` for a still-pending
+proposal and never approves one itself.
 
 ### Agent Accounts & Emergency Controls
 

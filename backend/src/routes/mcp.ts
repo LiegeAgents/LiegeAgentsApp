@@ -457,11 +457,54 @@ mcpRouter.get(
   "/proposals",
   requireAuth,
   asyncRoute(async (request, response) => {
+    const query = z
+      .object({
+        status: z.enum(["all", "pending", "approved", "rejected", "expired"]).default("all"),
+      })
+      .parse(request.query);
     const result = await db.query(
-      "SELECT id, agent_id, action, payload, status, expires_at, created_at, decided_at FROM mcp_proposals WHERE user_id = $1 ORDER BY created_at DESC LIMIT 100",
-      [request.auth!.userId],
+      `SELECT id, agent_id, action, payload, status,
+        CASE WHEN status='pending' AND expires_at <= now() THEN 'expired' ELSE status END AS effective_status,
+        expires_at, created_at, decided_at
+       FROM mcp_proposals WHERE user_id=$1
+         AND ($2='all' OR status=$2 OR ($2='expired' AND status='pending' AND expires_at <= now()))
+       ORDER BY created_at DESC LIMIT 100`,
+      [request.auth!.userId, query.status],
     );
+    await audit(db, {
+      actorId: request.auth!.userId,
+      action: "mcp.proposals_read",
+      targetType: "mcp_proposals",
+      targetId: request.auth!.userId,
+      requestId: request.requestId,
+      metadata: { status: query.status, count: result.rowCount },
+    });
     response.json({ data: result.rows });
+  }),
+);
+mcpRouter.get(
+  "/proposals/:id",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const id = z.string().uuid().parse(request.params.id);
+    const result = await db.query(
+      `SELECT id, agent_id, action, payload, status,
+        CASE WHEN status='pending' AND expires_at <= now() THEN 'expired' ELSE status END AS effective_status,
+        expires_at, created_at, decided_at
+       FROM mcp_proposals WHERE id=$1 AND user_id=$2`,
+      [id, request.auth!.userId],
+    );
+    if (!result.rowCount)
+      throw new ApiError(404, "proposal_not_found", "This proposal is unavailable.");
+    await audit(db, {
+      actorId: request.auth!.userId,
+      action: "mcp.proposal_read",
+      targetType: "mcp_proposal",
+      targetId: id,
+      requestId: request.requestId,
+      metadata: { agentId: result.rows[0].agent_id },
+    });
+    response.json({ data: result.rows[0] });
   }),
 );
 mcpRouter.post(
