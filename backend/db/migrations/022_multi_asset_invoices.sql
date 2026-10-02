@@ -1,10 +1,10 @@
--- Multi-asset invoices (USDG, LIEGE, USDC, USDe)
+-- Multi-asset invoices (USDG, LIEGE)
 ALTER TABLE invoices
   ADD COLUMN IF NOT EXISTS asset text NOT NULL DEFAULT 'usdg',
   ADD COLUMN IF NOT EXISTS amount numeric(30,18);
 
 ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_asset_check;
-ALTER TABLE invoices ADD CONSTRAINT invoices_asset_check CHECK (asset IN ('usdg', 'liege', 'usdc', 'usde'));
+ALTER TABLE invoices ADD CONSTRAINT invoices_asset_check CHECK (asset IN ('usdg', 'liege'));
 
 UPDATE invoices
 SET amount = amount_usdg
@@ -21,7 +21,7 @@ ALTER TABLE invoice_payments
   ADD COLUMN IF NOT EXISTS amount numeric(30,18);
 
 ALTER TABLE invoice_payments DROP CONSTRAINT IF EXISTS invoice_payments_asset_check;
-ALTER TABLE invoice_payments ADD CONSTRAINT invoice_payments_asset_check CHECK (asset IN ('usdg', 'liege', 'usdc', 'usde'));
+ALTER TABLE invoice_payments ADD CONSTRAINT invoice_payments_asset_check CHECK (asset IN ('usdg', 'liege'));
 
 UPDATE invoice_payments
 SET amount = amount_usdg
@@ -38,7 +38,7 @@ ALTER TABLE invoice_refunds
   ADD COLUMN IF NOT EXISTS amount numeric(30,18);
 
 ALTER TABLE invoice_refunds DROP CONSTRAINT IF EXISTS invoice_refunds_asset_check;
-ALTER TABLE invoice_refunds ADD CONSTRAINT invoice_refunds_asset_check CHECK (asset IN ('usdg', 'liege', 'usdc', 'usde'));
+ALTER TABLE invoice_refunds ADD CONSTRAINT invoice_refunds_asset_check CHECK (asset IN ('usdg', 'liege'));
 
 UPDATE invoice_refunds
 SET amount = amount_usdg
@@ -50,9 +50,9 @@ ALTER TABLE invoice_refunds
 ALTER TABLE invoice_refunds DROP CONSTRAINT IF EXISTS invoice_refunds_amount_check;
 ALTER TABLE invoice_refunds ADD CONSTRAINT invoice_refunds_amount_check CHECK (amount > 0);
 
--- Allow new settlement assets in ledger accounts
+-- Allow settlement assets in ledger accounts
 ALTER TABLE ledger_accounts DROP CONSTRAINT IF EXISTS ledger_accounts_asset_check;
-ALTER TABLE ledger_accounts ADD CONSTRAINT ledger_accounts_asset_check CHECK (asset IN ('usdg', 'liege', 'usdc', 'usde'));
+ALTER TABLE ledger_accounts ADD CONSTRAINT ledger_accounts_asset_check CHECK (asset IN ('usdg', 'liege'));
 
 CREATE OR REPLACE FUNCTION sync_invoice_settlement_amounts() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
