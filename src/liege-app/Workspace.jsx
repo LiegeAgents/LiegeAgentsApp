@@ -76,6 +76,7 @@ export default function Workspace() {
   const [liveAgents, setLiveAgents] = useState([]),
     [liveJobs, setLiveJobs] = useState([]),
     [attention, setAttention] = useState({ invoices: [], evaluations: [] }),
+    [activity, setActivity] = useState([]),
     [apiError, setApiError] = useState(""),
     [loadingLive, setLoadingLive] = useState(false);
   const allAgents = liveAgents;
@@ -89,16 +90,19 @@ export default function Workspace() {
       if (wallet.apiSession) {
         const jobs = await api.jobs("cookie");
         setLiveJobs((jobs.data || []).map(jobForDisplay));
-        const [invoices, evaluations] = await Promise.allSettled([
+        const [invoices, evaluations, ledger] = await Promise.allSettled([
           api.invoices("cookie"),
           api.evaluationTasks("cookie"),
+          api.ledger("cookie"),
         ]);
         setAttention({
           invoices: invoices.status === "fulfilled" ? invoices.value.data || [] : [],
           evaluations: evaluations.status === "fulfilled" ? evaluations.value.data || [] : [],
         });
+        setActivity(ledger.status === "fulfilled" ? ledger.value.data || [] : []);
       } else {
         setAttention({ invoices: [], evaluations: [] });
+        setActivity([]);
       }
     } catch (e) {
       setApiError(e?.message || "Could not reach the Liege API.");
@@ -329,6 +333,7 @@ export default function Workspace() {
               agents={allAgents}
               account={wallet.apiSession}
               attention={attention}
+              activity={activity}
               onCreate={() => draftFor()}
               onJob={(j) => setModal({ type: "job", id: j.id })}
               onAgent={(a) => {
