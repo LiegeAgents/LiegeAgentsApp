@@ -80,3 +80,57 @@ class McpClient:
     def propose(self, action: str, payload: dict[str, Any]) -> McpProposal:
         value = self._tool("propose_action", {"action": action, "payload": payload})
         return McpProposal(value["id"], value["status"], None, value)
+
+    def account_status(self) -> dict[str, Any]:
+        return self._tool("liege_account_status")
+
+    def account_simulate(self, action: str, amount: float | None = None, asset: str | None = None,
+                         venue: str | None = None, counterparty: str | None = None,
+                         details: dict[str, Any] | None = None) -> dict[str, Any]:
+        payload: dict[str, Any] = {"action": action}
+        if amount is not None:
+            payload["amount"] = amount
+        if asset is not None:
+            payload["asset"] = asset
+        if venue is not None:
+            payload["venue"] = venue
+        if counterparty is not None:
+            payload["counterparty"] = counterparty
+        if details is not None:
+            payload["details"] = details
+        return self._tool("liege_account_simulate", payload)
+
+    def account_authorize(self, action: str, amount: float | None = None, asset: str | None = None,
+                          venue: str | None = None, counterparty: str | None = None,
+                          details: dict[str, Any] | None = None,
+                          simulation_id: str | None = None,
+                          simulation_digest: str | None = None) -> dict[str, Any]:
+        payload: dict[str, Any] = {"action": action}
+        if amount is not None:
+            payload["amount"] = amount
+        if asset is not None:
+            payload["asset"] = asset
+        if venue is not None:
+            payload["venue"] = venue
+        if counterparty is not None:
+            payload["counterparty"] = counterparty
+        if details is not None:
+            payload["details"] = details
+        if simulation_id is not None:
+            payload["simulationId"] = simulation_id
+        if simulation_digest is not None:
+            payload["simulationDigest"] = simulation_digest
+        return self._tool("liege_account_authorize", payload)
+
+    def account_mandates(self) -> list[dict[str, Any]]:
+        value = self._tool("liege_account_mandates")
+        if isinstance(value, dict) and "mandates" in value:
+            return value["mandates"]
+        return value if isinstance(value, list) else []
+
+    def list_services(self) -> list[dict[str, Any]]:
+        value = self._tool("list_services")
+        if isinstance(value, dict) and "services" in value:
+            return value["services"]
+        return value if isinstance(value, list) else []
+

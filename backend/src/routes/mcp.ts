@@ -8,7 +8,8 @@ import { decryptPayload, payloadContext } from "../crypto.js";
 import { db } from "../db/index.js";
 import { isSafeEvidenceUrl } from "../evidence.js";
 import { ApiError, asyncRoute } from "../http.js";
-import { agentActionDigest, normalizeAgentAction } from "../agentActions.js";
+import { agentActionDigest, normalizeAgentAction, ownerRuleReasons } from "../agentActions.js";
+import { ensureAccount, publicAccount } from "./agentAccounts.js";
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const connectionInput = z.object({ agentId: z.string().uuid(), name: z.string().min(2).max(80) });
@@ -529,5 +530,354 @@ mcpInternalRouter.post(
         expiresAt: result.rows[0].expires_at,
       },
     });
+  }),
+);
+
+const mcpActionSimulateInput = z.object({
+  action: z.string().min(1).max(120),
+  amount: z.coerce.number().nonnegative().optional(),
+  asset: z.string().min(1).max(80).optional(),
+  venue: z.string().min(1).max(120).optional(),
+  counterparty: z.string().min(1).max(120).optional(),
+  details: z.record(z.unknown()).default({}),
+});
+
+const mcpActionAuthorizeInput = z.object({
+  action: z.string().min(1).max(120),
+  amount: z.coerce.number().nonnegative().optional(),
+  asset: z.string().min(1).max(80).optional(),
+  venue: z.string().min(1).max(120).optional(),
+  counterparty: z.string().min(1).max(120).optional(),
+  details: z.record(z.unknown()).default({}),
+  simulationId: z.string().uuid().optional(),
+  simulationDigest: z
+    .string()
+    .regex(/^[a-zA-Z0-9:_-]{8,256}$/)
+    .optional(),
+  simulate: z.boolean().default(false),
+});
+
+mcpInternalRouter.get(
+  "/account",
+  asyncRoute(async (request, response) => {
+    const c = await connection(request);
+    await ensureAccount(c.agent_id, c.user_id);
+    const result = await db.query(
+      `SELECT a.*, p.version AS policy_version, p.max_action_amount, p.daily_budget, p.monthly_budget,
+        p.allowed_assets, p.allowed_venues, p.approved_counterparties, p.allowed_actions,
+        p.approval_mode, p.simulation_required, p.require_human_above, p.active_hours_start,
+        p.active_hours_end, p.active_days, p.active_timezone, p.updated_at AS policy_updated_at
+       FROM agent_accounts a LEFT JOIN agent_account_policies p ON p.agent_id=a.agent_id WHERE a.agent_id=$1`,
+      [c.agent_id],
+    );
+    const row = result.rows[0];
+    const spentToday = await db.query<{ amount: string }>(
+      `SELECT COALESCE(SUM(amount), 0) AS amount FROM agent_account_actions
+       WHERE agent_id=$1 AND decision IN ('approved', 'approval_required') AND created_at >= date_trunc('day', now())`,
+      [c.agent_id],
+    );
+    const spentMonth = await db.query<{ amount: string }>(
+      `SELECT COALESCE(SUM(amount), 0) AS amount FROM agent_account_actions
+       WHERE agent_id=$1 AND decision IN ('approved', 'approval_required') AND created_at >= date_trunc('month', now())`,
+      [c.agent_id],
+    );
+    const dailySpent = Number(spentToday.rows[0]?.amount ?? 0);
+    const monthlySpent = Number(spentMonth.rows[0]?.amount ?? 0);
+    const dailyBudget = row.daily_budget == null ? null : Number(row.daily_budget);
+    const monthlyBudget = row.monthly_budget == null ? null : Number(row.monthly_budget);
+    const ownerRules = ownerRuleReasons(row, null);
+    response.json({
+      data: {
+        accountId: c.agent_id,
+        agentId: c.agent_id,
+        agentName: c.agent_name,
+        status: row.status,
+        killReason: row.kill_reason,
+        pausedAt: row.paused_at,
+        policy: publicAccount(row).policy,
+        budgetUsage: {
+          dailySpent,
+          dailyRemaining: dailyBudget != null ? Math.max(0, dailyBudget - dailySpent) : null,
+          monthlySpent,
+          monthlyRemaining:
+            monthlyBudget != null ? Math.max(0, monthlyBudget - monthlySpent) : null,
+        },
+        activeHoursStatus: {
+          currentlyActive: !ownerRules.denied.includes("outside_active_hours"),
+          timezone: row.active_timezone ?? "UTC",
+        },
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      },
+    });
+  }),
+);
+
+mcpInternalRouter.post(
+  "/account/simulate",
+  asyncRoute(async (request, response) => {
+    const c = await connection(request);
+    await ensureAccount(c.agent_id, c.user_id);
+    const input = mcpActionSimulateInput.parse(request.body);
+    const state = await db.query(
+      "SELECT a.status, p.* FROM agent_accounts a JOIN agent_account_policies p ON p.agent_id=a.agent_id WHERE a.agent_id=$1",
+      [c.agent_id],
+    );
+    const row = state.rows[0];
+    const action = normalizeAgentAction(input);
+    const violations: string[] = [];
+    if (row.status !== "active") violations.push(`account_${row.status}`);
+    if (row.allowed_actions.length && !row.allowed_actions.includes(action.action))
+      violations.push("action_not_allowed");
+    if (action.asset && row.allowed_assets.length && !row.allowed_assets.includes(action.asset))
+      violations.push("asset_not_allowed");
+    if (action.venue && row.allowed_venues.length && !row.allowed_venues.includes(action.venue))
+      violations.push("venue_not_allowed");
+    if (
+      action.counterparty &&
+      row.approved_counterparties.length &&
+      !row.approved_counterparties.includes(action.counterparty)
+    )
+      violations.push("counterparty_not_allowed");
+    const limits = await db.query<{
+      action_exceeded: boolean;
+      daily_exceeded: boolean;
+      monthly_exceeded: boolean;
+    }>(
+      `SELECT
+         ($2::numeric IS NOT NULL AND p.max_action_amount IS NOT NULL AND $2::numeric > p.max_action_amount) AS action_exceeded,
+         ($2::numeric IS NOT NULL AND p.daily_budget IS NOT NULL AND
+           COALESCE((SELECT SUM(amount) FROM agent_account_actions WHERE agent_id=$1
+             AND decision IN ('approved', 'approval_required') AND created_at >= date_trunc('day', now())), 0) + $2::numeric > p.daily_budget) AS daily_exceeded,
+         ($2::numeric IS NOT NULL AND p.monthly_budget IS NOT NULL AND
+           COALESCE((SELECT SUM(amount) FROM agent_account_actions WHERE agent_id=$1
+             AND decision IN ('approved', 'approval_required') AND created_at >= date_trunc('month', now())), 0) + $2::numeric > p.monthly_budget) AS monthly_exceeded
+       FROM agent_account_policies p WHERE p.agent_id=$1`,
+      [c.agent_id, action.amount],
+    );
+    if (limits.rows[0]?.action_exceeded) violations.push("action_limit_exceeded");
+    if (limits.rows[0]?.daily_exceeded) violations.push("daily_budget_exceeded");
+    if (limits.rows[0]?.monthly_exceeded) violations.push("monthly_budget_exceeded");
+    const ownerRules = ownerRuleReasons(row, action.amount);
+    violations.push(...ownerRules.denied);
+    const actionDigest = agentActionDigest(c.agent_id, Number(row.version), action);
+    const result = {
+      eligible: violations.length === 0,
+      violations,
+      approvalRequired: row.approval_mode === "always" || ownerRules.review.length > 0,
+      reviewReasons: ownerRules.review,
+      policyVersion: Number(row.version),
+    };
+    const inserted = await db.query(
+      `INSERT INTO agent_account_simulations (agent_id,policy_version,action_digest,action,result,created_by,expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,now() + interval '15 minutes')
+       ON CONFLICT (action_digest) DO UPDATE SET result=EXCLUDED.result, expires_at=EXCLUDED.expires_at, created_at=now()
+       RETURNING id,action_digest,action,result,policy_version,expires_at,created_at`,
+      [
+        c.agent_id,
+        row.version,
+        actionDigest,
+        JSON.stringify(action),
+        JSON.stringify(result),
+        c.user_id,
+      ],
+    );
+    response.status(201).json({
+      data: {
+        id: inserted.rows[0].id,
+        simulationId: inserted.rows[0].id,
+        actionDigest: inserted.rows[0].action_digest,
+        action,
+        result,
+        policyVersion: Number(inserted.rows[0].policy_version),
+        expiresAt: inserted.rows[0].expires_at,
+        createdAt: inserted.rows[0].created_at,
+      },
+    });
+  }),
+);
+
+mcpInternalRouter.post(
+  "/account/authorize",
+  asyncRoute(async (request, response) => {
+    const c = await connection(request);
+    await ensureAccount(c.agent_id, c.user_id);
+    const input = mcpActionAuthorizeInput.parse(request.body);
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const state = await client.query(
+        "SELECT a.*, p.* FROM agent_accounts a JOIN agent_account_policies p ON p.agent_id=a.agent_id WHERE a.agent_id=$1 FOR UPDATE",
+        [c.agent_id],
+      );
+      const row = state.rows[0];
+      const normalizedAction = normalizeAgentAction(input);
+      let boundSimulationId: string | null = null;
+      let boundDigest: string | null = null;
+      if (!input.simulate && (row.simulation_required || input.simulationId)) {
+        if (!input.simulationId)
+          throw new ApiError(
+            400,
+            "simulation_required",
+            "Run a simulation and provide its simulationId before authorization.",
+          );
+        const simulation = await client.query<{
+          id: string;
+          action_digest: string;
+          action: Record<string, unknown>;
+          policy_version: number;
+          expires_at: Date;
+        }>(
+          "SELECT id,action_digest,action,policy_version,expires_at FROM agent_account_simulations WHERE id=$1 AND agent_id=$2 FOR UPDATE",
+          [input.simulationId, c.agent_id],
+        );
+        if (!simulation.rowCount || simulation.rows[0].expires_at <= new Date())
+          throw new ApiError(409, "simulation_expired", "The simulation is missing or expired.");
+        const expectedDigest = agentActionDigest(c.agent_id, Number(row.version), normalizedAction);
+        if (
+          simulation.rows[0].policy_version !== Number(row.version) ||
+          simulation.rows[0].action_digest !== expectedDigest
+        )
+          throw new ApiError(
+            409,
+            "simulation_mismatch",
+            "The action no longer matches its simulation and policy version.",
+          );
+        boundSimulationId = simulation.rows[0].id;
+        boundDigest = simulation.rows[0].action_digest;
+      }
+      const reasons: string[] = [];
+      if (row.status !== "active") reasons.push(`account_${row.status}`);
+      if (row.allowed_actions.length && !row.allowed_actions.includes(input.action))
+        reasons.push("action_not_allowed");
+      if (
+        input.asset &&
+        row.allowed_assets.length &&
+        !row.allowed_assets.includes(input.asset.toLowerCase())
+      )
+        reasons.push("asset_not_allowed");
+      if (
+        input.venue &&
+        row.allowed_venues.length &&
+        !row.allowed_venues.includes(input.venue.toLowerCase())
+      )
+        reasons.push("venue_not_allowed");
+      if (
+        input.counterparty &&
+        row.approved_counterparties.length &&
+        !row.approved_counterparties.includes(input.counterparty.toLowerCase())
+      )
+        reasons.push("counterparty_not_allowed");
+      const limits = await client.query<{
+        action_exceeded: boolean;
+        daily_exceeded: boolean;
+        monthly_exceeded: boolean;
+      }>(
+        `SELECT
+           ($2::numeric IS NOT NULL AND p.max_action_amount IS NOT NULL AND $2::numeric > p.max_action_amount) AS action_exceeded,
+           ($2::numeric IS NOT NULL AND p.daily_budget IS NOT NULL AND
+             COALESCE((SELECT SUM(amount) FROM agent_account_actions WHERE agent_id=$1
+               AND decision IN ('approved', 'approval_required') AND created_at >= date_trunc('day', now())), 0) + $2::numeric > p.daily_budget) AS daily_exceeded,
+           ($2::numeric IS NOT NULL AND p.monthly_budget IS NOT NULL AND
+             COALESCE((SELECT SUM(amount) FROM agent_account_actions WHERE agent_id=$1
+               AND decision IN ('approved', 'approval_required') AND created_at >= date_trunc('month', now())), 0) + $2::numeric > p.monthly_budget) AS monthly_exceeded
+         FROM agent_account_policies p WHERE p.agent_id=$1`,
+        [c.agent_id, input.amount ?? null],
+      );
+      if (limits.rows[0]?.action_exceeded) reasons.push("action_limit_exceeded");
+      if (limits.rows[0]?.daily_exceeded) reasons.push("daily_budget_exceeded");
+      if (limits.rows[0]?.monthly_exceeded) reasons.push("monthly_budget_exceeded");
+      const ownerRules = ownerRuleReasons(row, input.amount ?? null);
+      reasons.push(...ownerRules.denied, ...ownerRules.review);
+      if (row.simulation_required && !boundDigest && !input.simulationDigest && !input.simulate)
+        reasons.push("simulation_required");
+      const reviewReasons = new Set(["simulation_required", "human_approval_required"]);
+      const hardReasons = reasons.filter((reason) => !reviewReasons.has(reason));
+      const decision = input.simulate
+        ? "simulation"
+        : hardReasons.length
+          ? "denied"
+          : reasons.length || row.approval_mode === "always"
+            ? "approval_required"
+            : "approved";
+      const recorded = await client.query(
+        "INSERT INTO agent_account_actions (agent_id,action,amount,asset,venue,counterparty,decision,reasons,policy_version,simulation_digest,simulation_id,normalized_action,receipt_digest) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (simulation_id) DO NOTHING RETURNING id,created_at",
+        [
+          c.agent_id,
+          input.action,
+          input.amount ?? null,
+          input.asset?.toLowerCase() ?? null,
+          input.venue?.toLowerCase() ?? null,
+          input.counterparty?.toLowerCase() ?? null,
+          decision,
+          reasons,
+          row.version,
+          boundDigest ?? input.simulationDigest ?? null,
+          boundSimulationId,
+          JSON.stringify(normalizedAction),
+          boundDigest,
+        ],
+      );
+      if (!recorded.rowCount)
+        throw new ApiError(
+          409,
+          "simulation_already_authorized",
+          "This simulation has already been authorized.",
+        );
+      await audit(client, {
+        actorId: c.user_id,
+        action: "agent_account.action_authorized_mcp",
+        targetType: "agent_account_action",
+        targetId: recorded.rows[0].id,
+        requestId: request.requestId,
+        metadata: { agentId: c.agent_id, decision, action: input.action },
+      });
+      await client.query("COMMIT");
+      response.json({
+        data: {
+          actionId: recorded.rows[0].id,
+          accountId: c.agent_id,
+          decision,
+          reasons,
+          policyVersion: row.version,
+          simulationDigest: boundDigest ?? input.simulationDigest ?? null,
+          createdAt: recorded.rows[0].created_at,
+        },
+      });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }),
+);
+
+mcpInternalRouter.get(
+  "/account/mandates",
+  asyncRoute(async (request, response) => {
+    const c = await connection(request);
+    const result = await db.query(
+      "SELECT id,agent_id,parent_mandate_id,nonce,digest,payload,signature,status,expires_at,created_at FROM agent_mandates WHERE agent_id=$1 AND status='active' AND expires_at > now() ORDER BY created_at DESC",
+      [c.agent_id],
+    );
+    response.json({ data: result.rows });
+  }),
+);
+
+mcpInternalRouter.get(
+  "/services",
+  asyncRoute(async (request, response) => {
+    await connection(request);
+    const result = await db.query(
+      `SELECT s.id, s.agent_id, s.slug, s.name, s.description, s.service_type, s.execution_mode,
+        s.price_usd, s.sla_minutes, s.requirements_schema, s.deliverable_schema, a.name AS agent_name
+       FROM agent_services s
+       JOIN agents a ON a.id = s.agent_id
+       WHERE s.is_active = true
+       ORDER BY s.created_at DESC
+       LIMIT 50`,
+    );
+    response.json({ data: result.rows });
   }),
 );
