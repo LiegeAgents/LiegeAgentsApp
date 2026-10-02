@@ -409,7 +409,11 @@ invoicesRouter.get(
       throw new ApiError(404, "invoice_not_found", "This invoice is unavailable.");
     const invoice = await expireIfNeeded(result.rows[0]);
     const asset = (invoice.asset ?? "usdg") as SettlementAsset;
-    const invoiceAmount = Number(invoice.amount ?? invoice.amount_usdg);
+    const invoiceAmount = Number(
+      asset === "usdg"
+        ? (invoice.amount_usdg ?? invoice.amount)
+        : (invoice.amount ?? invoice.amount_usdg),
+    );
     response.json({
       data: {
         ...publicInvoice(invoice),
@@ -470,7 +474,10 @@ invoicesRouter.post(
       if (invoice.issuer_id === request.auth!.userId)
         throw new ApiError(422, "self_payment", "The invoice issuer cannot pay their own invoice.");
       const asset = (invoice.asset ?? "usdg") as SettlementAsset;
-      const invoiceAmount = invoice.amount ?? invoice.amount_usdg ?? "0";
+      const invoiceAmount =
+        asset === "usdg"
+          ? (invoice.amount_usdg ?? invoice.amount ?? "0")
+          : (invoice.amount ?? invoice.amount_usdg ?? "0");
       const from = await userBalance(client, request.auth!.userId, "available", asset);
       const to = await userBalance(client, invoice.issuer_id, "available", asset);
       const transactionId = await transfer(client, {
@@ -567,7 +574,11 @@ invoicesRouter.post(
       const asset = (invoice.asset ?? "usdg") as SettlementAsset;
       const decimals = ASSET_DECIMALS[asset] ?? 6;
       const totalUnits = decimalUnits(
-        String(invoice.amount ?? invoice.amount_usdg ?? "0"),
+        String(
+          asset === "usdg"
+            ? (invoice.amount_usdg ?? invoice.amount ?? "0")
+            : (invoice.amount ?? invoice.amount_usdg ?? "0"),
+        ),
         decimals,
       );
       const refundedUnits = decimalUnits(
