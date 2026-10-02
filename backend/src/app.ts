@@ -29,6 +29,7 @@ export const healthPayload = () => ({
   commit: process.env.GIT_SHA || undefined,
 });
 const cliInstaller = await Bun.file(new URL("../install.sh", import.meta.url)).text();
+const liegeSkill = await Bun.file(new URL("../skill.md", import.meta.url)).text();
 app.disable("x-powered-by");
 app.set("trust proxy", parseTrustProxy(env.TRUST_PROXY));
 // Before body parsing, so even a malformed-body error carries a request id.
@@ -38,6 +39,9 @@ app.use(rateLimit);
 app.get("/health", (_request, response) => response.json(healthPayload()));
 app.get("/install.sh", (_request, response) => {
   response.type("application/x-sh").set("cache-control", "no-store").send(cliInstaller);
+});
+app.get("/skill.md", (_request, response) => {
+  response.type("text/markdown").set("cache-control", "public, max-age=300").send(liegeSkill);
 });
 app.get("/health/config", (_request, response) =>
   response.json({

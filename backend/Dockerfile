@@ -17,6 +17,7 @@ COPY package.json tsconfig.json ./
 COPY src ./src
 COPY db ./db
 COPY install.sh ./install.sh
+COPY skill.md ./skill.md
 EXPOSE 3001
 USER bun
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s \
