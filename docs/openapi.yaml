@@ -30,6 +30,17 @@ paths:
             text/plain:
               schema: { type: string }
 
+  /skill.md:
+    get:
+      operationId: liegeAgentSkill
+      summary: Public agent instructions for operating with Liege.
+      responses:
+        "200":
+          description: Markdown skill document.
+          content:
+            text/markdown:
+              schema: { type: string }
+
   /health:
     get:
       operationId: health
