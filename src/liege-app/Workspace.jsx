@@ -75,7 +75,7 @@ export default function Workspace() {
   const wallet = useWallet();
   const [liveAgents, setLiveAgents] = useState([]),
     [liveJobs, setLiveJobs] = useState([]),
-    [attention, setAttention] = useState({ invoices: [], evaluations: [] }),
+    [attention, setAttention] = useState({ invoices: [], evaluations: [], accounts: [] }),
     [activity, setActivity] = useState([]),
     [apiError, setApiError] = useState(""),
     [loadingLive, setLoadingLive] = useState(false);
@@ -90,18 +90,20 @@ export default function Workspace() {
       if (wallet.apiSession) {
         const jobs = await api.jobs("cookie");
         setLiveJobs((jobs.data || []).map(jobForDisplay));
-        const [invoices, evaluations, ledger] = await Promise.allSettled([
+        const [invoices, evaluations, ledger, accounts] = await Promise.allSettled([
           api.invoices("cookie"),
           api.evaluationTasks("cookie"),
           api.ledger("cookie"),
+          api.agentAccounts("cookie"),
         ]);
         setAttention({
           invoices: invoices.status === "fulfilled" ? invoices.value.data || [] : [],
           evaluations: evaluations.status === "fulfilled" ? evaluations.value.data || [] : [],
+          accounts: accounts.status === "fulfilled" ? accounts.value.data || [] : [],
         });
         setActivity(ledger.status === "fulfilled" ? ledger.value.data || [] : []);
       } else {
-        setAttention({ invoices: [], evaluations: [] });
+        setAttention({ invoices: [], evaluations: [], accounts: [] });
         setActivity([]);
       }
     } catch (e) {
