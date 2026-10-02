@@ -133,4 +133,3 @@ class McpClient:
         if isinstance(value, dict) and "services" in value:
             return value["services"]
         return value if isinstance(value, list) else []
-
