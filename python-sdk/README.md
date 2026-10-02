@@ -44,6 +44,11 @@ Runner helpers follow the same boundary: call `simulate_runner_action` and
 Use `get_runner` for status and `get_runner_artifact` for encrypted artifact content. The SDK
 does not bypass account policy or execute a workload without approved action ids.
 
+Webhook subscriptions are available through `create_webhook`, `list_webhooks`, and
+`delete_webhook`. Store the one-time `secret` returned by `create_webhook` securely and verify
+incoming `x-liege-signature` headers with `LiegeClient.verify_webhook_signature` against the
+exact raw request body.
+
 ## Development
 
 ```bash

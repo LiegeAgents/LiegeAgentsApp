@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import hmac
 import json
 import time
 from collections.abc import Callable, Iterator
@@ -15,7 +16,7 @@ from .errors import LiegeAPIError
 from .models import (
     AgentAccount, AgentActionAuthorization, AgentActionInput, AgentActionSimulation, AgentControlResult,
     AgentMandate, AgentPolicyInput, Invoice, InvoiceRefund, Job, JobEvent, Receipt, Service, ServiceType, Session,
-    RunnerInput, RunnerResult, RunnerArtifact, McpHarnessPreset, McpHarnessPresetsResponse,
+    RunnerInput, RunnerResult, RunnerArtifact, McpHarnessPreset, McpHarnessPresetsResponse, WebhookCreateInput, WebhookSubscription,
 )
 
 
@@ -246,6 +247,27 @@ class LiegeClient:
 
     def get_runner_artifact(self, run_id: str, artifact_id: str) -> RunnerArtifact:
         return RunnerArtifact.from_dict(self._request("GET", f"/v1/runners/{run_id}/artifacts/{artifact_id}"))
+
+    def list_webhooks(self) -> list[WebhookSubscription]:
+        return [WebhookSubscription.from_dict(item) for item in self._request("GET", "/v1/webhooks")]
+
+    def create_webhook(self, input: WebhookCreateInput) -> WebhookSubscription:
+        return WebhookSubscription.from_dict(self._request("POST", "/v1/webhooks", json=dict(input)))
+
+    def delete_webhook(self, webhook_id: str) -> None:
+        self._request("DELETE", f"/v1/webhooks/{webhook_id}")
+
+    @staticmethod
+    def verify_webhook_signature(payload: str | bytes, signature: str, secret: str) -> bool:
+        """Verify the exact request body against x-liege-signature (sha256=<hex>)."""
+        if not signature.lower().startswith("sha256="):
+            return False
+        expected = signature[7:]
+        if len(expected) != 64:
+            return False
+        body = payload.encode() if isinstance(payload, str) else payload
+        actual = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(actual.lower(), expected.lower())
 
     def request_x402(self, url: str, signer: X402Signer, method: str = "GET", **kwargs: Any) -> httpx.Response:
         """Request an x402 resource and retry once with an app-signed payment authorization.

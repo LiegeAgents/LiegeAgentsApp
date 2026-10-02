@@ -31,6 +31,10 @@ import {
   type X402PaymentRequired,
   type X402Signer,
   type EventStreamOptions,
+  type WebhookCreateInput,
+  type WebhookCreated,
+  type WebhookEventType,
+  type WebhookSubscription,
 } from "./types.js";
 
 export interface LiegeClientOptions { baseUrl?: string; token?: string; fetch?: typeof globalThis.fetch; }
@@ -68,6 +72,18 @@ export class LiegeClient {
   refundInvoice(id: string, input?: RefundInvoiceInput): Promise<Invoice> { return this.call(`/v1/invoices/${encodeURIComponent(id)}/refund`, { method: "POST", body: input }); }
   listInvoiceRefunds(id: string): Promise<InvoiceRefund[]> { return this.call(`/v1/invoices/${encodeURIComponent(id)}/refunds`); }
   cancelInvoice(id: string): Promise<Invoice> { return this.call(`/v1/invoices/${encodeURIComponent(id)}/cancel`, { method: "POST" }); }
+  listWebhooks(): Promise<WebhookSubscription[]> { return this.call<Record<string, unknown>[]>("/v1/webhooks").then((items) => items.map((item) => this.mapWebhook(item))); }
+  createWebhook(input: WebhookCreateInput): Promise<WebhookCreated> { return this.call<Record<string, unknown>>("/v1/webhooks", { method: "POST", body: input }).then((item) => ({ ...this.mapWebhook(item), secret: String(item.secret) })); }
+  async deleteWebhook(id: string): Promise<void> { await this.call(`/v1/webhooks/${encodeURIComponent(id)}`, { method: "DELETE" }); }
+  /** Verify the exact request body against x-liege-signature (sha256=<hex>). */
+  async verifyWebhookSignature(payload: string | ArrayBuffer, signature: string, secret: string): Promise<boolean> {
+    const expected = /^sha256=([a-f0-9]{64})$/i.exec(signature)?.[1];
+    if (!expected) return false;
+    const bytes = typeof payload === "string" ? new TextEncoder().encode(payload) : new Uint8Array(payload);
+    const key = await globalThis.crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+    const expectedBytes = new Uint8Array(expected.match(/.{2}/g)!.map((value) => Number.parseInt(value, 16)));
+    return globalThis.crypto.subtle.verify("HMAC", key, expectedBytes, bytes);
+  }
 
   listReceipts(options: { format: "otel"; limit?: number }): Promise<OtelTraceExport>;
   listReceipts(options?: { format?: "json"; limit?: number }): Promise<Receipt[]>;
@@ -263,6 +279,9 @@ export class LiegeClient {
       requirementsSchema: (value.requirementsSchema ?? value.requirements_schema ?? {}) as Record<string, unknown>,
       deliverableSchema: (value.deliverableSchema ?? value.deliverable_schema ?? {}) as Record<string, unknown>,
     };
+  }
+  private mapWebhook(value: Record<string, unknown>): WebhookSubscription {
+    return { ...value, id: String(value.id), agentId: String(value.agentId ?? value.agent_id), url: String(value.url), eventTypes: (value.eventTypes ?? value.event_types ?? []) as WebhookEventType[], active: Boolean(value.active), createdAt: (value.createdAt ?? value.created_at) as string | undefined, updatedAt: (value.updatedAt ?? value.updated_at) as string | undefined };
   }
   private mapAccount(value: Record<string, unknown>): AgentAccount {
     const policy = value.policy as Record<string, unknown> | null | undefined;

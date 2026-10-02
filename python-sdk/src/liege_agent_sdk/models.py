@@ -35,6 +35,12 @@ class AgentActionInput(TypedDict, total=False):
     simulate: bool
 
 RunnerCommand = Literal["node", "bun", "python", "python3"]
+WebhookEventType = Literal["job.funded", "job.submitted", "job.completed", "job.rejected", "job.expired", "job.settled", "invoice.created", "invoice.paid", "invoice.refunded", "invoice.partially_refunded", "invoice.cancelled", "invoice.expired"]
+
+class WebhookCreateInput(TypedDict, total=False):
+    agentId: str
+    url: str
+    eventTypes: list[WebhookEventType]
 
 class RunnerInput(TypedDict, total=False):
     agentId: str
@@ -301,6 +307,20 @@ class RunnerResult:
     def from_dict(cls, value: dict[str, Any]) -> "RunnerResult":
         return cls(str(value["id"]), str(value.get("status", "")), [RunnerArtifact.from_dict(item) for item in value.get("artifacts", [])], value)
 
+@dataclass(frozen=True)
+class WebhookSubscription:
+    id: str
+    agent_id: str
+    url: str
+    event_types: list[str]
+    active: bool
+    secret: str | None
+    raw: dict[str, Any]
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "WebhookSubscription":
+        return cls(str(value["id"]), str(value.get("agentId", value.get("agent_id", ""))), str(value["url"]), list(value.get("eventTypes", value.get("event_types", []))), bool(value.get("active", False)), value.get("secret"), value)
+
 
 @dataclass(frozen=True)
 class Receipt:
@@ -412,4 +432,3 @@ class McpHarnessPresetsResponse:
             connection_name=value.get("connectionName", value.get("connection_name")),
             raw=value,
         )
-
