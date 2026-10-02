@@ -29,6 +29,26 @@ describe("LiegeClient", () => {
     expect(events).toEqual([{ id: "1", event: "job", data: { id: "job-1" } }]);
   });
 
+  test("reconnects with Last-Event-ID and deduplicates replayed events", async () => {
+    let calls = 0;
+    const client = new LiegeClient({ fetch: async (input, init) => {
+      calls++;
+      const url = new URL(String(input));
+      if (calls === 1) {
+        expect(url.searchParams.get("after")).toBe("1");
+        expect(new Headers(init?.headers).get("Last-Event-ID")).toBe("1");
+        return new Response('id: 1\nevent: job.funded\ndata: {"jobId":"j1"}\n\n');
+      }
+      return new Response('id: 1\nevent: job.funded\ndata: {"jobId":"j1"}\n\nid: 2\nevent: job.completed\ndata: {"jobId":"j1"}\n\n');
+    } });
+    const stream = client.streamEvents("agent-1", { after: "1", maxRetries: 1, backoffMs: 0 });
+    const first = await stream.next();
+    const second = await stream.next();
+    await stream.return?.();
+    expect([first.value.id, second.value.id]).toEqual(["1", "2"]);
+    expect(calls).toBe(2);
+  });
+
   test("creates an invoice through the authenticated API client", async () => {
     const client = new LiegeClient({ token: "session", fetch: async (_input, init) => {
       expect(init?.headers).toMatchObject({ Authorization: "Bearer session" });

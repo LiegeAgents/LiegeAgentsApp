@@ -8,6 +8,7 @@ import {
   type X402PaymentPayload,
   type X402PaymentRequired,
   type X402Signer,
+  type EventStreamOptions,
 } from "./types.js";
 
 export interface LiegeClientOptions { baseUrl?: string; token?: string; fetch?: typeof globalThis.fetch; }
@@ -59,9 +60,45 @@ export class LiegeClient {
     return this.request(input, { ...init, headers });
   }
 
-  async *iterEvents(agentId: string, since?: Date): AsyncGenerator<JobEvent> {
-    const url = new URL(`/v1/webhooks/stream/${encodeURIComponent(agentId)}`, this.baseUrl); if (since) url.searchParams.set("since", since.toISOString());
-    const response = await this.request(url, { headers: this.headers() }); if (!response.ok || !response.body) throw new LiegeAPIError("Unable to open the event stream", response.status);
+  async *iterEvents(agentId: string, sinceOrOptions?: Date | EventStreamOptions): AsyncGenerator<JobEvent> {
+    const options = sinceOrOptions instanceof Date ? { since: sinceOrOptions } : (sinceOrOptions ?? {});
+    yield* this.readEvents(agentId, options);
+  }
+
+  async *streamEvents(agentId: string, options: EventStreamOptions = {}): AsyncGenerator<JobEvent> {
+    let cursor = options.after;
+    let retries = 0;
+    const seen = new Set<string>();
+    for (;;) {
+      try {
+        for await (const event of this.readEvents(agentId, { ...options, after: cursor, since: cursor ? undefined : options.since })) {
+          if (event.id && seen.has(event.id)) continue;
+          if (event.id) {
+            seen.add(event.id);
+            if (seen.size > 2048) seen.delete(seen.values().next().value as string);
+            cursor = event.id;
+          }
+          yield event;
+        }
+        retries = 0;
+        if (options.maxRetries === 0) return;
+      } catch (error) {
+        if (error instanceof LiegeAPIError && error.status < 500) throw error;
+        if (options.maxRetries !== undefined && retries >= options.maxRetries) throw error;
+      }
+      retries++;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(30_000, (options.backoffMs ?? 1_000) * 2 ** Math.min(retries - 1, 5))));
+    }
+  }
+
+  private async *readEvents(agentId: string, options: Pick<EventStreamOptions, "after" | "since">): AsyncGenerator<JobEvent> {
+    const url = new URL(`/v1/webhooks/stream/${encodeURIComponent(agentId)}`, this.baseUrl);
+    if (options.after) url.searchParams.set("after", options.after);
+    else if (options.since) url.searchParams.set("since", options.since.toISOString());
+    const headers = new Headers(this.headers());
+    if (options.after) headers.set("Last-Event-ID", options.after);
+    const response = await this.request(url, { headers });
+    if (!response.ok || !response.body) throw new LiegeAPIError("Unable to open the event stream", response.status);
     const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ""; let id = ""; let event = "message"; let data: string[] = [];
     const processLine = (raw: string): JobEvent | undefined => { const line = raw.replace(/\r$/, ""); if (!line.trim()) { if (!data.length) return; const parsed = { id, event, data: JSON.parse(data.join("\n")) }; id = ""; event = "message"; data = []; return parsed; } const [field, ...rest] = line.split(":"); const value = rest.join(":").trimStart(); if (field === "id") id = value; else if (field === "event") event = value; else if (field === "data") data.push(value); };
     try {

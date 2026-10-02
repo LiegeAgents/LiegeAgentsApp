@@ -46,3 +46,25 @@ def test_x402_does_not_forward_liege_token_to_external_resource():
                      client=httpx.Client(transport=httpx.MockTransport(handler))) as client:
         response = client.request_x402("https://merchant.test/resource", lambda _: {"payload": "signed"})
         assert response.json() == {"ok": True}
+
+
+def test_event_stream_reconnects_with_cursor_and_deduplicates():
+    calls: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        if len(calls) == 1:
+            return httpx.Response(200, text='id: 1\nevent: job.funded\ndata: {"jobId":"j1"}\n\n')
+        return httpx.Response(
+            200,
+            text='id: 1\nevent: job.funded\ndata: {"jobId":"j1"}\n\nid: 2\nevent: job.completed\ndata: {"jobId":"j1"}\n\n',
+        )
+
+    with LiegeClient("https://api.test", client=httpx.Client(transport=httpx.MockTransport(handler))) as client:
+        stream = client.stream_events("agent-1", max_retries=1, backoff_seconds=0)
+        first, second = next(stream), next(stream)
+        stream.close()
+
+    assert [first.id, second.id] == ["1", "2"]
+    assert calls[1].url.params["after"] == "1"
+    assert calls[1].headers["last-event-id"] == "1"

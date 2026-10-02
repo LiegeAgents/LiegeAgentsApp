@@ -19,3 +19,7 @@ For experimental x402 resources, `requestX402(url, signer)` performs the 402 han
 receives decoded `PAYMENT-REQUIRED` terms and returns either an encoded `PAYMENT-SIGNATURE` or the
 payment payload object. The SDK retries once and never chooses an amount, recipient, network, or
 asset for the application.
+
+For durable job events, persist each `JobEvent.id` after processing and reconnect with
+`client.streamEvents(agentId, { after: cursor })`. The SDK sends both `Last-Event-ID` and
+`?after=` and deduplicates replayed events. `iterEvents` remains available for a single connection.

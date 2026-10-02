@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import time
 from collections.abc import Callable, Iterator
 from datetime import datetime
 from typing import Any
@@ -126,10 +127,70 @@ class LiegeClient:
         headers["PAYMENT-SIGNATURE"] = signed if isinstance(signed, str) else encode_x402_json(signed)
         return self._http.request(method, url, headers=headers, **kwargs)
 
-    def iter_events(self, agent_id: str, since: datetime | None = None) -> Iterator[JobEvent]:
-        params = {"since": since.isoformat()} if since else {}
-        with self._http.stream("GET", f"{self.base_url}/v1/webhooks/stream/{agent_id}",
-                               headers=self._headers(), params=params) as response:
+    def iter_events(
+        self, agent_id: str, since: datetime | None = None, after: str | None = None
+    ) -> Iterator[JobEvent]:
+        """Read one SSE connection.
+
+        ``after`` is the durable event cursor returned as ``JobEvent.id``. The
+        older ``since`` timestamp remains available for compatibility, but new
+        consumers should persist and pass ``after``.
+        """
+        yield from self._event_connection(agent_id, since=since, after=after)
+
+    def stream_events(
+        self,
+        agent_id: str,
+        *,
+        after: str | None = None,
+        since: datetime | None = None,
+        max_retries: int | None = None,
+        backoff_seconds: float = 1.0,
+    ) -> Iterator[JobEvent]:
+        """Stream events with durable cursor recovery and bounded reconnects.
+
+        The cursor is sent as both ``Last-Event-ID`` and ``?after=``. Events
+        with an already-seen id are discarded after reconnecting. Persist each
+        yielded event id in the application after processing the event.
+        """
+        cursor = after
+        retries = 0
+        seen: set[str] = set()
+        while True:
+            try:
+                for event in self._event_connection(agent_id, since=since if cursor is None else None, after=cursor):
+                    if event.id and event.id in seen:
+                        continue
+                    if event.id:
+                        seen.add(event.id)
+                        if len(seen) > 2048:
+                            seen = set(list(seen)[-1024:])
+                        cursor = event.id
+                    yield event
+                retries = 0
+                since = None
+                if max_retries == 0:
+                    return
+            except (httpx.HTTPError, LiegeAPIError) as error:
+                if isinstance(error, LiegeAPIError) and error.status < 500:
+                    raise
+                if max_retries is not None and retries >= max_retries:
+                    raise
+            retries += 1
+            time.sleep(min(30.0, backoff_seconds * (2 ** min(retries - 1, 5))))
+
+    def _event_connection(
+        self, agent_id: str, *, since: datetime | None = None, after: str | None = None
+    ) -> Iterator[JobEvent]:
+        params: dict[str, str] = {}
+        if after is not None:
+            params["after"] = after
+        elif since is not None:
+            params["since"] = since.isoformat()
+        headers = self._headers()
+        if after is not None:
+            headers["Last-Event-ID"] = after
+        with self._http.stream("GET", f"{self.base_url}/v1/webhooks/stream/{agent_id}", headers=headers, params=params) as response:
             if response.is_error:
                 raise LiegeAPIError("Unable to open the event stream", response.status_code)
             event_id = ""
@@ -138,7 +199,6 @@ class LiegeClient:
             for line in response.iter_lines():
                 if not line:
                     if data:
-                        import json
                         yield JobEvent(event_id, event_type, json.loads("\n".join(data)))
                     event_id, event_type, data = "", "message", []
                     continue

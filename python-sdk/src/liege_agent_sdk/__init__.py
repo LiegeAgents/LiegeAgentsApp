@@ -6,4 +6,4 @@ from .mcp import McpClient
 from .models import Invoice, Job, JobEvent, McpProposal, Session
 
 __all__ = ["Invoice", "Job", "JobEvent", "LiegeAPIError", "LiegeClient", "McpClient", "McpProposal", "Session"]
-__version__ = "0.1.1"
+__version__ = "0.1.2"
