@@ -66,6 +66,14 @@ runnersRouter.get(
        LIMIT 50`,
       [request.auth!.userId],
     );
+    await audit(db, {
+      actorId: request.auth!.userId,
+      action: "runner.list_read",
+      targetType: "execution_runs",
+      targetId: request.auth!.userId,
+      requestId: request.requestId,
+      metadata: { count: result.rowCount },
+    });
     response.json({ data: result.rows });
   }),
 );
