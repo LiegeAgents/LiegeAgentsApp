@@ -24,6 +24,7 @@ import {
   Globe,
   Activity,
   ReceiptText,
+  AlertCircle,
 } from "lucide-react";
 import { Brand, AgentIcon } from "./ProductArt";
 import { Button, Status, Empty, Modal, Field, Notice, SectionHeading } from "./UI";
@@ -74,6 +75,7 @@ export default function Workspace() {
   const wallet = useWallet();
   const [liveAgents, setLiveAgents] = useState([]),
     [liveJobs, setLiveJobs] = useState([]),
+    [attention, setAttention] = useState({ invoices: [], evaluations: [] }),
     [apiError, setApiError] = useState(""),
     [loadingLive, setLoadingLive] = useState(false);
   const allAgents = liveAgents;
@@ -87,6 +89,16 @@ export default function Workspace() {
       if (wallet.apiSession) {
         const jobs = await api.jobs("cookie");
         setLiveJobs((jobs.data || []).map(jobForDisplay));
+        const [invoices, evaluations] = await Promise.allSettled([
+          api.invoices("cookie"),
+          api.evaluationTasks("cookie"),
+        ]);
+        setAttention({
+          invoices: invoices.status === "fulfilled" ? invoices.value.data || [] : [],
+          evaluations: evaluations.status === "fulfilled" ? evaluations.value.data || [] : [],
+        });
+      } else {
+        setAttention({ invoices: [], evaluations: [] });
       }
     } catch (e) {
       setApiError(e?.message || "Could not reach the Liege API.");
@@ -316,6 +328,7 @@ export default function Workspace() {
               state={{ ...state, jobs: allJobs }}
               agents={allAgents}
               account={wallet.apiSession}
+              attention={attention}
               onCreate={() => draftFor()}
               onJob={(j) => setModal({ type: "job", id: j.id })}
               onAgent={(a) => {

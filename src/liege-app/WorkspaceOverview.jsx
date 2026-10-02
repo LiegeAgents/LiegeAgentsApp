@@ -1,5 +1,5 @@
 import React,{useMemo} from 'react'
-import {ArrowRight,ArrowUpRight,Plus,BriefcaseBusiness,ShieldCheck,Wallet,Bookmark,Clock} from 'lucide-react'
+import {ArrowRight,ArrowUpRight,Plus,BriefcaseBusiness,ShieldCheck,Wallet,Bookmark,Clock,AlertCircle,ReceiptText,Activity} from 'lucide-react'
 import {AgentIcon} from './ProductArt'
 import {Button,Empty,Status} from './UI'
 import {money} from './data'
@@ -7,7 +7,7 @@ import {money} from './data'
 const activeStatuses=new Set(['Open','Funded','Submitted'])
 const shortDate=value=>value?new Date(value).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'—'
 
-export default function WorkspaceOverview({state,agents,account,onCreate,onJob,onAgent,onHire,navigate,onSaved}){
+export default function WorkspaceOverview({state,agents,account,attention={invoices:[],evaluations:[]},onCreate,onJob,onAgent,onHire,navigate,onSaved}){
  const jobs=state.jobs||[]
  const active=jobs.filter(job=>activeStatuses.has(job.status))
  const completed=jobs.filter(job=>job.status==='Completed')
@@ -16,6 +16,10 @@ export default function WorkspaceOverview({state,agents,account,onCreate,onJob,o
  const escrowLiege=active.filter(job=>String(job.asset||'usdg').toLowerCase()==='liege').reduce((total,job)=>total+Number(job.budget||0),0)
  const availableUsdg=Number(account?.balances?.availableUsdg||0)
  const availableLiege=Number(account?.balances?.availableLiege||0)
+ const attentionItems=[
+  ...attention.invoices.filter(invoice=>invoice.status==='issued' && new Date(invoice.expiresAt||0).getTime()-Date.now()<7*864e5).map(invoice=>({type:'invoice',label:'Invoice expires soon',title:invoice.description||invoice.publicId,meta:`${Number(invoice.amount??invoice.amountUsdg??0).toLocaleString()} ${(invoice.asset||'usdg').toUpperCase()}`,action:()=>navigate('invoices'),Icon:ReceiptText})),
+  ...attention.evaluations.filter(task=>['assigned','submitted'].includes(String(task.status).toLowerCase())).map(task=>({type:'evaluation',label:'Evaluation needs review',title:task.title||task.job_title||'Assigned evaluation',meta:String(task.status).replace(/^./,x=>x.toUpperCase()),action:()=>navigate('evaluations'),Icon:Activity})),
+ ]
  const metrics=[
   {label:'Active jobs',value:active.length,detail:'Open, funded, or in review',Icon:BriefcaseBusiness,action:()=>navigate('jobs')},
   {label:'Escrowed',value:money(escrow),unit:'USDG / LIEGE',detail:'Across active jobs',Icon:Wallet,action:()=>navigate('jobs')},
@@ -26,6 +30,7 @@ export default function WorkspaceOverview({state,agents,account,onCreate,onJob,o
  return <div className="overview-premium">
   <div className="overview-heading"><div><span className="eyebrow"><span/> WORKSPACE / OVERVIEW</span><h1>Your work, in motion<span>.</span></h1><p>Live jobs, agents, and balances from your Liege account.</p></div><div className="overview-heading-actions"><span className="overview-date"><Clock size={12}/>{new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</span><div><Button secondary onClick={()=>navigate('agents')}>Explore agents <ArrowUpRight size={14}/></Button><Button onClick={onCreate}><Plus size={15}/>Create a job</Button></div></div></div>
   <div className="premium-metrics">{metrics.map(({label,value,unit,detail,Icon,action},index)=><section className="premium-surface premium-metric" key={label}><div className="metric-label"><span>{label}</span><Icon size={15}/></div><button className="metric-value" onClick={action}>{value}<small>{unit}</small><ArrowUpRight size={16}/></button><div className="metric-bottom"><span><i/> {detail}</span><span className="metric-number">0{index+1}</span></div></section>)}</div>
+  {attentionItems.length>0&&<section className="premium-surface attention-panel"><div className="premium-panel-head"><div><span className="panel-overline">ACTION QUEUE</span><h2>Needs your attention <span>{attentionItems.length}</span></h2></div><AlertCircle size={17} className="attention-icon"/></div><div className="attention-list">{attentionItems.slice(0,4).map((item,index)=><button className="attention-row" key={`${item.type}-${index}`} onClick={item.action}><span className="attention-row-icon"><item.Icon size={15}/></span><span><strong>{item.title}</strong><small>{item.label} · {item.meta}</small></span><ArrowRight size={14}/></button>)}</div>{attentionItems.length>4&&<button className="attention-more" onClick={()=>navigate('invoices')}>View all actions <ArrowUpRight size={13}/></button>}</section>}
   <div className="overview-columns"><div className="overview-primary">
    <section className="premium-surface work-ledger"><div className="premium-panel-head"><div><span className="panel-overline">LIVE JOBS</span><h2>Your job desk <span>{jobs.length}</span></h2></div><button className="subtle-link" onClick={()=>navigate('jobs')}>View all <ArrowUpRight size={14}/></button></div><div className="premium-job-list">{recent.length?recent.map(job=>{const agent=agents.find(value=>value.id===job.agent);return <button className="premium-job-row" key={job.id} onClick={()=>onJob(job)}><AgentIcon agent={agent} size={21}/><span className="premium-job-title"><strong>{job.title}</strong><small>{agent?.name||job.agent}<i/> {job.id}</small></span><span className="premium-job-progress"><Status value={job.status}/></span><span className="premium-job-budget"><b>{money(job.budget)} <small>{String(job.asset || "usdg").toUpperCase()}</small></b><span>Due {shortDate(job.deadline)}</span></span><ArrowRight size={14}/></button>}):<Empty title="No live jobs yet" action={<Button onClick={onCreate}>Create a job</Button>}>Publish or select an active marketplace agent to begin.</Empty>}</div></section>
   </div><div className="overview-secondary"><section className="premium-surface escrow-overview"><div className="premium-panel-head"><div><span className="panel-overline">ACCOUNT</span><h2>Balances & escrow</h2></div><ShieldCheck size={17} className="balance-shield"/></div><div className="asset-balance-grid"><div className="asset-balance-card"><span className="asset-balance-label"><i className="asset-dot usdg"/>USDG</span><strong>{money(availableUsdg)}</strong><small>Available balance</small><span className="asset-balance-escrow">{money(escrowUsdg)} escrowed</span></div><div className="asset-balance-card"><span className="asset-balance-label"><i className="asset-dot liege"/>LIEGE</span><strong>{money(availableLiege)}</strong><small>Available balance</small><span className="asset-balance-escrow">{money(escrowLiege)} escrowed</span></div></div><div className="escrow-note"><ShieldCheck size={13}/><span>Balances are read from your signed Liege account.</span></div></section></div></div>
