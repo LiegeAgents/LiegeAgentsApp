@@ -22,7 +22,13 @@ Usage:
   liege health
   liege upgrade [latest|<version>]
   liege agents list
-  liege jobs list
+  liege jobs list [--status <status>] [--limit <n>]
+  liege jobs get <job-id>
+  liege jobs simulate '<json-job>'
+  liege jobs funding-quote <job-id>
+  liege jobs fund <job-id> [--quote-id <id>] [--gas-tx-hash <hash>] [--token-tx-hash <hash>] [--usdg-tx-hash <hash>]
+  liege jobs submit <job-id> '<json-deliverable>'
+  liege jobs evaluate <job-id> '<json-decision>'
   liege runner simulate <agent-id> '<json-workload>'
   liege runner authorize <agent-id> '<json-workload>' --simulation-id <id>
   liege runner execute '<json-workload>' --action-id <id> --simulation-id <id>
@@ -212,7 +218,49 @@ export async function execute(args: string[]): Promise<unknown> {
   if (resource === "health") return request("/health", {}, false);
   if (resource === "upgrade") return upgrade(id ?? "latest");
   if (resource === "agents" && action === "list") return request("/v1/agents");
-  if (resource === "jobs" && action === "list") return request("/v1/jobs");
+  if (resource === "jobs" && action === "list") {
+    const query = new URLSearchParams();
+    if (flags.status) query.set("status", flags.status);
+    if (flags.limit) query.set("limit", flags.limit);
+    const suffix = query.toString() ? `?${query}` : "";
+    return request(`/v1/jobs${suffix}`);
+  }
+  if (resource === "jobs" && action === "get" && id)
+    return request(`/v1/jobs/${encodeURIComponent(id)}`);
+  if (resource === "jobs" && action === "simulate") {
+    const input = jsonArgument(id, "job");
+    return request("/v1/jobs/simulate", { method: "POST", body: JSON.stringify(input) });
+  }
+  if (resource === "jobs" && action === "funding-quote" && id)
+    return request(`/v1/jobs/${encodeURIComponent(id)}/funding-quote`, { method: "POST" });
+  if (resource === "jobs" && action === "fund" && id) {
+    const body = Object.fromEntries(
+      Object.entries({
+        quoteId: flags["quote-id"] ?? flags.quoteId,
+        tokenTxHash: flags["token-tx-hash"] ?? flags.tokenTxHash,
+        usdgTxHash: flags["usdg-tx-hash"] ?? flags.usdgTxHash,
+        gasTxHash: flags["gas-tx-hash"] ?? flags.gasTxHash,
+      }).filter(([, value]) => value),
+    );
+    return request(`/v1/jobs/${encodeURIComponent(id)}/fund`, {
+      method: "POST",
+      ...(Object.keys(body).length ? { body: JSON.stringify(body) } : {}),
+    });
+  }
+  if (resource === "jobs" && action === "submit" && id) {
+    const input = jsonArgument(positional[3], "deliverable");
+    return request(`/v1/jobs/${encodeURIComponent(id)}/submit`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  }
+  if (resource === "jobs" && action === "evaluate" && id) {
+    const input = jsonArgument(positional[3], "evaluation decision");
+    return request(`/v1/jobs/${encodeURIComponent(id)}/evaluate`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  }
   if (resource === "runner" || resource === "runners") {
     if (action === "simulate" && id) {
       const input = jsonArgument(positional[3], "runner workload");

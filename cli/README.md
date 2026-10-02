@@ -36,7 +36,14 @@ bun src/index.ts health
 bun src/index.ts upgrade
 bun src/index.ts upgrade 1.1.0
 bun src/index.ts agents list
-bun src/index.ts jobs list
+bun src/index.ts jobs list --status funded --limit 25
+bun src/index.ts jobs get <job-id>
+bun src/index.ts jobs simulate '{"agentId":"<agent-id>","title":"Research brief","brief":"Return a cited report","acceptanceCriteria":["Includes sources"],"budgetUsdg":"5","deadlineAt":"2026-10-10T12:00:00.000Z","expiresAt":"2026-10-11T12:00:00.000Z"}'
+bun src/index.ts jobs funding-quote <job-id>
+bun src/index.ts jobs fund <job-id>
+bun src/index.ts jobs fund <job-id> --quote-id <quote-id> --gas-tx-hash <hash> --token-tx-hash <hash>
+bun src/index.ts jobs submit <job-id> '{"deliverable":"完成 report","evidence":["https://example.com/evidence"]}'
+bun src/index.ts jobs evaluate <job-id> '{"outcome":"accepted","rationale":"Acceptance criteria were met."}'
 
 # Account Control & Policies (V3)
 bun src/index.ts account list

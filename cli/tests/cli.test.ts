@@ -344,3 +344,76 @@ describe("CLI runner and proposal controls", () => {
     expect(result.timedOut).toBe(false);
   });
 });
+
+describe("CLI job lifecycle commands", () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = { ...process.env };
+  let capturedRequests: Array<{ url: string; method: string; body?: unknown }> = [];
+
+  beforeEach(() => {
+    capturedRequests = [];
+    process.env.LIEGE_SESSION_TOKEN = "test-session-token";
+    process.env.LIEGE_API_URL = "https://api.liegeagents.com";
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      capturedRequests.push({
+        url: String(input),
+        method: init?.method ?? "GET",
+        body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      });
+      return new Response(JSON.stringify({ data: { ok: true } }), { status: 200 });
+    }) as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    process.env = { ...originalEnv };
+  });
+
+  test("lists and fetches jobs with filters", async () => {
+    const jobId = "550e8400-e29b-41d4-a716-446655440000";
+    await execute(["jobs", "list", "--status", "funded", "--limit", "25"]);
+    await execute(["jobs", "get", jobId]);
+    expect(capturedRequests.map((request) => request.url)).toEqual([
+      "https://api.liegeagents.com/v1/jobs?status=funded&limit=25",
+      `https://api.liegeagents.com/v1/jobs/${jobId}`,
+    ]);
+  });
+
+  test("simulates, quotes, funds, submits, and evaluates a job", async () => {
+    const jobId = "550e8400-e29b-41d4-a716-446655440000";
+    await execute(["jobs", "simulate", '{"title":"Research","acceptanceCriteria":["Sources"]}']);
+    await execute(["jobs", "funding-quote", jobId]);
+    await execute([
+      "jobs",
+      "fund",
+      jobId,
+      "--quote-id",
+      "660e8400-e29b-41d4-a716-446655440001",
+      "--gas-tx-hash",
+      "0xgas",
+    ]);
+    await execute([
+      "jobs",
+      "submit",
+      jobId,
+      '{"deliverable":"Report","evidence":["https://example.com/evidence"]}',
+    ]);
+    await execute(["jobs", "evaluate", jobId, '{"outcome":"accepted","rationale":"Pass"}']);
+    expect(capturedRequests.map((request) => request.method)).toEqual([
+      "POST",
+      "POST",
+      "POST",
+      "POST",
+      "POST",
+    ]);
+    expect(capturedRequests[2].body).toEqual({
+      quoteId: "660e8400-e29b-41d4-a716-446655440001",
+      gasTxHash: "0xgas",
+    });
+    expect(capturedRequests[3].body).toEqual({
+      deliverable: "Report",
+      evidence: ["https://example.com/evidence"],
+    });
+    expect(capturedRequests[4].body).toEqual({ outcome: "accepted", rationale: "Pass" });
+  });
+});
