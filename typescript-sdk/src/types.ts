@@ -1,5 +1,5 @@
 export type Signer = (message: string) => Promise<string> | string;
-export const SDK_VERSION = "0.1.5";
+export const SDK_VERSION = "0.1.6";
 
 export interface X402PaymentRequired {
   x402Version: number;
@@ -16,6 +16,12 @@ export interface Session { token: string; userId: string; walletAddress: string;
 export interface Job { id: string; status: string; [key: string]: unknown; }
 export interface Invoice { id: string; invoiceId: string; publicId: string; amountUsdg: number; asset: "usdg"; status: string; [key: string]: unknown; }
 export interface JobEvent { id: string; event: string; data: unknown; }
+export interface EventStreamOptions {
+  after?: string;
+  since?: Date;
+  maxRetries?: number;
+  backoffMs?: number;
+}
 export interface McpProposal { id: string; status: string; [key: string]: unknown; }
 
 export class LiegeAPIError extends Error {
