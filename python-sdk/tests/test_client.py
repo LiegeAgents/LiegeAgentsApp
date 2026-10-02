@@ -157,3 +157,34 @@ def test_partial_refund_and_list_refunds():
         assert refunds[0].amount == 5.0
         assert refunds[0].job_id == "job-1"
         assert refunds[0].reason == "Milestone adjust"
+
+def test_list_receipts_and_otel_export():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/receipts") and request.url.params.get("format") == "otel":
+            return httpx.Response(200, json={
+                "resourceSpans": [{
+                    "resource": {"attributes": [{"key": "service.name", "value": {"stringValue": "liege"}}]},
+                    "scopeSpans": [{"spans": [{"traceId": "0" * 32, "name": "ledger.invoice_payment"}]}],
+                }],
+                "digest": "a" * 64,
+            })
+        if request.url.path.endswith("/receipts"):
+            return httpx.Response(200, json={
+                "data": [{
+                    "receiptId": "rec-1", "type": "invoice_payment", "reference": "ref-1",
+                    "createdAt": "2026-10-02T12:00:00Z", "asset": "usdg", "availableChange": "-10",
+                }],
+                "digest": "a" * 64,
+            })
+        raise AssertionError(request.url)
+
+    with LiegeClient("https://api.test", token="session", client=httpx.Client(transport=httpx.MockTransport(handler))) as client:
+        receipts = client.list_receipts()
+        assert len(receipts) == 1
+        assert receipts[0].receipt_id == "rec-1"
+        assert receipts[0].type == "invoice_payment"
+
+        otel = client.list_receipts(format="otel")
+        assert "resourceSpans" in otel
+        assert otel["resourceSpans"][0]["scopeSpans"][0]["spans"][0]["name"] == "ledger.invoice_payment"
+

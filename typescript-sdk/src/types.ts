@@ -87,8 +87,65 @@ export interface EventStreamOptions {
 }
 export interface McpProposal { id: string; status: string; [key: string]: unknown; }
 
+export interface ReceiptSubject {
+  type: "job" | "invoice";
+  id: string;
+  publicId: string;
+  title: string;
+  agentName: string;
+}
+
+export interface Receipt {
+  receiptId: string;
+  type: string;
+  asset?: string;
+  availableChange?: string;
+  stakeChange?: string;
+  reference: string;
+  subject: ReceiptSubject | null;
+  createdAt: string;
+  lines?: Array<{ asset: string; availableChange: string; stakeChange: string }>;
+  digest?: string;
+  [key: string]: unknown;
+}
+
+export interface StatementResponse {
+  data: Receipt[];
+  digest: string;
+  generatedAt: string;
+}
+
+export interface OtelSpanAttribute {
+  key: string;
+  value: { stringValue?: string; doubleValue?: number; intValue?: number };
+}
+
+export interface OtelSpan {
+  traceId: string;
+  spanId: string;
+  name: string;
+  kind: string;
+  startTimeUnixNano: string;
+  endTimeUnixNano: string;
+  attributes: OtelSpanAttribute[];
+  status: { code: string };
+}
+
+export interface OtelTraceExport {
+  resourceSpans: Array<{
+    resource: { attributes: OtelSpanAttribute[] };
+    scopeSpans: Array<{
+      scope: { name: string; version: string };
+      spans: OtelSpan[];
+    }>;
+  }>;
+  digest: string;
+  generatedAt: string;
+}
+
 export class LiegeAPIError extends Error {
   constructor(message: string, readonly status: number, readonly code?: string) {
     super(message); this.name = "LiegeAPIError";
   }
 }
+

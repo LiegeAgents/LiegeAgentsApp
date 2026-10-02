@@ -4,6 +4,9 @@ import {
   type InvoiceAsset,
   type InvoiceRefund,
   type RefundInvoiceInput,
+  type OtelTraceExport,
+  type Receipt,
+  type StatementResponse,
   type Service,
   type ServiceType,
   type AgentAccount,
@@ -57,6 +60,25 @@ export class LiegeClient {
   refundInvoice(id: string, input?: RefundInvoiceInput): Promise<Invoice> { return this.call(`/v1/invoices/${encodeURIComponent(id)}/refund`, { method: "POST", body: input }); }
   listInvoiceRefunds(id: string): Promise<InvoiceRefund[]> { return this.call(`/v1/invoices/${encodeURIComponent(id)}/refunds`); }
   cancelInvoice(id: string): Promise<Invoice> { return this.call(`/v1/invoices/${encodeURIComponent(id)}/cancel`, { method: "POST" }); }
+
+  listReceipts(options: { format: "otel"; limit?: number }): Promise<OtelTraceExport>;
+  listReceipts(options?: { format?: "json"; limit?: number }): Promise<Receipt[]>;
+  listReceipts(options: { format: "csv"; limit?: number }): Promise<string>;
+  listReceipts(options?: { format?: "json" | "csv" | "otel"; limit?: number }): Promise<Receipt[] | OtelTraceExport | string> {
+    const query = new URLSearchParams({ limit: String(options?.limit ?? 500) });
+    if (options?.format) query.set("format", options.format);
+    if (options?.format === "csv") {
+      return this.request(`${this.baseUrl}/v1/receipts?${query}`, { headers: this.headers() }).then((r) => r.text());
+    }
+    return this.call(`/v1/receipts?${query}`);
+  }
+
+  getReceipt(id: string, options?: { format?: "json" }): Promise<{ data: Receipt }>;
+  getReceipt(id: string, options: { format: "otel" }): Promise<OtelTraceExport>;
+  getReceipt(id: string, options?: { format?: "json" | "otel" }): Promise<{ data: Receipt } | OtelTraceExport> {
+    const query = options?.format ? `?format=${options.format}` : "";
+    return this.call(`/v1/receipts/${encodeURIComponent(id)}${query}`);
+  }
 
   listServices(options: { agentId?: string; type?: ServiceType; limit?: number } = {}): Promise<Service[]> {
     const query = new URLSearchParams({ limit: String(options.limit ?? 50) });

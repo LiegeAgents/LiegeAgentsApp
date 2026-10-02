@@ -260,3 +260,30 @@ class AgentControlResult:
     def from_dict(cls, value: dict[str, Any]) -> "AgentControlResult":
         return cls(value.get("accountId", value.get("agentId", "")), value["status"], value.get("killReason"),
                    int(value.get("revokedConnections", 0)), int(value.get("rejectedProposals", 0)), value)
+
+
+@dataclass(frozen=True)
+class Receipt:
+    receipt_id: str
+    type: str
+    reference: str
+    created_at: str
+    asset: str | None = None
+    available_change: str | None = None
+    stake_change: str | None = None
+    subject: dict[str, Any] | None = None
+    raw: dict[str, Any] = None
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "Receipt":
+        return cls(
+            receipt_id=value.get("receiptId", value.get("receipt_id", "")),
+            type=value.get("type", ""),
+            reference=value.get("reference", ""),
+            created_at=value.get("createdAt", value.get("created_at", "")),
+            asset=value.get("asset"),
+            available_change=value.get("availableChange"),
+            stake_change=value.get("stakeChange"),
+            subject=value.get("subject"),
+            raw=value,
+        )

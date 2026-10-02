@@ -132,8 +132,11 @@ export const api = {
   agentAccounts: (token) => request("/v1/agent-accounts", { token }),
   receipts: (token, limit = 25) => request(`/v1/receipts?limit=${limit}`, { token }),
   receipt: (token, id) => request(`/v1/receipts/${encodeURIComponent(id)}`, { token }),
-  receiptExportUrl: (format) =>
-    `${API_URL}/v1/receipts?${format === "csv" ? "format=csv" : "download=1"}&limit=5000`,
+  receiptExportUrl: (format) => {
+    if (format === "csv") return `${API_URL}/v1/receipts?format=csv&limit=5000`;
+    if (format === "otel") return `${API_URL}/v1/receipts?format=otel&download=1&limit=5000`;
+    return `${API_URL}/v1/receipts?download=1&limit=5000`;
+  },
   agentAccount: (token, agentId) =>
     request(`/v1/agent-accounts/${encodeURIComponent(agentId)}`, { token }),
   updateAgentPolicy: (token, agentId, input) =>

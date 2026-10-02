@@ -1568,12 +1568,12 @@ paths:
       summary: Itemized statement of every ledger transaction on the account, with a SHA-256 digest.
       security: [{ bearerAuth: [] }]
       parameters:
-        - { name: format, in: query, schema: { enum: [json, csv], default: json } }
+        - { name: format, in: query, schema: { enum: [json, csv, otel], default: json } }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 5000, default: 500 } }
-        - { name: download, in: query, description: Set to 1 to download JSON as a file., schema: { enum: ["1"] } }
+        - { name: download, in: query, description: Set to 1 to download JSON or OpenTelemetry as a file., schema: { enum: ["1"] } }
       responses:
         "200":
-          description: Statement lines (JSON) or a CSV file whose digest is in the X-Liege-Statement-Digest header.
+          description: Statement lines (JSON), OpenTelemetry traces (JSON), or a CSV file whose digest is in the X-Liege-Statement-Digest header.
           content:
             application/json: { schema: { type: object, properties: { data: { type: array, items: { type: object } }, digest: { type: string }, generatedAt: { type: string, format: date-time } } } }
             text/csv: { schema: { type: string } }
@@ -1585,8 +1585,9 @@ paths:
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: transactionId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: format, in: query, schema: { enum: [json, otel], default: json } }
       responses:
-        "200": { description: Receipt, content: { application/json: { schema: { type: object, properties: { data: { type: object } } } } } }
+        "200": { description: Receipt or OpenTelemetry trace export, content: { application/json: { schema: { type: object, properties: { data: { type: object } } } } } }
         "404": { description: No receipt with this ID on the account. }
 
   /v1/agent-accounts:
