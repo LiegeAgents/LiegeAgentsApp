@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import json
 import time
 from collections.abc import Callable, Iterator
@@ -14,6 +15,7 @@ from .errors import LiegeAPIError
 from .models import (
     AgentAccount, AgentActionAuthorization, AgentActionInput, AgentActionSimulation, AgentControlResult,
     AgentMandate, AgentPolicyInput, Invoice, InvoiceRefund, Job, JobEvent, Receipt, Service, ServiceType, Session,
+    RunnerInput, RunnerResult, RunnerArtifact,
 )
 
 
@@ -200,6 +202,34 @@ class LiegeClient:
     def export_agent_mandate_ap2(self, agent_id: str, mandate_id: str) -> dict[str, Any]:
         return self._request("GET", f"/v1/agent-accounts/{agent_id}/mandates/{mandate_id}/ap2")
 
+    def runner_action(self, input: RunnerInput) -> AgentActionInput:
+        """Return the approval payload for a runner execution; it does not execute anything."""
+        def digest(value: dict[str, Any]) -> str:
+            return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        env = input.get("env", {})
+        files = input.get("files", {})
+        return {"action": "runner.execute", "details": {
+            "command": input["command"], "args": input.get("args", []), "jobId": input.get("jobId"),
+            "timeoutMs": input.get("timeoutMs", 30_000), "maxOutputBytes": input.get("maxOutputBytes", 256_000),
+            "envDigest": digest(env), "filesDigest": digest(files),
+        }}
+
+    def simulate_runner_action(self, agent_id: str, input: RunnerInput) -> AgentActionSimulation:
+        return self.simulate_action(agent_id, self.runner_action(input))
+
+    def authorize_runner_action(self, agent_id: str, input: RunnerInput) -> AgentActionAuthorization:
+        return self.authorize_action(agent_id, self.runner_action(input))
+
+    def execute_approved_runner_action(self, input: RunnerInput) -> RunnerResult:
+        if not input.get("actionId") or not input.get("simulationId"):
+            raise ValueError("actionId and simulationId are required for approved runner execution")
+        return RunnerResult.from_dict(self._request("POST", "/v1/runners", json=dict(input)))
+
+    def get_runner(self, run_id: str) -> RunnerResult:
+        return RunnerResult.from_dict(self._request("GET", f"/v1/runners/{run_id}"))
+
+    def get_runner_artifact(self, run_id: str, artifact_id: str) -> RunnerArtifact:
+        return RunnerArtifact.from_dict(self._request("GET", f"/v1/runners/{run_id}/artifacts/{artifact_id}"))
 
     def request_x402(self, url: str, signer: X402Signer, method: str = "GET", **kwargs: Any) -> httpx.Response:
         """Request an x402 resource and retry once with an app-signed payment authorization.

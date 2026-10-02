@@ -163,6 +163,24 @@ describe("LiegeClient", () => {
     expect(calls).toBe(2);
   });
 
+  test("builds runner approval actions and executes only with both approvals", async () => {
+    const requests: RequestInit[] = [];
+    const client = new LiegeClient({ token: "session", fetch: async (input, init) => {
+      requests.push(init ?? {});
+      const path = new URL(String(input)).pathname;
+      if (path.endsWith("/actions/simulate")) return new Response(JSON.stringify({ data: { id: "sim-1", action_digest: "d", action: {}, result: { eligible: true }, policy_version: 1, expires_at: "2030-01-01", created_at: "2030-01-01" } }), { status: 201 });
+      if (path.endsWith("/actions/authorize")) return new Response(JSON.stringify({ data: { actionId: "act-1", accountId: "agent-1", decision: "approved", reasons: [], policyVersion: 1, createdAt: "2030-01-01" } }));
+      return new Response(JSON.stringify({ data: { id: "run-1", status: "succeeded", artifacts: [] } }), { status: 201 });
+    } });
+    const input = { agentId: "agent-1", command: "python" as const, files: { "main.py": "print(1)" } };
+    const simulation = await client.simulateRunnerAction("agent-1", input);
+    await client.authorizeRunnerAction("agent-1", input);
+    const run = await client.executeApprovedRunnerAction({ ...input, actionId: "act-1", simulationId: simulation.id });
+    expect(run).toMatchObject({ id: "run-1", status: "succeeded" });
+    expect(JSON.parse(String(requests[0].body))).toMatchObject({ action: "runner.execute" });
+    expect(JSON.parse(String(requests[2].body))).toMatchObject({ actionId: "act-1", simulationId: "sim-1" });
+  });
+
   test("completes an x402 challenge with an application-provided signer", async () => {
     let attempts = 0;
     const challenge = { x402Version: 2, accepts: [{ scheme: "exact", network: "eip155:4663" }] };

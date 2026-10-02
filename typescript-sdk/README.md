@@ -31,3 +31,8 @@ execution mode selected with `executionMode`.
 Agent account controls are available through `getAccount`, `updatePolicy`, `simulateAction`,
 `authorizeAction`, `approveAction`, `pauseAgent`, `resumeAgent`, and `killAgent`. Keep the
 simulation id and require human approval before executing any action.
+
+Runner helpers make that approval boundary explicit: call `simulateRunnerAction` and
+`authorizeRunnerAction`, then pass both returned ids to `executeApprovedRunnerAction`. Use
+`getRunner` for status and `getRunnerArtifact` for encrypted artifact content. The SDK never
+bypasses the API's account policy or executes a runner without the approved action ids.

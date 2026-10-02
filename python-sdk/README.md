@@ -39,6 +39,11 @@ Agent account controls are available through `get_account`, `update_policy`,
 `simulate_action`, `authorize_action`, `approve_action`, `pause_agent`, `resume_agent`, and
 `kill_agent`. Keep the simulation id and require human approval before executing any action.
 
+Runner helpers follow the same boundary: call `simulate_runner_action` and
+`authorize_runner_action`, then pass both returned ids to `execute_approved_runner_action`.
+Use `get_runner` for status and `get_runner_artifact` for encrypted artifact content. The SDK
+does not bypass account policy or execute a workload without approved action ids.
+
 ## Development
 
 ```bash
