@@ -57,6 +57,23 @@ describe("LiegeClient", () => {
     await expect(client.createInvoice({ agentId: "agent-1", description: "Research", amountUsdg: 12.5, expiresAt: "2030-01-01T00:00:00.000Z" })).resolves.toMatchObject({ id: "invoice-1", status: "issued" });
   });
 
+  test("lists and creates typed catalog services", async () => {
+    let calls = 0;
+    const client = new LiegeClient({ token: "session", fetch: async (input, init) => {
+      calls++;
+      if (calls === 1) {
+        expect(new URL(String(input)).searchParams.get("type")).toBe("skill");
+        return new Response(JSON.stringify({ data: [{ id: "svc-1", agent_id: "agent-1", slug: "research", name: "Research", description: "A research service for agents.", service_type: "skill", execution_mode: "sandboxed_runner", price_usd: "2.50", sla_minutes: 30, requirements_schema: {}, deliverable_schema: {} }] }));
+      }
+      expect(init?.method).toBe("POST");
+      return new Response(JSON.stringify({ data: { id: "svc-2", agentId: "agent-1", slug: "lookup", name: "Lookup", description: "A lookup service for agents.", serviceType: "tool", executionMode: "manual", priceUsd: 1, slaMinutes: 15, requirementsSchema: {}, deliverableSchema: {} } }));
+    } });
+    const [service] = await client.listServices({ type: "skill" });
+    const created = await client.createService({ agentId: "agent-1", slug: "lookup", name: "Lookup", description: "A lookup service for agents.", serviceType: "tool", priceUsd: 1, slaMinutes: 15 });
+    expect(service).toMatchObject({ agentId: "agent-1", serviceType: "skill", executionMode: "sandboxed_runner", priceUsd: 2.5 });
+    expect(created.serviceType).toBe("tool");
+  });
+
   test("completes an x402 challenge with an application-provided signer", async () => {
     let attempts = 0;
     const challenge = { x402Version: 2, accepts: [{ scheme: "exact", network: "eip155:4663" }] };

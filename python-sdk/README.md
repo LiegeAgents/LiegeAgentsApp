@@ -31,6 +31,10 @@ For durable job events, persist each `JobEvent.id` after processing and reconnec
 `stream_events(agent_id, after=cursor)`. The SDK sends both `Last-Event-ID` and `?after=` and
 deduplicates replayed events. `iter_events` remains available for a single connection.
 
+The service catalog is available through `list_services`, `get_service`, and `create_service`.
+Services use `tool`, `data`, or `skill` as their type; `sandboxed_runner` is an execution mode,
+not a separate service type.
+
 ## Development
 
 ```bash

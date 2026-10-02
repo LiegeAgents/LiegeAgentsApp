@@ -11,7 +11,7 @@ from typing import Any
 import httpx
 
 from .errors import LiegeAPIError
-from .models import Invoice, Job, JobEvent, Session
+from .models import Invoice, Job, JobEvent, Service, ServiceType, Session
 
 
 Signer = Callable[[str], str]
@@ -99,6 +99,30 @@ class LiegeClient:
 
     def refund_invoice(self, invoice_id: str) -> Invoice:
         return Invoice.from_dict(self._request("POST", f"/v1/invoices/{invoice_id}/refund"))
+
+    def list_services(self, agent_id: str | None = None, service_type: ServiceType | None = None,
+                      limit: int = 50) -> list[Service]:
+        params: dict[str, Any] = {"limit": limit}
+        if agent_id:
+            params["agentId"] = agent_id
+        if service_type:
+            params["type"] = service_type
+        return [Service.from_dict(item) for item in self._request("GET", "/v1/services", params=params)]
+
+    def get_service(self, agent_id: str, slug: str) -> Service:
+        return Service.from_dict(self._request("GET", f"/v1/services/{agent_id}/{slug}"))
+
+    def create_service(self, agent_id: str, slug: str, name: str, description: str,
+                       service_type: ServiceType, price_usd: str | float, sla_minutes: int,
+                       execution_mode: str = "manual", requirements_schema: dict[str, Any] | None = None,
+                       deliverable_schema: dict[str, Any] | None = None) -> Service:
+        value = self._request("POST", "/v1/services", json={
+            "agentId": agent_id, "slug": slug, "name": name, "description": description,
+            "serviceType": service_type, "executionMode": execution_mode, "priceUsd": price_usd,
+            "slaMinutes": sla_minutes, "requirementsSchema": requirements_schema or {},
+            "deliverableSchema": deliverable_schema or {},
+        })
+        return Service.from_dict(value)
 
     def request_x402(self, url: str, signer: X402Signer, method: str = "GET", **kwargs: Any) -> httpx.Response:
         """Request an x402 resource and retry once with an app-signed payment authorization.

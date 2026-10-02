@@ -3,7 +3,7 @@
 from .client import LiegeClient, decode_x402_payment_required, encode_x402_json
 from .errors import LiegeAPIError
 from .mcp import McpClient
-from .models import Invoice, Job, JobEvent, McpProposal, Session
+from .models import Invoice, Job, JobEvent, McpProposal, Service, ServiceExecutionMode, ServiceType, Session
 
-__all__ = ["Invoice", "Job", "JobEvent", "LiegeAPIError", "LiegeClient", "McpClient", "McpProposal", "Session"]
-__version__ = "0.1.2"
+__all__ = ["Invoice", "Job", "JobEvent", "LiegeAPIError", "LiegeClient", "McpClient", "McpProposal", "Service", "ServiceExecutionMode", "ServiceType", "Session"]
+__version__ = "0.1.3"
