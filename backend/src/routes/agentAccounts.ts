@@ -663,3 +663,178 @@ agentAccountsRouter.post(
     response.json({ data: result.rows[0] });
   }),
 );
+
+export function formatAp2Mandate(
+  row: {
+    id: string;
+    agent_id: string;
+    parent_mandate_id?: string | null;
+    nonce: string;
+    digest: string;
+    payload: unknown;
+    signature: string;
+    status: string;
+    expires_at: Date | string;
+    created_at: Date | string;
+  },
+  wallet: string,
+) {
+  const payload =
+    ((typeof row.payload === "string" ? JSON.parse(row.payload) : row.payload) as Record<
+      string,
+      unknown
+    >) || {};
+  const createdAtIso = new Date(row.created_at).toISOString();
+  const expiresAtIso = new Date(row.expires_at).toISOString();
+  const allowedActions = Array.isArray(payload.actions)
+    ? payload.actions
+    : Array.isArray(payload.allowedActions)
+      ? payload.allowedActions
+      : [];
+  const maxAmount =
+    payload.maxAmount != null
+      ? String(payload.maxAmount)
+      : payload.max_amount != null
+        ? String(payload.max_amount)
+        : null;
+  const dailyBudget =
+    payload.dailyBudget != null
+      ? String(payload.dailyBudget)
+      : payload.daily_budget != null
+        ? String(payload.daily_budget)
+        : null;
+  const monthlyBudget =
+    payload.monthlyBudget != null
+      ? String(payload.monthlyBudget)
+      : payload.monthly_budget != null
+        ? String(payload.monthly_budget)
+        : null;
+  const currency = typeof payload.asset === "string" ? payload.asset.toUpperCase() : "USDG";
+  const allowedAssets = Array.isArray(payload.allowedAssets)
+    ? payload.allowedAssets.map((a: unknown) => String(a).toUpperCase())
+    : ["USDG", "LIEGE"];
+  const allowedPayees = Array.isArray(payload.approvedCounterparties)
+    ? payload.approvedCounterparties
+    : Array.isArray(payload.allowedPayees)
+      ? payload.allowedPayees
+      : [];
+  const allowedVenues = Array.isArray(payload.allowedVenues) ? payload.allowedVenues : [];
+
+  return {
+    protocol: "ap2",
+    version: "0.2",
+    vct: "mandate.payment.open.1",
+    mandate_id: row.id,
+    agent_id: row.agent_id,
+    status: row.status,
+    issuer: {
+      id: `did:pkh:eip155:4663:${wallet}`,
+      address: wallet,
+      chain_id: 4663,
+      network: "robinhood_chain",
+    },
+    subject: {
+      agent_id: row.agent_id,
+      account_id: row.agent_id,
+    },
+    "ap2.mandates.PaymentMandate": {
+      mandate_id: row.id,
+      parent_mandate_id: row.parent_mandate_id ?? null,
+      creation_time: createdAtIso,
+      expiration_time: expiresAtIso,
+      nonce: row.nonce,
+      constraints: {
+        type: "payment.open_constraints",
+        allowed_actions: allowedActions,
+        max_amount: maxAmount,
+        daily_budget: dailyBudget,
+        monthly_budget: monthlyBudget,
+        currency,
+        allowed_assets: allowedAssets,
+        allowed_payees: allowedPayees,
+        allowed_venues: allowedVenues,
+      },
+      payload,
+    },
+    "ap2.mandates.IntentMandate": {
+      natural_language_description:
+        typeof payload.description === "string"
+          ? payload.description
+          : typeof payload.naturalLanguageDescription === "string"
+            ? payload.naturalLanguageDescription
+            : `Mandate authorization for Liege Agent ${row.agent_id}`,
+      user_cart_confirmation_required: Boolean(payload.userCartConfirmationRequired ?? false),
+      requires_refundability: Boolean(payload.requiresRefundability ?? true),
+      intent_expiry: expiresAtIso,
+      merchants: allowedPayees,
+      constraints: {
+        max_amount: maxAmount,
+        currency,
+        allowed_assets: allowedAssets,
+      },
+    },
+    proof: {
+      type: "EthereumPersonalSignature2021",
+      verification_method: `did:pkh:eip155:4663:${wallet}#recovery`,
+      created: createdAtIso,
+      proof_purpose: "assertionMethod",
+      digest: row.digest,
+      signature: row.signature,
+    },
+  };
+}
+
+agentAccountsRouter.get(
+  ["/:agentId/mandates/:id/ap2", "/:agentId/mandates/:mandateId/ap2"],
+  asyncRoute(async (request, response) => {
+    const agentId = z.string().uuid().parse(request.params.agentId);
+    const mandateId = z
+      .string()
+      .uuid()
+      .parse(request.params.id || request.params.mandateId);
+    const wallet = await ownedAgent(agentId, request.auth!.userId);
+    await ensureAccount(agentId, request.auth!.userId);
+    const result = await db.query(
+      "SELECT id,agent_id,parent_mandate_id,nonce,digest,payload,signature,status,expires_at,revoked_at,created_at FROM agent_mandates WHERE id=$1 AND agent_id=$2",
+      [mandateId, agentId],
+    );
+    if (!result.rowCount)
+      throw new ApiError(404, "mandate_not_found", "This mandate is unavailable.");
+    const row = result.rows[0];
+    const ap2Doc = formatAp2Mandate(row, wallet);
+    response.setHeader("Content-Type", "application/json");
+    if (request.query.download === "1") {
+      response.setHeader(
+        "Content-Disposition",
+        `attachment; filename="liege-mandate-${row.id}.ap2.json"`,
+      );
+    }
+    response.json({ data: ap2Doc });
+  }),
+);
+
+agentAccountsRouter.get(
+  ["/:agentId/mandates/:id", "/:agentId/mandates/:mandateId"],
+  asyncRoute(async (request, response) => {
+    const agentId = z.string().uuid().parse(request.params.agentId);
+    const mandateId = z
+      .string()
+      .uuid()
+      .parse(request.params.id || request.params.mandateId);
+    const wallet = await ownedAgent(agentId, request.auth!.userId);
+    await ensureAccount(agentId, request.auth!.userId);
+    const result = await db.query(
+      "SELECT id,agent_id,parent_mandate_id,nonce,digest,payload,signature,status,expires_at,revoked_at,created_at FROM agent_mandates WHERE id=$1 AND agent_id=$2",
+      [mandateId, agentId],
+    );
+    if (!result.rowCount)
+      throw new ApiError(404, "mandate_not_found", "This mandate is unavailable.");
+    const row = result.rows[0];
+    if (request.query.format === "ap2") {
+      const ap2Doc = formatAp2Mandate(row, wallet);
+      response.json({ data: ap2Doc });
+      return;
+    }
+    response.json({ data: row });
+  }),
+);

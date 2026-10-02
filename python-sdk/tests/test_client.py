@@ -188,3 +188,45 @@ def test_list_receipts_and_otel_export():
         assert "resourceSpans" in otel
         assert otel["resourceSpans"][0]["scopeSpans"][0]["spans"][0]["name"] == "ledger.invoice_payment"
 
+
+def test_agent_mandates_and_ap2_export():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/mandates/man-1/ap2"):
+            return httpx.Response(200, json={
+                "data": {
+                    "protocol": "ap2",
+                    "version": "0.2",
+                    "mandate_id": "man-1",
+                    "agent_id": "agent-1",
+                    "ap2.mandates.PaymentMandate": {
+                        "constraints": {"currency": "USDG", "allowed_assets": ["USDG", "LIEGE"]},
+                    },
+                },
+            })
+        if request.url.path.endswith("/mandates"):
+            return httpx.Response(200, json={
+                "data": [{
+                    "id": "man-1",
+                    "agentId": "agent-1",
+                    "nonce": "nonce-1",
+                    "digest": "dig-1",
+                    "payload": {"actions": ["rebalance"]},
+                    "signature": "0x123",
+                    "status": "active",
+                    "expiresAt": "2026-10-03T00:00:00Z",
+                    "createdAt": "2026-10-02T00:00:00Z",
+                }],
+            })
+        raise AssertionError(request.url)
+
+    with LiegeClient("https://api.test", token="session", client=httpx.Client(transport=httpx.MockTransport(handler))) as client:
+        mandates = client.list_agent_mandates("agent-1")
+        assert len(mandates) == 1
+        assert mandates[0].id == "man-1"
+        assert mandates[0].nonce == "nonce-1"
+
+        ap2 = client.export_agent_mandate_ap2("agent-1", "man-1")
+        assert ap2["protocol"] == "ap2"
+        assert ap2["version"] == "0.2"
+        assert ap2["mandate_id"] == "man-1"
+

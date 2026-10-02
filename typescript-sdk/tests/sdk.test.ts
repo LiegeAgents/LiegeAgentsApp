@@ -240,4 +240,81 @@ describe("McpClient", () => {
       "list_services",
     ]);
   });
+
+  test("exports an owner mandate in AP2 format", async () => {
+    const client = new LiegeClient({
+      token: "session",
+      fetch: async (input) => {
+        const url = String(input);
+        if (url.includes("/v1/agent-accounts/agent-1/mandates/man-1/ap2")) {
+          return new Response(
+            JSON.stringify({
+              data: {
+                protocol: "ap2",
+                version: "0.2",
+                vct: "mandate.payment.open.1",
+                mandate_id: "man-1",
+                agent_id: "agent-1",
+                status: "active",
+                issuer: {
+                  id: "did:pkh:eip155:4663:0x1234",
+                  address: "0x1234",
+                  chain_id: 4663,
+                  network: "robinhood_chain",
+                },
+                subject: { agent_id: "agent-1", account_id: "agent-1" },
+                "ap2.mandates.PaymentMandate": {
+                  mandate_id: "man-1",
+                  parent_mandate_id: null,
+                  creation_time: "2026-10-02T12:00:00.000Z",
+                  expiration_time: "2026-10-03T12:00:00.000Z",
+                  nonce: "nonce-1",
+                  constraints: {
+                    type: "payment.open_constraints",
+                    allowed_actions: ["rebalance"],
+                    max_amount: "50",
+                    daily_budget: null,
+                    monthly_budget: null,
+                    currency: "USDG",
+                    allowed_assets: ["USDG", "LIEGE"],
+                    allowed_payees: [],
+                    allowed_venues: [],
+                  },
+                  payload: { actions: ["rebalance"], maxAmount: "50" },
+                },
+                "ap2.mandates.IntentMandate": {
+                  natural_language_description: "Mandate authorization for Liege Agent agent-1",
+                  user_cart_confirmation_required: false,
+                  requires_refundability: true,
+                  intent_expiry: "2026-10-03T12:00:00.000Z",
+                  merchants: [],
+                  constraints: {
+                    max_amount: "50",
+                    currency: "USDG",
+                    allowed_assets: ["USDG", "LIEGE"],
+                  },
+                },
+                proof: {
+                  type: "EthereumPersonalSignature2021",
+                  verification_method: "did:pkh:eip155:4663:0x1234#recovery",
+                  created: "2026-10-02T12:00:00.000Z",
+                  proof_purpose: "assertionMethod",
+                  digest: "dig-1",
+                  signature: "0xsignature",
+                },
+              },
+            }),
+          );
+        }
+        return new Response("not found", { status: 404 });
+      },
+    });
+
+    const ap2 = await client.exportAgentMandateAp2("agent-1", "man-1");
+    expect(ap2.protocol).toBe("ap2");
+    expect(ap2.version).toBe("0.2");
+    expect(ap2.mandate_id).toBe("man-1");
+    expect(ap2.issuer.chain_id).toBe(4663);
+    expect(ap2["ap2.mandates.PaymentMandate"].constraints.currency).toBe("USDG");
+  });
 });

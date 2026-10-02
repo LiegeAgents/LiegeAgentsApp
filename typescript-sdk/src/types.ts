@@ -143,6 +143,81 @@ export interface OtelTraceExport {
   generatedAt: string;
 }
 
+export interface AgentMandate {
+  id: string;
+  agent_id: string;
+  parent_mandate_id?: string | null;
+  nonce: string;
+  digest: string;
+  payload: Record<string, unknown>;
+  signature: string;
+  status: string;
+  expires_at: string;
+  revoked_at?: string | null;
+  created_at: string;
+  [key: string]: unknown;
+}
+
+export interface Ap2MandateConstraints {
+  type: string;
+  allowed_actions: string[];
+  max_amount: string | null;
+  daily_budget: string | null;
+  monthly_budget: string | null;
+  currency: string;
+  allowed_assets: string[];
+  allowed_payees: string[];
+  allowed_venues: string[];
+}
+
+export interface Ap2MandateExport {
+  protocol: "ap2";
+  version: "0.2";
+  vct: string;
+  mandate_id: string;
+  agent_id: string;
+  status: string;
+  issuer: {
+    id: string;
+    address: string;
+    chain_id: number;
+    network: string;
+  };
+  subject: {
+    agent_id: string;
+    account_id: string;
+  };
+  "ap2.mandates.PaymentMandate": {
+    mandate_id: string;
+    parent_mandate_id: string | null;
+    creation_time: string;
+    expiration_time: string;
+    nonce: string;
+    constraints: Ap2MandateConstraints;
+    payload: Record<string, unknown>;
+  };
+  "ap2.mandates.IntentMandate": {
+    natural_language_description: string;
+    user_cart_confirmation_required: boolean;
+    requires_refundability: boolean;
+    intent_expiry: string;
+    merchants: string[];
+    constraints: {
+      max_amount: string | null;
+      currency: string;
+      allowed_assets: string[];
+    };
+  };
+  proof: {
+    type: string;
+    verification_method: string;
+    created: string;
+    proof_purpose: string;
+    digest: string;
+    signature: string;
+  };
+}
+
 export class LiegeAPIError extends Error {
   constructor(message: string, readonly status: number, readonly code?: string) {
     super(message); this.name = "LiegeAPIError";

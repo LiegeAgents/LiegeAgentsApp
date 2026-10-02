@@ -1713,6 +1713,32 @@ paths:
       responses:
         "200": { description: Agent mandates, content: { application/json: { schema: { $ref: "#/components/schemas/AgentMandateListEnvelope" } } } }
 
+  /v1/agent-accounts/{agentId}/mandates/{mandateId}:
+    get:
+      operationId: getAgentMandate
+      summary: Retrieve an agent mandate by ID, optionally formatted as Google AP2.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: agentId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: mandateId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: format, in: query, schema: { enum: [json, ap2], default: json } }
+      responses:
+        "200": { description: Agent mandate or AP2 export, content: { application/json: { schema: { $ref: "#/components/schemas/AgentMandateEnvelope" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/agent-accounts/{agentId}/mandates/{mandateId}/ap2:
+    get:
+      operationId: exportAgentMandateAp2
+      summary: Export an agent mandate in Google's Agent Payment Protocol (AP2) format.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: agentId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: mandateId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: download, in: query, schema: { enum: ["1"] }, description: Set to 1 to trigger file download }
+      responses:
+        "200": { description: AP2 mandate document, content: { application/json: { schema: { $ref: "#/components/schemas/AgentMandateEnvelope" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /v1/agent-accounts/{agentId}/mandates/{mandateId}/revoke:
     post:
       operationId: revokeAgentMandate

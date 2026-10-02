@@ -287,3 +287,36 @@ class Receipt:
             subject=value.get("subject"),
             raw=value,
         )
+
+
+@dataclass(frozen=True)
+class AgentMandate:
+    id: str
+    agent_id: str
+    nonce: str
+    digest: str
+    payload: dict[str, Any]
+    signature: str
+    status: str
+    expires_at: str
+    created_at: str
+    parent_mandate_id: str | None = None
+    revoked_at: str | None = None
+    raw: dict[str, Any] = None
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "AgentMandate":
+        return cls(
+            id=value.get("id", ""),
+            agent_id=value.get("agent_id", value.get("agentId", "")),
+            nonce=value.get("nonce", ""),
+            digest=value.get("digest", ""),
+            payload=value.get("payload", {}),
+            signature=value.get("signature", ""),
+            status=value.get("status", "active"),
+            expires_at=str(value.get("expires_at", value.get("expiresAt", ""))),
+            created_at=str(value.get("created_at", value.get("createdAt", ""))),
+            parent_mandate_id=value.get("parent_mandate_id", value.get("parentMandateId")),
+            revoked_at=value.get("revoked_at", value.get("revokedAt")),
+            raw=value,
+        )
