@@ -6,6 +6,13 @@ ServiceType = Literal["tool", "data", "skill"]
 ServiceExecutionMode = Literal["manual", "sandboxed_runner"]
 ApprovalMode = Literal["always", "within_policy"]
 
+@dataclass(frozen=True)
+class Page:
+    """A typed page returned by a cursor-aware Liege list endpoint."""
+    items: list[Any]
+    next_cursor: str | None = None
+    total: int | None = None
+
 
 class AgentPolicyInput(TypedDict, total=False):
     maxActionAmount: float | str | None

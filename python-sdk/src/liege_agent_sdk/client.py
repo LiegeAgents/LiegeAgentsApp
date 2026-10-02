@@ -16,7 +16,7 @@ from .errors import LiegeAPIError
 from .models import (
     AgentAccount, AgentActionAuthorization, AgentActionInput, AgentActionSimulation, AgentControlResult,
     AgentMandate, AgentPolicyInput, Invoice, InvoiceRefund, Job, JobEvent, Receipt, Service, ServiceType, Session,
-    RunnerInput, RunnerResult, RunnerArtifact, McpHarnessPreset, McpHarnessPresetsResponse, WebhookCreateInput, WebhookSubscription,
+    RunnerInput, RunnerResult, RunnerArtifact, McpHarnessPreset, McpHarnessPresetsResponse, WebhookCreateInput, WebhookSubscription, Page,
 )
 
 
@@ -32,10 +32,14 @@ class LiegeClient:
     """
 
     def __init__(self, base_url: str = "https://api.liegeagents.com", token: str | None = None,
-                 client: httpx.Client | None = None):
+                 client: httpx.Client | None = None, timeout: float = 30.0,
+                 max_retries: int = 2, retry_backoff: float = 0.25):
         self.base_url = base_url.rstrip("/")
         self.token = token
-        self._http = client or httpx.Client(timeout=30)
+        self.timeout = timeout
+        self.max_retries = max(0, max_retries)
+        self.retry_backoff = max(0.0, retry_backoff)
+        self._http = client or httpx.Client(timeout=timeout)
 
     def close(self) -> None:
         self._http.close()
@@ -50,14 +54,32 @@ class LiegeClient:
         headers = dict(kwargs.pop("headers", {}))
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
-        response = self._http.request(method, f"{self.base_url}{path}", headers=headers, **kwargs)
+        method = method.upper()
+        attempts = self.max_retries + 1 if method == "GET" else 1
+        for attempt in range(attempts):
+            try:
+                response = self._http.request(method, f"{self.base_url}{path}", headers=headers, timeout=self.timeout, **kwargs)
+            except httpx.TimeoutException as error:
+                if attempt + 1 < attempts:
+                    time.sleep(self.retry_backoff * (2 ** attempt))
+                    continue
+                raise LiegeAPIError("Request timed out", 408, "timeout", retryable=True) from error
+            except httpx.HTTPError as error:
+                if attempt + 1 < attempts:
+                    time.sleep(self.retry_backoff * (2 ** attempt))
+                    continue
+                raise LiegeAPIError("Network request failed", 408, "network", retryable=True) from error
+            if response.is_error and method == "GET" and attempt + 1 < attempts and (response.status_code in {408, 429} or response.status_code >= 500):
+                time.sleep(self.retry_backoff * (2 ** attempt))
+                continue
+            break
         try:
             body = response.json()
         except ValueError:
             body = {}
         if response.is_error:
             error = body.get("error", {}) if isinstance(body, dict) else {}
-            raise LiegeAPIError(error.get("message", response.reason_phrase), response.status_code, error.get("code"))
+            raise LiegeAPIError(error.get("message", response.reason_phrase), response.status_code, error.get("code"), response.headers.get("x-request-id") or error.get("requestId"), response.status_code == 429 or response.status_code >= 500)
         return body.get("data", body) if isinstance(body, dict) else body
 
     def authenticate(self, address: str, signer: Signer) -> Session:
@@ -70,10 +92,14 @@ class LiegeClient:
         return Session(self.token, _date(value.get("expiresAt")), value["userId"], value["walletAddress"])
 
     def list_jobs(self, status: str | None = None, limit: int = 50) -> list[Job]:
+        return self.list_jobs_page(status, limit).items
+
+    def list_jobs_page(self, status: str | None = None, limit: int = 50) -> Page:
         query: dict[str, Any] = {"limit": limit}
         if status:
             query["status"] = status
-        return [Job.from_dict(item) for item in self._request("GET", "/v1/jobs", params=query)]
+        value = self._request("GET", "/v1/jobs", params=query)
+        return _page(value, Job.from_dict)
 
     def get_job(self, job_id: str) -> dict[str, Any]:
         return self._request("GET", f"/v1/jobs/{job_id}")
@@ -140,12 +166,16 @@ class LiegeClient:
 
     def list_services(self, agent_id: str | None = None, service_type: ServiceType | None = None,
                       limit: int = 50) -> list[Service]:
+        return self.list_services_page(agent_id, service_type, limit).items
+
+    def list_services_page(self, agent_id: str | None = None, service_type: ServiceType | None = None,
+                           limit: int = 50) -> Page:
         params: dict[str, Any] = {"limit": limit}
         if agent_id:
             params["agentId"] = agent_id
         if service_type:
             params["type"] = service_type
-        return [Service.from_dict(item) for item in self._request("GET", "/v1/services", params=params)]
+        return _page(self._request("GET", "/v1/services", params=params), Service.from_dict)
 
     def get_service(self, agent_id: str, slug: str) -> Service:
         return Service.from_dict(self._request("GET", f"/v1/services/{agent_id}/{slug}"))
@@ -379,6 +409,92 @@ class LiegeClient:
 
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.token}"} if self.token else {}
+
+
+class AsyncLiegeClient:
+    """Async transport for builders that already use an asyncio runtime."""
+
+    def __init__(self, base_url: str = "https://api.liegeagents.com", token: str | None = None,
+                 client: httpx.AsyncClient | None = None, timeout: float = 30.0,
+                 max_retries: int = 2, retry_backoff: float = 0.25):
+        self.base_url = base_url.rstrip("/")
+        self.token = token
+        self.timeout = timeout
+        self.max_retries = max(0, max_retries)
+        self.retry_backoff = max(0.0, retry_backoff)
+        self._http = client or httpx.AsyncClient(timeout=timeout)
+
+    async def close(self) -> None:
+        await self._http.aclose()
+
+    async def __aenter__(self) -> "AsyncLiegeClient":
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        await self.close()
+
+    async def _request(self, method: str, path: str, **kwargs: Any) -> Any:
+        headers = dict(kwargs.pop("headers", {}))
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        method = method.upper()
+        attempts = self.max_retries + 1 if method == "GET" else 1
+        for attempt in range(attempts):
+            try:
+                response = await self._http.request(method, f"{self.base_url}{path}", headers=headers, timeout=self.timeout, **kwargs)
+            except httpx.TimeoutException as error:
+                if attempt + 1 < attempts:
+                    await _async_sleep(self.retry_backoff * (2 ** attempt))
+                    continue
+                raise LiegeAPIError("Request timed out", 408, "timeout", retryable=True) from error
+            except httpx.HTTPError as error:
+                if attempt + 1 < attempts:
+                    await _async_sleep(self.retry_backoff * (2 ** attempt))
+                    continue
+                raise LiegeAPIError("Network request failed", 408, "network", retryable=True) from error
+            if response.is_error and method == "GET" and attempt + 1 < attempts and (response.status_code in {408, 429} or response.status_code >= 500):
+                await _async_sleep(self.retry_backoff * (2 ** attempt))
+                continue
+            break
+        try:
+            body = response.json()
+        except ValueError:
+            body = {}
+        if response.is_error:
+            error = body.get("error", {}) if isinstance(body, dict) else {}
+            raise LiegeAPIError(error.get("message", response.reason_phrase), response.status_code, error.get("code"), response.headers.get("x-request-id") or error.get("requestId"), response.status_code == 429 or response.status_code >= 500)
+        return body.get("data", body) if isinstance(body, dict) else body
+
+    async def list_jobs(self, status: str | None = None, limit: int = 50) -> list[Job]:
+        query: dict[str, Any] = {"limit": limit}
+        if status:
+            query["status"] = status
+        value = await self._request("GET", "/v1/jobs", params=query)
+        return _page(value, Job.from_dict).items
+
+    async def list_services(self, agent_id: str | None = None, service_type: ServiceType | None = None, limit: int = 50) -> list[Service]:
+        params: dict[str, Any] = {"limit": limit}
+        if agent_id:
+            params["agentId"] = agent_id
+        if service_type:
+            params["type"] = service_type
+        return _page(await self._request("GET", "/v1/services", params=params), Service.from_dict).items
+
+    async def get_job(self, job_id: str) -> dict[str, Any]:
+        return await self._request("GET", f"/v1/jobs/{job_id}")
+
+
+def _page(value: Any, mapper: Callable[[dict[str, Any]], Any]) -> Page:
+    if isinstance(value, list):
+        return Page([mapper(item) for item in value])
+    if isinstance(value, dict):
+        return Page([mapper(item) for item in value.get("items", [])], value.get("nextCursor"), value.get("total"))
+    return Page([])
+
+
+async def _async_sleep(seconds: float) -> None:
+    import asyncio
+    await asyncio.sleep(seconds)
 
 
 def _date(value: str | None) -> datetime | None:

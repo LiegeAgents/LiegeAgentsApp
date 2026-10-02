@@ -49,6 +49,21 @@ Webhook subscriptions are available through `create_webhook`, `list_webhooks`, a
 incoming `x-liege-signature` headers with `LiegeClient.verify_webhook_signature` against the
 exact raw request body.
 
+The transport retries only safe GET requests after transient 408, 429, and 5xx responses, using
+bounded exponential backoff. Mutations are never retried automatically. Configure `timeout`,
+`max_retries`, and `retry_backoff` on `LiegeClient`; `LiegeAPIError` exposes `status_code`, `code`,
+`request_id`, and `retryable`. Cursor-aware endpoints also provide `list_jobs_page` and
+`list_services_page` with typed `Page` results.
+
+Async applications can use the same transport boundary with `AsyncLiegeClient`:
+
+```python
+from liege_agent_sdk import AsyncLiegeClient
+
+async with AsyncLiegeClient(timeout=15, max_retries=2) as liege:
+    jobs = await liege.list_jobs()
+```
+
 ## Development
 
 ```bash

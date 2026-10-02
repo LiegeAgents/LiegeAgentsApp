@@ -1,8 +1,41 @@
 import json
+import asyncio
 
 import httpx
 
-from liege_agent_sdk import LiegeClient, encode_x402_json
+from liege_agent_sdk import AsyncLiegeClient, LiegeAPIError, LiegeClient, encode_x402_json
+
+
+def test_transport_retries_gets_and_preserves_request_id():
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(503, headers={"x-request-id": "req-42"}, json={"error": {"message": "upstream", "code": "UPSTREAM"}})
+
+    with LiegeClient("https://api.test", max_retries=1, retry_backoff=0,
+                     client=httpx.Client(transport=httpx.MockTransport(handler))) as client:
+        try:
+            client.list_jobs()
+        except LiegeAPIError as error:
+            assert error.request_id == "req-42"
+            assert error.retryable is True
+        else:
+            raise AssertionError("expected LiegeAPIError")
+    assert calls == 2
+
+
+def test_async_client_supports_context_manager_and_typed_jobs():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": [{"id": "j1", "status": "open", "title": "Test"}]})
+
+    async def run() -> None:
+        async with AsyncLiegeClient("https://api.test", client=httpx.AsyncClient(transport=httpx.MockTransport(handler))) as client:
+            jobs = await client.list_jobs()
+            assert jobs[0].id == "j1"
+
+    asyncio.run(run())
 
 
 def test_authentication_and_job_mapping():
@@ -229,4 +262,3 @@ def test_agent_mandates_and_ap2_export():
         assert ap2["protocol"] == "ap2"
         assert ap2["version"] == "0.2"
         assert ap2["mandate_id"] == "man-1"
-

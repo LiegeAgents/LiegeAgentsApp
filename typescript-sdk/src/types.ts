@@ -1,5 +1,5 @@
 export type Signer = (message: string) => Promise<string> | string;
-export const SDK_VERSION = "0.1.10";
+export const SDK_VERSION = "0.1.11";
 
 export interface X402PaymentRequired {
   x402Version: number;
@@ -14,6 +14,7 @@ export type X402Signer = (
 
 export interface Session { token: string; userId: string; walletAddress: string; expiresAt?: string; }
 export interface Job { id: string; status: string; [key: string]: unknown; }
+export interface Page<T> { items: T[]; nextCursor?: string | null; total?: number; }
 export type InvoiceAsset = "usdg" | "liege";
 export interface Invoice {
   id: string;
@@ -258,7 +259,7 @@ export interface McpHarnessPresetsResponse {
 }
 
 export class LiegeAPIError extends Error {
-  constructor(message: string, readonly status: number, readonly code?: string) {
+  constructor(message: string, readonly status: number, readonly code?: string, readonly requestId?: string, readonly retryable = false) {
     super(message); this.name = "LiegeAPIError";
   }
 }
