@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { execute, parseFlags } from "../src/index.js";
+import { execute, parseFlags, type Json } from "../src/index.js";
 
 describe("CLI parseFlags", () => {
   test("parses flags with space and equals, separating positional arguments", () => {
@@ -218,5 +218,115 @@ describe("CLI account and service commands execution", () => {
     expect(execute(["services", "create", "--agent-id", "missing-rest"])).rejects.toThrow(
       "Missing required service parameters",
     );
+  });
+});
+
+describe("CLI runner and proposal controls", () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = { ...process.env };
+  let capturedRequests: Array<{ url: string; method: string; body?: unknown }> = [];
+
+  beforeEach(() => {
+    capturedRequests = [];
+    process.env.LIEGE_SESSION_TOKEN = "test-session-token";
+    process.env.LIEGE_API_URL = "https://api.liegeagents.com";
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      capturedRequests.push({
+        url,
+        method: init?.method ?? "GET",
+        body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      });
+      const data = url.includes("/proposals/")
+        ? { id: "770e8400-e29b-41d4-a716-446655440002", effective_status: "approved" }
+        : {
+            id: "880e8400-e29b-41d4-a716-446655440003",
+            simulationId: "990e8400-e29b-41d4-a716-446655440004",
+          };
+      return new Response(JSON.stringify({ data }), { status: 200 });
+    }) as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    process.env = { ...originalEnv };
+  });
+
+  test("simulates and authorizes a runner workload", async () => {
+    const agentId = "550e8400-e29b-41d4-a716-446655440000";
+    const workload = JSON.stringify({ command: "bun", args: ["-e", "console.log('ok')"] });
+    await execute(["runner", "simulate", agentId, workload]);
+    expect(capturedRequests[0].url).toBe(
+      `https://api.liegeagents.com/v1/agent-accounts/${agentId}/actions/simulate`,
+    );
+    expect(capturedRequests[0].body).toMatchObject({
+      action: "runner.execute",
+      details: { command: "bun", args: ["-e", "console.log('ok')"] },
+    });
+
+    await execute([
+      "runner",
+      "authorize",
+      agentId,
+      workload,
+      "--simulation-id",
+      "660e8400-e29b-41d4-a716-446655440001",
+    ]);
+    expect(capturedRequests[1].url).toBe(
+      `https://api.liegeagents.com/v1/agent-accounts/${agentId}/actions/authorize`,
+    );
+    expect(capturedRequests[1].body).toMatchObject({
+      action: "runner.execute",
+      simulationId: "660e8400-e29b-41d4-a716-446655440001",
+    });
+  });
+
+  test("submits, lists, and inspects runner executions", async () => {
+    const workload = {
+      agentId: "550e8400-e29b-41d4-a716-446655440000",
+      command: "python",
+      args: ["-c", "print('ok')"],
+    };
+    await execute([
+      "runner",
+      "execute",
+      JSON.stringify(workload),
+      "--action-id",
+      "660e8400-e29b-41d4-a716-446655440001",
+      "--simulation-id",
+      "770e8400-e29b-41d4-a716-446655440002",
+    ]);
+    await execute(["runner", "list", "--agent-id", workload.agentId]);
+    await execute(["runner", "status", "880e8400-e29b-41d4-a716-446655440003"]);
+    await execute([
+      "runner",
+      "artifact",
+      "880e8400-e29b-41d4-a716-446655440003",
+      "990e8400-e29b-41d4-a716-446655440004",
+    ]);
+    expect(capturedRequests.map((request) => request.url)).toEqual([
+      "https://api.liegeagents.com/v1/runners",
+      `https://api.liegeagents.com/v1/runners?agentId=${workload.agentId}`,
+      "https://api.liegeagents.com/v1/runners/880e8400-e29b-41d4-a716-446655440003",
+      "https://api.liegeagents.com/v1/runners/880e8400-e29b-41d4-a716-446655440003/artifacts/990e8400-e29b-41d4-a716-446655440004",
+    ]);
+  });
+
+  test("filters and waits for a terminal proposal decision", async () => {
+    await execute(["proposals", "list", "--status", "pending"]);
+    await execute(["proposals", "get", "770e8400-e29b-41d4-a716-446655440002"]);
+    const result = (await execute([
+      "proposals",
+      "wait",
+      "770e8400-e29b-41d4-a716-446655440002",
+    ])) as Json;
+    expect(capturedRequests[0].url).toBe(
+      "https://api.liegeagents.com/v1/mcp/proposals?status=pending",
+    );
+    expect(capturedRequests[1].url).toBe(
+      "https://api.liegeagents.com/v1/mcp/proposals/770e8400-e29b-41d4-a716-446655440002",
+    );
+    expect(result.effective_status).toBe("approved");
+    expect(result.timedOut).toBe(false);
   });
 });

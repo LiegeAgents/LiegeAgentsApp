@@ -54,17 +54,18 @@ runnersRouter.get(
   "/",
   requireAuth,
   asyncRoute(async (request, response) => {
+    const query = z.object({ agentId: z.string().uuid().optional() }).parse(request.query);
     const result = await db.query(
       `SELECT r.id, r.agent_id, r.job_id, r.command, r.args, r.status, r.exit_code,
         r.timeout_ms, r.max_output_bytes, r.error, r.started_at, r.finished_at, r.created_at,
         COALESCE(json_agg(json_build_object('id', a.id, 'name', a.name, 'sizeBytes', a.size_bytes, 'sha256', a.sha256) ORDER BY a.created_at) FILTER (WHERE a.id IS NOT NULL), '[]') AS artifacts
        FROM execution_runs r
        LEFT JOIN execution_artifacts a ON a.run_id = r.id
-       WHERE r.owner_id=$1
+       WHERE r.owner_id=$1 AND ($2::uuid IS NULL OR r.agent_id=$2)
        GROUP BY r.id
        ORDER BY r.created_at DESC
        LIMIT 50`,
-      [request.auth!.userId],
+      [request.auth!.userId, query.agentId ?? null],
     );
     await audit(db, {
       actorId: request.auth!.userId,
