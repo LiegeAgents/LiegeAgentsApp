@@ -14,7 +14,7 @@ import { ensureAccount, publicAccount } from "./agentAccounts.js";
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const connectionInput = z.object({ agentId: z.string().uuid(), name: z.string().min(2).max(80) });
 const proposalInput = z.object({
-  action: z.enum(["accept_job", "submit_deliverable", "update_agent"]),
+  action: z.enum(["accept_job", "submit_deliverable", "update_agent", "runner.execute"]),
   payload: z.record(z.unknown()),
   simulationId: z.string().uuid().optional(),
 });
@@ -27,9 +27,9 @@ const policyInput = z.object({
   payloadAccess: z.enum(["none", "metadata", "brief", "full"]).default("full"),
   approvalMode: z.enum(["always", "within_policy"]).default("always"),
   allowedActions: z
-    .array(z.enum(["accept_job", "submit_deliverable", "update_agent"]))
+    .array(z.enum(["accept_job", "submit_deliverable", "update_agent", "runner.execute"]))
     .min(1)
-    .default(["accept_job", "submit_deliverable", "update_agent"]),
+    .default(["accept_job", "submit_deliverable", "update_agent", "runner.execute"]),
 });
 
 type AgentPolicy = {
@@ -529,6 +529,68 @@ mcpInternalRouter.get(
   asyncRoute(async (request, response) => {
     const c = await connection(request);
     response.json({ data: { agentId: c.agent_id, agentName: c.agent_name } });
+  }),
+);
+mcpInternalRouter.get(
+  "/runner/:id",
+  asyncRoute(async (request, response) => {
+    const c = await connection(request);
+    const id = z.string().uuid().parse(request.params.id);
+    const result = await db.query(
+      `SELECT id, agent_id, job_id, command, args, status, exit_code, timeout_ms, max_output_bytes,
+        stdout, stderr, error, started_at, finished_at, created_at
+       FROM execution_runs WHERE id=$1 AND owner_id=$2 AND agent_id=$3`,
+      [id, c.user_id, c.agent_id],
+    );
+    if (!result.rowCount)
+      throw new ApiError(404, "runner_not_found", "This execution run is unavailable.");
+    const artifacts = await db.query(
+      'SELECT id, name, size_bytes AS "sizeBytes", sha256, created_at FROM execution_artifacts WHERE run_id=$1 ORDER BY created_at',
+      [id],
+    );
+    await audit(db, {
+      actorId: c.user_id,
+      action: "runner.status_read",
+      targetType: "execution_run",
+      targetId: id,
+      requestId: request.requestId,
+      metadata: { agentId: c.agent_id },
+    });
+    response.json({ data: { ...result.rows[0], artifacts: artifacts.rows } });
+  }),
+);
+mcpInternalRouter.get(
+  "/runner/:id/artifacts/:artifactId",
+  asyncRoute(async (request, response) => {
+    const c = await connection(request);
+    const id = z.string().uuid().parse(request.params.id);
+    const artifactId = z.string().uuid().parse(request.params.artifactId);
+    const result = await db.query<{ name: string; sha256: string; content_ciphertext: string }>(
+      `SELECT a.name, a.sha256, a.content_ciphertext FROM execution_artifacts a
+       JOIN execution_runs r ON r.id=a.run_id
+       WHERE a.id=$1 AND a.run_id=$2 AND r.owner_id=$3 AND r.agent_id=$4`,
+      [artifactId, id, c.user_id, c.agent_id],
+    );
+    if (!result.rowCount)
+      throw new ApiError(404, "artifact_not_found", "This execution artifact is unavailable.");
+    await audit(db, {
+      actorId: c.user_id,
+      action: "runner.artifact_read",
+      targetType: "execution_artifact",
+      targetId: artifactId,
+      requestId: request.requestId,
+      metadata: { runId: id, agentId: c.agent_id, name: result.rows[0].name },
+    });
+    response.json({
+      data: {
+        name: result.rows[0].name,
+        sha256: result.rows[0].sha256,
+        contentBase64: decryptPayload(
+          result.rows[0].content_ciphertext,
+          payloadContext(id, "artifact"),
+        ),
+      },
+    });
   }),
 );
 mcpInternalRouter.get(
