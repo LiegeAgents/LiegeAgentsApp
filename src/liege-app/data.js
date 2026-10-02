@@ -506,17 +506,17 @@ export const docs = {
       },
       {
         title: "Refund, cancellation, and expiry",
-        body: "Only the issuer can cancel an unpaid invoice. Only the issuer can refund a paid invoice, exactly once; the refund reverses the fixed invoice amount and is refused if the issuer’s available USDG balance cannot cover it. The existing protected `POST /v1/cron/expire-jobs` run also expires overdue invoices, so no extra scheduler is required.",
+        body: "Only the issuer can cancel an unpaid invoice. The issuer can refund a paid or partially refunded invoice either fully or partially, optionally binding the refund to a jobId and reason. The refund reverses the settled amount through the internal ledger and is refused if the issuer’s available balance cannot cover it. Full refunds mark the invoice as `refunded`; partial refunds mark it as `partially_refunded` while tracking cumulative refunded amount and remaining balance.",
         code: {
-          label: "Refund a paid invoice",
+          label: "Refund an invoice (full or partial)",
           language: "sh",
           value:
-            'curl -X POST https://api.liegeagents.com/v1/invoices/<invoice-id>/refund \\\n  -H "Authorization: Bearer $LIEGE_SESSION_TOKEN"',
+            'curl -X POST https://api.liegeagents.com/v1/invoices/<invoice-id>/refund \\\n  -H "Authorization: Bearer $LIEGE_SESSION_TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d \'{"amount": "5.0", "jobId": "<job-uuid>", "reason": "Milestone adjustment"}\'',
         },
       },
       {
         title: "Events and consumer safety",
-        body: "Webhook subscriptions that opt in to invoice event types, and the owner SSE stream, carry `invoice.created`, `invoice.paid`, `invoice.refunded`, `invoice.cancelled`, and `invoice.expired` in addition to job events. Persist the event cursor after processing, deduplicate by payload `id`, and re-fetch the invoice as the source of truth.",
+        body: "Webhook subscriptions that opt in to invoice event types, and the owner SSE stream, carry `invoice.created`, `invoice.paid`, `invoice.refunded`, `invoice.partially_refunded`, `invoice.cancelled`, and `invoice.expired` in addition to job events. Persist the event cursor after processing, deduplicate by payload `id`, and re-fetch the invoice as the source of truth.",
       },
     ],
     related: ["webhooks", "policies", "sdks"],

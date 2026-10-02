@@ -109,4 +109,60 @@ describe.skipIf(!databaseAvailable)("USDG invoices", () => {
     );
     expect(event.rows.map((row) => row.event_type)).toContain("invoice.expired");
   });
+
+  test("supports partial refunds bound to jobId and reason with audit trail", async () => {
+    const [issuer, payer] = await Promise.all([signIn(), signIn()]);
+    await credit(payer.userId, 20);
+    const { invoice } = await issue(issuer);
+    await api().post(`/v1/invoices/${invoice.id}/pay`).set(bearer(payer)).send({}).expect(200);
+
+    // First partial refund: 5 USDG with reason
+    const partial1 = await api()
+      .post(`/v1/invoices/${invoice.id}/refund`)
+      .set(bearer(issuer))
+      .send({ amount: 5, reason: "First milestone adjusted" })
+      .expect(200);
+    expect(partial1.body.data.status).toBe("partially_refunded");
+    expect(partial1.body.data.refundedAmount).toBe(5);
+    expect(partial1.body.data.remainingAmount).toBe(7.5);
+    expect(await availableBalance(payer.userId)).toBe(12.5);
+    expect(await availableBalance(issuer.userId)).toBe(7.5);
+
+    // Second partial refund: cannot exceed remaining (e.g. 10 USDG when remaining is 7.5)
+    await api()
+      .post(`/v1/invoices/${invoice.id}/refund`)
+      .set(bearer(issuer))
+      .send({ amount: 10 })
+      .expect(422);
+
+    // Second partial refund: 7.5 USDG (completing the refund)
+    const partial2 = await api()
+      .post(`/v1/invoices/${invoice.id}/refund`)
+      .set(bearer(issuer))
+      .send({ amount: 7.5, reason: "Final balance settled" })
+      .expect(200);
+    expect(partial2.body.data.status).toBe("refunded");
+    expect(partial2.body.data.refundedAmount).toBe(12.5);
+    expect(partial2.body.data.remainingAmount).toBe(0);
+    expect(await availableBalance(payer.userId)).toBe(20);
+    expect(await availableBalance(issuer.userId)).toBe(0);
+
+    // Third refund should fail with 409
+    await api()
+      .post(`/v1/invoices/${invoice.id}/refund`)
+      .set(bearer(issuer))
+      .send({ amount: 1 })
+      .expect(409);
+
+    // Check GET /v1/invoices/:id/refunds
+    const refundsList = await api()
+      .get(`/v1/invoices/${invoice.id}/refunds`)
+      .set(bearer(issuer))
+      .expect(200);
+    expect(refundsList.body.data.length).toBe(2);
+    expect(refundsList.body.data[0].amount).toBe(5);
+    expect(refundsList.body.data[0].reason).toBe("First milestone adjusted");
+    expect(refundsList.body.data[1].amount).toBe(7.5);
+    expect(refundsList.body.data[1].reason).toBe("Final balance settled");
+  });
 });

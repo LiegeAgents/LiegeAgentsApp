@@ -745,6 +745,50 @@ function InvoiceCenter({ token, agents, accountId, ownerAddress, onNotice }) {
       onNotice(error?.message || "Invoice action could not be completed.");
     }
   };
+  const [refundTarget, setRefundTarget] = useState(null);
+  const [refundAmount, setRefundAmount] = useState("");
+  const [refundJobId, setRefundJobId] = useState("");
+  const [refundReason, setRefundReason] = useState("");
+  const [refunding, setRefunding] = useState(false);
+
+  const startRefund = (invoice) => {
+    setRefundTarget(invoice);
+    const remaining =
+      invoice.remainingAmount != null
+        ? invoice.remainingAmount
+        : Number(invoice.amount ?? invoice.amountUsdg ?? 0) -
+          Number(invoice.refundedAmount ?? 0);
+    setRefundAmount(remaining > 0 ? String(remaining) : "");
+    setRefundJobId("");
+    setRefundReason("");
+  };
+
+  const submitRefund = async (event) => {
+    event.preventDefault();
+    if (!refundTarget) return;
+    setRefunding(true);
+    try {
+      const payload = {};
+      if (refundAmount.trim()) payload.amount = refundAmount.trim();
+      if (refundJobId.trim()) payload.jobId = refundJobId.trim();
+      if (refundReason.trim()) payload.reason = refundReason.trim();
+      const result = await api.refundInvoice(
+        token,
+        refundTarget.id,
+        Object.keys(payload).length ? payload : undefined,
+      );
+      setInvoices((items) =>
+        items.map((item) => (item.id === refundTarget.id ? result.data : item)),
+      );
+      onNotice(`Invoice ${result.data.status.replace("_", " ")}.`);
+      setRefundTarget(null);
+    } catch (error) {
+      onNotice(error?.message || "Refund could not be processed.");
+    } finally {
+      setRefunding(false);
+    }
+  };
+
   const copy = async (invoice) => {
     const url = `${location.origin}/app?pay=${encodeURIComponent(invoice.id)}`;
     try {
@@ -765,8 +809,8 @@ function InvoiceCenter({ token, agents, accountId, ownerAddress, onNotice }) {
           </a>
         }
       >
-        Issue invoices in USDG or LIEGE, receive an auditable ledger receipt, and refund a paid invoice
-        once.
+        Issue invoices in USDG or LIEGE, receive an auditable ledger receipt, and issue full or
+        partial refunds bound to jobId and reason.
       </SectionHeading>
       <section className="settings-panel invoice-create-panel">
         <h2>Create invoice</h2>
@@ -833,14 +877,17 @@ function InvoiceCenter({ token, agents, accountId, ownerAddress, onNotice }) {
           <Empty title="No invoices yet">Create one for an owned agent profile.</Empty>
         ) : (
           invoices.map((invoice) => (
-            <div className="mcp-connection-row invoice-row" key={invoice.id}>
+            <div className="mcp-connection-row invoice-row" key={invoice.id} style={{ flexWrap: "wrap" }}>
               <div className="mcp-connection-name">
                 <span className="mcp-status" />
                 <div>
                   <strong>{invoice.description}</strong>
                   <small>
-                    {invoice.publicId} · {Number(invoice.amount ?? invoice.amountUsdg).toLocaleString()} {(invoice.asset || "usdg").toUpperCase()} ·{" "}
-                    {invoice.status}
+                    {invoice.publicId} · {Number(invoice.amount ?? invoice.amountUsdg).toLocaleString()}{" "}
+                    {(invoice.asset || "usdg").toUpperCase()}
+                    {invoice.refundedAmount > 0 &&
+                      ` (${Number(invoice.refundedAmount).toLocaleString()} refunded)`} ·{" "}
+                    {invoice.status.replace("_", " ")}
                   </small>
                 </div>
               </div>
@@ -853,12 +900,78 @@ function InvoiceCenter({ token, agents, accountId, ownerAddress, onNotice }) {
                     Cancel
                   </Button>
                 )}
-                {invoice.status === "paid" && invoice.issuerId === accountId && (
-                  <Button small onClick={() => act(api.refundInvoice, invoice)}>
-                    Refund
-                  </Button>
-                )}
+                {(invoice.status === "paid" || invoice.status === "partially_refunded") &&
+                  invoice.issuerId === accountId && (
+                    <Button small onClick={() => startRefund(invoice)}>
+                      Refund
+                    </Button>
+                  )}
               </div>
+              {refundTarget?.id === invoice.id && (
+                <form
+                  onSubmit={submitRefund}
+                  style={{
+                    width: "100%",
+                    marginTop: "1rem",
+                    padding: "1rem",
+                    background: "rgba(255,255,255,0.03)",
+                    borderRadius: "8px",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                  }}
+                >
+                  <div style={{ fontWeight: 600, marginBottom: "0.75rem", fontSize: "0.9rem" }}>
+                    Refund ({invoice.publicId}) · Remaining:{" "}
+                    {Number(
+                      invoice.remainingAmount ??
+                        Number(invoice.amount ?? invoice.amountUsdg ?? 0) -
+                          Number(invoice.refundedAmount ?? 0),
+                    ).toLocaleString()}{" "}
+                    {(invoice.asset || "usdg").toUpperCase()}
+                  </div>
+                  <div className="form-grid">
+                    <Field label={`Refund amount (${(invoice.asset || "usdg").toUpperCase()})`}>
+                      <input
+                        value={refundAmount}
+                        onChange={(e) => setRefundAmount(e.target.value)}
+                        placeholder="Leave blank for full remaining"
+                        inputMode="decimal"
+                      />
+                    </Field>
+                    <Field label="Bound Job ID (optional)">
+                      <input
+                        value={refundJobId}
+                        onChange={(e) => setRefundJobId(e.target.value)}
+                        placeholder="Optional Job UUID"
+                      />
+                    </Field>
+                  </div>
+                  <Field label="Reason (optional)">
+                    <input
+                      value={refundReason}
+                      onChange={(e) => setRefundReason(e.target.value)}
+                      placeholder="e.g. Scope adjustment or partial milestone"
+                      maxLength={500}
+                    />
+                  </Field>
+                  <div
+                    className="form-actions"
+                    style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}
+                  >
+                    <Button type="submit" small disabled={refunding}>
+                      {refunding ? "Processing…" : `Confirm refund`}
+                    </Button>
+                    <Button
+                      secondary
+                      small
+                      type="button"
+                      onClick={() => setRefundTarget(null)}
+                      disabled={refunding}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </form>
+              )}
             </div>
           ))
         )}

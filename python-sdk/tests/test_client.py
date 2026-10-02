@@ -97,3 +97,38 @@ def test_service_catalog_maps_rows_and_publishes_service():
     assert service.execution_mode == "sandboxed_runner"
     assert service.price_usd == 2.5
     assert created.service_type == "tool"
+
+
+def test_partial_refund_and_list_refunds():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/invoices/inv-1/refund"):
+            assert request.method == "POST"
+            body = json.loads(request.read())
+            assert body == {"amount": 5.0, "jobId": "job-1", "reason": "Milestone adjust"}
+            return httpx.Response(200, json={"data": {
+                "id": "inv-1", "publicId": "INV-1", "amount": 10.0, "amountUsdg": 10.0,
+                "refundedAmount": 5.0, "refundedAmountUsdg": 5.0, "remainingAmount": 5.0,
+                "asset": "usdg", "status": "partially_refunded",
+            }})
+        if request.url.path.endswith("/invoices/inv-1/refunds"):
+            assert request.method == "GET"
+            return httpx.Response(200, json={"data": [{
+                "id": "ref-1", "invoiceId": "inv-1", "payerId": "p-1", "issuerId": "iss-1",
+                "amount": 5.0, "amountUsdg": 5.0, "asset": "usdg", "jobId": "job-1",
+                "reason": "Milestone adjust", "refundedAt": "2026-10-02T12:00:00Z",
+                "ledgerTransactionId": "tx-1",
+            }]})
+        raise AssertionError(request.url)
+
+    with LiegeClient("https://api.test", token="session", client=httpx.Client(transport=httpx.MockTransport(handler))) as client:
+        refunded = client.refund_invoice("inv-1", amount=5.0, job_id="job-1", reason="Milestone adjust")
+        assert refunded.status == "partially_refunded"
+        assert refunded.refunded_amount == 5.0
+        assert refunded.remaining_amount == 5.0
+
+        refunds = client.list_invoice_refunds("inv-1")
+        assert len(refunds) == 1
+        assert refunds[0].amount == 5.0
+        assert refunds[0].job_id == "job-1"
+        assert refunds[0].reason == "Milestone adjust"
+

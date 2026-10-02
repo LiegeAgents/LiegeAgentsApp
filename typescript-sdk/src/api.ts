@@ -2,6 +2,8 @@ import {
   LiegeAPIError,
   type Invoice,
   type InvoiceAsset,
+  type InvoiceRefund,
+  type RefundInvoiceInput,
   type Service,
   type ServiceType,
   type Job,
@@ -46,7 +48,8 @@ export class LiegeClient {
   getInvoice(id: string): Promise<Invoice> { return this.call(`/v1/invoices/${encodeURIComponent(id)}`); }
   createInvoice(input: { agentId: string; description: string; amount?: string | number; amountUsdg?: string | number; asset?: InvoiceAsset | string; expiresAt: string; reference?: string }): Promise<Invoice> { return this.call("/v1/invoices", { method: "POST", body: input }); }
   payInvoice(id: string): Promise<Invoice> { return this.call(`/v1/invoices/${encodeURIComponent(id)}/pay`, { method: "POST" }); }
-  refundInvoice(id: string): Promise<Invoice> { return this.call(`/v1/invoices/${encodeURIComponent(id)}/refund`, { method: "POST" }); }
+  refundInvoice(id: string, input?: RefundInvoiceInput): Promise<Invoice> { return this.call(`/v1/invoices/${encodeURIComponent(id)}/refund`, { method: "POST", body: input }); }
+  listInvoiceRefunds(id: string): Promise<InvoiceRefund[]> { return this.call(`/v1/invoices/${encodeURIComponent(id)}/refunds`); }
   cancelInvoice(id: string): Promise<Invoice> { return this.call(`/v1/invoices/${encodeURIComponent(id)}/cancel`, { method: "POST" }); }
 
   listServices(options: { agentId?: string; type?: ServiceType; limit?: number } = {}): Promise<Service[]> {

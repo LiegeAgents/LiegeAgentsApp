@@ -62,6 +62,29 @@ describe("LiegeClient", () => {
     await expect(client.createInvoice({ agentId: "agent-1", description: "Audit", amount: 100, asset: "liege", expiresAt: "2030-01-01T00:00:00.000Z" })).resolves.toMatchObject({ id: "invoice-2", asset: "liege" });
   });
 
+  test("supports partial refunds bound to jobId and reason and lists refunds", async () => {
+    const client = new LiegeClient({ token: "session", fetch: async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/v1/invoices/inv-1/refund")) {
+        const body = JSON.parse(String(init?.body));
+        expect(body).toEqual({ amount: 5, jobId: "00000000-0000-0000-0000-000000000001", reason: "Scope adjusted" });
+        return new Response(JSON.stringify({ data: { id: "inv-1", invoiceId: "inv-1", publicId: "INV-1", amount: 10, amountUsdg: 10, refundedAmount: 5, refundedAmountUsdg: 5, remainingAmount: 5, asset: "usdg", status: "partially_refunded" } }));
+      }
+      if (url.endsWith("/v1/invoices/inv-1/refunds")) {
+        return new Response(JSON.stringify({ data: [{ id: "ref-1", invoiceId: "inv-1", payerId: "payer-1", issuerId: "issuer-1", amount: 5, amountUsdg: 5, asset: "usdg", jobId: "00000000-0000-0000-0000-000000000001", reason: "Scope adjusted", refundedAt: "2026-10-02T12:00:00Z", ledgerTransactionId: "tx-1" }] }));
+      }
+      return new Response("not found", { status: 404 });
+    } });
+    const refunded = await client.refundInvoice("inv-1", { amount: 5, jobId: "00000000-0000-0000-0000-000000000001", reason: "Scope adjusted" });
+    expect(refunded.status).toBe("partially_refunded");
+    expect(refunded.refundedAmount).toBe(5);
+    expect(refunded.remainingAmount).toBe(5);
+    const refunds = await client.listInvoiceRefunds("inv-1");
+    expect(refunds).toHaveLength(1);
+    expect(refunds[0].jobId).toBe("00000000-0000-0000-0000-000000000001");
+    expect(refunds[0].reason).toBe("Scope adjusted");
+  });
+
   test("lists and creates typed catalog services", async () => {
     let calls = 0;
     const client = new LiegeClient({ token: "session", fetch: async (input, init) => {
