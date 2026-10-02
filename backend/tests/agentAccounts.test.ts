@@ -165,4 +165,59 @@ describe.skipIf(!databaseAvailable)("agent accounts and mandates", () => {
       .set(bearer(owner))
       .expect(200);
   });
+
+  test("exports an owner-signed mandate in Google AP2 format", async () => {
+    await api().post("/v1/agent-accounts").set(bearer(owner)).send({ agentId }).expect(201);
+    const nonce = `nonce-${crypto.randomUUID()}`;
+    const expiresAt = new Date(Date.now() + 3_600_000).toISOString();
+    const payload = {
+      actions: ["rebalance", "swap"],
+      maxAmount: "100",
+      asset: "usdg",
+      allowedAssets: ["usdg", "liege"],
+      approvedCounterparties: ["dex-router"],
+      description: "Autonomous rebalancing mandate",
+    };
+    const contents = { agentId, nonce, expiresAt, payload, parentMandateId: null };
+    const digest = await import("node:crypto").then(({ createHash }) =>
+      createHash("sha256").update(canonical(contents)).digest("hex"),
+    );
+    const account = privateKeyToAccount(privateKey);
+    const mandate = await api()
+      .post(`/v1/agent-accounts/${agentId}/mandates`)
+      .set(bearer(owner))
+      .send({
+        nonce,
+        payload,
+        expiresAt,
+        signature: await account.signMessage({ message: `Liege Agent Mandate\n${digest}` }),
+      })
+      .expect(201);
+
+    const ap2Export = await api()
+      .get(`/v1/agent-accounts/${agentId}/mandates/${mandate.body.data.id}/ap2`)
+      .set(bearer(owner))
+      .expect(200);
+
+    expect(ap2Export.body.data.protocol).toBe("ap2");
+    expect(ap2Export.body.data.version).toBe("0.2");
+    expect(ap2Export.body.data.vct).toBe("mandate.payment.open.1");
+    expect(ap2Export.body.data.mandate_id).toBe(mandate.body.data.id);
+    expect(ap2Export.body.data.agent_id).toBe(agentId);
+    expect(ap2Export.body.data.issuer.chain_id).toBe(4663);
+    expect(ap2Export.body.data.issuer.network).toBe("robinhood_chain");
+    expect(ap2Export.body.data.issuer.address.toLowerCase()).toBe(owner.address.toLowerCase());
+
+    const paymentMandate = ap2Export.body.data["ap2.mandates.PaymentMandate"];
+    expect(paymentMandate.constraints.allowed_actions).toEqual(["rebalance", "swap"]);
+    expect(paymentMandate.constraints.max_amount).toBe("100");
+    expect(paymentMandate.constraints.currency).toBe("USDG");
+    expect(paymentMandate.constraints.allowed_assets).toEqual(["USDG", "LIEGE"]);
+
+    const intentMandate = ap2Export.body.data["ap2.mandates.IntentMandate"];
+    expect(intentMandate.natural_language_description).toBe("Autonomous rebalancing mandate");
+
+    expect(ap2Export.body.data.proof.signature).toBe(mandate.body.data.signature);
+    expect(ap2Export.body.data.proof.digest).toBe(digest);
+  });
 });

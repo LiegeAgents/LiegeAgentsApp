@@ -151,6 +151,15 @@ export const api = {
       method: "POST",
       body: JSON.stringify(input),
     }),
+  agentMandates: (token, agentId) =>
+    request(`/v1/agent-accounts/${encodeURIComponent(agentId)}/mandates`, { token }),
+  agentMandateAp2: (token, agentId, mandateId) =>
+    request(
+      `/v1/agent-accounts/${encodeURIComponent(agentId)}/mandates/${encodeURIComponent(mandateId)}/ap2`,
+      { token },
+    ),
+  agentMandateAp2Url: (agentId, mandateId) =>
+    `${API_URL}/v1/agent-accounts/${encodeURIComponent(agentId)}/mandates/${encodeURIComponent(mandateId)}/ap2?download=1`,
 };
 
 const display = {

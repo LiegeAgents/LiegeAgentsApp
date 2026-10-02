@@ -13,7 +13,7 @@ import httpx
 from .errors import LiegeAPIError
 from .models import (
     AgentAccount, AgentActionAuthorization, AgentActionInput, AgentActionSimulation, AgentControlResult,
-    AgentPolicyInput, Invoice, InvoiceRefund, Job, JobEvent, Receipt, Service, ServiceType, Session,
+    AgentMandate, AgentPolicyInput, Invoice, InvoiceRefund, Job, JobEvent, Receipt, Service, ServiceType, Session,
 )
 
 
@@ -188,6 +188,18 @@ class LiegeClient:
 
     def kill_agent(self, agent_id: str, reason: str | None = None) -> AgentControlResult:
         return self._control_account(agent_id, "kill", reason)
+
+    def list_agent_mandates(self, agent_id: str) -> list[AgentMandate]:
+        items = self._request("GET", f"/v1/agent-accounts/{agent_id}/mandates")
+        return [AgentMandate.from_dict(item) for item in items]
+
+    def get_agent_mandate(self, agent_id: str, mandate_id: str) -> AgentMandate:
+        data = self._request("GET", f"/v1/agent-accounts/{agent_id}/mandates/{mandate_id}")
+        return AgentMandate.from_dict(data)
+
+    def export_agent_mandate_ap2(self, agent_id: str, mandate_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/v1/agent-accounts/{agent_id}/mandates/{mandate_id}/ap2")
+
 
     def request_x402(self, url: str, signer: X402Signer, method: str = "GET", **kwargs: Any) -> httpx.Response:
         """Request an x402 resource and retry once with an app-signed payment authorization.

@@ -14,7 +14,9 @@ import {
   type AgentActionInput,
   type AgentActionSimulation,
   type AgentControlResult,
+  type AgentMandate,
   type AgentPolicyInput,
+  type Ap2MandateExport,
   type Job,
   type JobEvent,
   type Session,
@@ -113,6 +115,15 @@ export class LiegeClient {
   pauseAgent(agentId: string, reason?: string): Promise<AgentControlResult> { return this.controlAgent(agentId, "pause", reason); }
   resumeAgent(agentId: string): Promise<AgentControlResult> { return this.controlAgent(agentId, "resume"); }
   killAgent(agentId: string, reason?: string): Promise<AgentControlResult> { return this.controlAgent(agentId, "kill", reason); }
+  listAgentMandates(agentId: string): Promise<AgentMandate[]> {
+    return this.call(`/v1/agent-accounts/${encodeURIComponent(agentId)}/mandates`);
+  }
+  getAgentMandate(agentId: string, mandateId: string): Promise<AgentMandate> {
+    return this.call(`/v1/agent-accounts/${encodeURIComponent(agentId)}/mandates/${encodeURIComponent(mandateId)}`);
+  }
+  exportAgentMandateAp2(agentId: string, mandateId: string): Promise<Ap2MandateExport> {
+    return this.call(`/v1/agent-accounts/${encodeURIComponent(agentId)}/mandates/${encodeURIComponent(mandateId)}/ap2`);
+  }
   private controlAgent(agentId: string, command: "pause" | "resume" | "kill", reason?: string): Promise<AgentControlResult> {
     return this.call<Record<string, unknown>>(`/v1/agent-accounts/${encodeURIComponent(agentId)}/control`, { method: "POST", body: { command, ...(reason ? { reason } : {}) } }).then((item) => ({
       ...item, accountId: String(item.accountId ?? item.agentId), status: item.status as AgentControlResult["status"],
