@@ -53,6 +53,7 @@ const tabs = [
   ["overview", "Overview", LayoutGrid],
   ["agents", "Agent market", Globe],
   ["jobs", "Your jobs", BriefcaseBusiness],
+  ["approvals", "Approvals", ShieldCheck],
   ["invoices", "USDG invoices", ReceiptText],
   ["services", "Services", Braces],
   ["evaluations", "Evaluations", Activity],
@@ -248,7 +249,7 @@ export default function Workspace() {
         </div>
         <span className="sidebar-label">WORKSPACE</span>
         <nav aria-label="Workspace navigation">
-          {tabs.slice(0, 3).map(([id, label, Icon]) => (
+          {tabs.slice(0, 4).map(([id, label, Icon]) => (
             <button
               key={id}
               className={view === id ? "active" : ""}
@@ -258,12 +259,21 @@ export default function Workspace() {
               <Icon size={17} />
               {label}
               {id === "jobs" && <small>{allJobs.length}</small>}
+              {id === "approvals" && (
+                <small>
+                  {
+                    mcpProposals.filter(
+                      (proposal) => (proposal.effective_status || proposal.status) === "pending",
+                    ).length
+                  }
+                </small>
+              )}
             </button>
           ))}
         </nav>
         <span className="sidebar-label">BUILD</span>
         <nav aria-label="Build and settings">
-          {tabs.slice(3).map(([id, label, Icon]) => (
+          {tabs.slice(4).map(([id, label, Icon]) => (
             <button key={id} className={view === id ? "active" : ""} onClick={() => navigate(id)}>
               <Icon size={17} />
               {label}
@@ -414,6 +424,25 @@ export default function Workspace() {
                   sufficient internal USDG balance.
                 </Notice>
               )}
+            </>
+          )}
+          {!paymentInvoiceId && view === "approvals" && wallet.apiSession && (
+            <ApprovalInbox
+              token="cookie"
+              proposals={mcpProposals}
+              agents={allAgents}
+              onNotice={notify}
+              onRefresh={refreshLive}
+            />
+          )}
+          {!paymentInvoiceId && view === "approvals" && !wallet.apiSession && (
+            <>
+              <SectionHeading eyebrow="HUMAN GATE" title="Approvals inbox.">
+                Connect your wallet to review actions proposed by your agents.
+              </SectionHeading>
+              <Empty title="Sign in to view approvals">
+                Pending MCP and runner proposals are private to your workspace.
+              </Empty>
             </>
           )}
           {!paymentInvoiceId && view === "invoices" && (
@@ -585,8 +614,173 @@ export default function Workspace() {
   );
 }
 
+function ApprovalInbox({ token, proposals, agents, onNotice, onRefresh }) {
+  const [filter, setFilter] = useState("pending");
+  const [working, setWorking] = useState("");
+  const statusOf = (proposal) => proposal.effective_status || proposal.status || "pending";
+  const counts = proposals.reduce(
+    (result, proposal) => {
+      const status = statusOf(proposal);
+      result[status] = (result[status] || 0) + 1;
+      return result;
+    },
+    { pending: 0, approved: 0, rejected: 0, expired: 0 },
+  );
+  const visible = proposals.filter((proposal) => filter === "all" || statusOf(proposal) === filter);
+  const decide = async (proposal, decision) => {
+    const action = decision === "approved" ? "approve" : "reject";
+    const label = proposal.action?.replaceAll("_", " ") || "agent action";
+    if (!window.confirm(`${action === "approve" ? "Approve" : "Reject"} this ${label}?`)) return;
+    setWorking(proposal.id);
+    try {
+      await api.decideMcpProposal(token, proposal.id, decision);
+      onNotice(decision === "approved" ? "Proposal approved." : "Proposal rejected.");
+      await onRefresh();
+    } catch (error) {
+      onNotice(error?.message || "Could not update the proposal.");
+    } finally {
+      setWorking("");
+    }
+  };
+  const filters = [
+    ["pending", "Pending"],
+    ["all", "All"],
+    ["approved", "Approved"],
+    ["rejected", "Rejected"],
+    ["expired", "Expired"],
+  ];
+  return (
+    <>
+      <SectionHeading
+        eyebrow="HUMAN GATE / AGENT CONTROL"
+        title="Approvals inbox."
+        action={
+          <Button secondary onClick={onRefresh}>
+            Refresh
+          </Button>
+        }
+      >
+        Review proposed agent actions before they can cross your workspace boundary. Approving a
+        proposal records the decision; it never silently executes the underlying work.
+      </SectionHeading>
+      <div className="approval-summary-grid">
+        <section className="settings-panel approval-summary-card approval-summary-pending">
+          <span className="panel-overline">NEEDS YOUR REVIEW</span>
+          <strong>{counts.pending}</strong>
+          <small>Actions waiting for an explicit decision</small>
+        </section>
+        <section className="settings-panel approval-summary-card">
+          <span className="panel-overline">APPROVED</span>
+          <strong>{counts.approved}</strong>
+          <small>Decisions recorded by this workspace</small>
+        </section>
+        <section className="settings-panel approval-summary-card">
+          <span className="panel-overline">EXPIRED</span>
+          <strong>{counts.expired}</strong>
+          <small>Proposals that can no longer be approved</small>
+        </section>
+      </div>
+      <section className="settings-panel approval-panel">
+        <div className="approval-toolbar">
+          <div>
+            <span className="panel-overline">DECISION QUEUE</span>
+            <h2>{filter === "pending" ? "Waiting for you" : "Proposal history"}</h2>
+          </div>
+          <div className="approval-filters" role="tablist" aria-label="Filter proposals">
+            {filters.map(([value, label]) => (
+              <button
+                key={value}
+                className={filter === value ? "active" : ""}
+                onClick={() => setFilter(value)}
+                role="tab"
+                aria-selected={filter === value}
+              >
+                {label} <b>{value === "all" ? proposals.length : counts[value]}</b>
+              </button>
+            ))}
+          </div>
+        </div>
+        {visible.length ? (
+          <div className="approval-list">
+            {visible.map((proposal) => {
+              const status = statusOf(proposal);
+              const agent = agents.find((item) => item.id === proposal.agent_id);
+              const payload = proposal.payload || {};
+              const action = proposal.action?.replaceAll("_", " ") || "agent action";
+              return (
+                <article className={`approval-card approval-${status}`} key={proposal.id}>
+                  <div className="approval-card-heading">
+                    <span className={`approval-status-dot ${status}`} />
+                    <div>
+                      <strong>{action}</strong>
+                      <small>
+                        {agent?.name || "Agent account"} · submitted{" "}
+                        {new Date(proposal.created_at).toLocaleString()}
+                      </small>
+                    </div>
+                    <span className="approval-status">{status}</span>
+                  </div>
+                  <div className="approval-details">
+                    <span>
+                      <small>AGENT</small>
+                      <b>{agent?.name || proposal.agent_id || "Unknown"}</b>
+                    </span>
+                    <span>
+                      <small>SIMULATION</small>
+                      <b>{proposal.simulation_id ? "Bound" : "Not attached"}</b>
+                    </span>
+                    <span>
+                      <small>EXPIRES</small>
+                      <b>
+                        {proposal.expires_at ? new Date(proposal.expires_at).toLocaleString() : "—"}
+                      </b>
+                    </span>
+                  </div>
+                  {payload.command && (
+                    <code className="approval-command">
+                      {payload.command} {(payload.args || []).join(" ")}
+                    </code>
+                  )}
+                  <div className="approval-card-footer">
+                    <span>Policy and payload checks remain enforced at execution.</span>
+                    {status === "pending" && (
+                      <div className="approval-actions">
+                        <Button
+                          onClick={() => decide(proposal, "approved")}
+                          disabled={working === proposal.id}
+                        >
+                          <Check size={14} /> Approve
+                        </Button>
+                        <Button
+                          secondary
+                          onClick={() => decide(proposal, "rejected")}
+                          disabled={working === proposal.id}
+                        >
+                          Reject
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <Empty title={filter === "pending" ? "Nothing needs your review" : "No proposals found"}>
+            {filter === "pending"
+              ? "When an agent requests a confirmation, it will appear here with its policy context."
+              : "Try another status filter or refresh the inbox."}
+          </Empty>
+        )}
+      </section>
+    </>
+  );
+}
+
 function RunnerCenter({ token, runs, proposals, agents, onNotice, onRefresh }) {
-  const pending = proposals.filter((proposal) => proposal.status === "pending");
+  const pending = proposals.filter(
+    (proposal) => (proposal.effective_status || proposal.status) === "pending",
+  );
   const active = runs.filter((run) => ["running", "queued"].includes(run.status));
   const statusLabel = (value) => String(value || "unknown").replaceAll("_", " ");
   const decide = async (proposal, decision) => {

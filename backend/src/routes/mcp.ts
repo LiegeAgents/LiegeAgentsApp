@@ -463,7 +463,7 @@ mcpRouter.get(
       })
       .parse(request.query);
     const result = await db.query(
-      `SELECT id, agent_id, action, payload, status,
+      `SELECT id, agent_id, action, payload, simulation_id, status,
         CASE WHEN status='pending' AND expires_at <= now() THEN 'expired' ELSE status END AS effective_status,
         expires_at, created_at, decided_at
        FROM mcp_proposals WHERE user_id=$1
@@ -488,7 +488,7 @@ mcpRouter.get(
   asyncRoute(async (request, response) => {
     const id = z.string().uuid().parse(request.params.id);
     const result = await db.query(
-      `SELECT id, agent_id, action, payload, status,
+      `SELECT id, agent_id, action, payload, simulation_id, status,
         CASE WHEN status='pending' AND expires_at <= now() THEN 'expired' ELSE status END AS effective_status,
         expires_at, created_at, decided_at
        FROM mcp_proposals WHERE id=$1 AND user_id=$2`,
