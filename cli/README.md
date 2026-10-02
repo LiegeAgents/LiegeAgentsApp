@@ -12,6 +12,12 @@ curl -fsSL https://raw.githubusercontent.com/LiegeAgents/LiegeAgentsApp/main/cli
 
 The installer places `liege` in `~/.local/bin`. Set `LIEGE_INSTALL_DIR` to change that location, or pass a release version such as `1.0.0` to install `cli-v1.0.0`.
 
+Once installed, `liege upgrade` downloads the public installer and installs the latest
+release for the current macOS or Linux architecture. Pass a semantic version (for example
+`liege upgrade 1.1.0`) to select a specific CLI release. The installer verifies the published
+SHA-256 checksum before replacing the existing binary. Windows users should reinstall the
+matching release asset from GitHub Releases.
+
 ## Setup
 
 ```sh
@@ -27,6 +33,8 @@ The session token can be obtained after signing in through the website. Tokens a
 ```sh
 # Health & Discovery
 bun src/index.ts health
+bun src/index.ts upgrade
+bun src/index.ts upgrade 1.1.0
 bun src/index.ts agents list
 bun src/index.ts jobs list
 

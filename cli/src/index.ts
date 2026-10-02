@@ -1,6 +1,9 @@
 #!/usr/bin/env bun
 
 import { createHash } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 export type Json = Record<string, unknown>;
 
@@ -9,12 +12,15 @@ export const getApiUrl = () =>
 export const getSessionToken = () => process.env.LIEGE_SESSION_TOKEN;
 
 const BOOLEAN_FLAGS = new Set(["ap2", "help", "h"]);
+const INSTALLER_URL =
+  "https://raw.githubusercontent.com/LiegeAgents/LiegeAgentsApp/main/cli/install.sh";
 
 export function usage(): never {
   console.log(`Liege operator CLI
 
 Usage:
   liege health
+  liege upgrade [latest|<version>]
   liege agents list
   liege jobs list
   liege runner simulate <agent-id> '<json-workload>'
@@ -84,6 +90,40 @@ export async function request(path: string, init: RequestInit = {}, authenticate
 
 export function print(value: unknown) {
   console.log(JSON.stringify(value, null, 2));
+}
+
+export function normalizeUpgradeVersion(value = "latest") {
+  if (value === "latest") return value;
+  if (/^cli-v\d+\.\d+\.\d+$/.test(value)) return value;
+  if (/^v?\d+\.\d+\.\d+$/.test(value)) return `cli-v${value.replace(/^v/, "")}`;
+  throw new Error(
+    "Upgrade version must be latest, v<major>.<minor>.<patch>, or cli-v<major>.<minor>.<patch>.",
+  );
+}
+
+export async function upgrade(version = "latest") {
+  if (process.platform === "win32")
+    throw new Error(
+      "Automatic upgrade is currently supported on macOS and Linux; reinstall the Windows release from GitHub Releases.",
+    );
+  const requestedVersion = normalizeUpgradeVersion(version);
+  const response = await fetch(INSTALLER_URL);
+  if (!response.ok) throw new Error(`Unable to download the Liege installer (${response.status}).`);
+  const script = await response.text();
+  const directory = await mkdtemp(join(process.env.TMPDIR ?? tmpdir(), "liege-upgrade-"));
+  const path = join(directory, "install.sh");
+  await Bun.write(path, script);
+  try {
+    const child = Bun.spawn(["sh", path, requestedVersion], {
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    const exitCode = await child.exited;
+    if (exitCode !== 0) throw new Error(`Liege upgrade failed with exit code ${exitCode}.`);
+  } finally {
+    await rm(directory, { recursive: true, force: true }).catch(() => undefined);
+  }
+  return { upgraded: true, version: requestedVersion };
 }
 
 export function parseFlags(args: string[]): {
@@ -165,6 +205,7 @@ export async function execute(args: string[]): Promise<unknown> {
   if (!resource || resource === "--help" || resource === "-h" || flags.help === "true") usage();
 
   if (resource === "health") return request("/health", {}, false);
+  if (resource === "upgrade") return upgrade(id ?? "latest");
   if (resource === "agents" && action === "list") return request("/v1/agents");
   if (resource === "jobs" && action === "list") return request("/v1/jobs");
   if (resource === "runner" || resource === "runners") {
