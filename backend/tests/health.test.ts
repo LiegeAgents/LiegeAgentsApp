@@ -23,3 +23,10 @@ test("CLI installer is hosted as a shell script", async () => {
   expect(response.headers["content-type"]).toContain("application/x-sh");
   expect(response.text).toStartWith("#!/usr/bin/env sh");
 });
+
+test("Liege skill is hosted as Markdown", async () => {
+  const response = await api().get("/skill.md").expect(200);
+  expect(response.type).toBe("text/markdown");
+  expect(response.text).toContain("name: liege");
+  expect(response.text).toContain("approval_required");
+});
