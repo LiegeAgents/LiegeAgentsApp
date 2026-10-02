@@ -229,7 +229,9 @@ describe.skipIf(!databaseAvailable)("MCP connections", () => {
       .expect(200);
     expect(auth.body.data.actionId).toBeDefined();
     expect(auth.body.data.accountId).toBe(agentId);
-    expect(auth.body.data.decision).toBe("approved");
+    // The default policy is confirmation-first. Authorization creates a pending
+    // action; the owner must explicitly approve it before execution.
+    expect(auth.body.data.decision).toBe("approval_required");
 
     const mandates = await api()
       .get("/v1/internal/mcp/account/mandates")
