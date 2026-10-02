@@ -87,7 +87,8 @@ const publicInvoice = (row: InvoiceRow) => {
     description: row.description,
     reference: row.reference,
     amount: numAmount,
-    amountUsdg: asset === "usdg" ? numAmount : (row.amount_usdg != null ? Number(row.amount_usdg) : numAmount),
+    amountUsdg:
+      asset === "usdg" ? numAmount : row.amount_usdg != null ? Number(row.amount_usdg) : numAmount,
     asset,
     status: row.status,
     expiresAt: row.expires_at,
@@ -133,9 +134,10 @@ invoicesRouter.post(
   requireAuth,
   asyncRoute(async (request, response) => {
     const input = createInput.parse(request.body);
-    const invoiceAmount = typeof (input.amount ?? input.amountUsdg) === "number"
-      ? String(input.amount ?? input.amountUsdg)
-      : String(input.amount ?? input.amountUsdg).trim();
+    const invoiceAmount =
+      typeof (input.amount ?? input.amountUsdg) === "number"
+        ? String(input.amount ?? input.amountUsdg)
+        : String(input.amount ?? input.amountUsdg).trim();
     if (new Date(input.expiresAt) <= new Date())
       throw new ApiError(422, "invalid_expiry", "Invoice expiry must be in the future.");
     const agent = await db.query("SELECT id FROM agents WHERE id=$1 AND owner_id=$2", [
@@ -385,9 +387,16 @@ invoicesRouter.get(
           method: "liege_ledger",
           asset,
           amount: invoiceAmount,
-          amountUsdg: asset === "usdg" ? invoiceAmount : (invoice.amount_usdg != null ? Number(invoice.amount_usdg) : invoiceAmount),
+          amountUsdg:
+            asset === "usdg"
+              ? invoiceAmount
+              : invoice.amount_usdg != null
+                ? Number(invoice.amount_usdg)
+                : invoiceAmount,
           x402: asset === "usdg" && x402Configured() ? "available" : "not_configured",
-          ...(asset === "usdg" && x402Configured() ? { endpoint: `/v1/invoices/${invoice.id}/x402` } : {}),
+          ...(asset === "usdg" && x402Configured()
+            ? { endpoint: `/v1/invoices/${invoice.id}/x402` }
+            : {}),
         },
       },
     });
@@ -451,7 +460,14 @@ invoicesRouter.post(
       });
       await client.query(
         "INSERT INTO invoice_payments (invoice_id,payer_id,ledger_transaction_id,amount,amount_usdg,asset) VALUES ($1,$2,$3,$4,$5,$6)",
-        [invoiceId, request.auth!.userId, transactionId, invoiceAmount, asset === "usdg" ? invoiceAmount : null, asset],
+        [
+          invoiceId,
+          request.auth!.userId,
+          transactionId,
+          invoiceAmount,
+          asset === "usdg" ? invoiceAmount : null,
+          asset,
+        ],
       );
       const paid = await client.query<InvoiceRow>(
         "UPDATE invoices SET status='paid', paid_at=now(), updated_at=now() WHERE id=$1 RETURNING *",
@@ -535,7 +551,15 @@ invoicesRouter.post(
       });
       await client.query(
         "INSERT INTO invoice_refunds (invoice_id,payer_id,issuer_id,ledger_transaction_id,amount,amount_usdg,asset) VALUES ($1,$2,$3,$4,$5,$6,$7)",
-        [invoiceId, invoice.payer_id, invoice.issuer_id, transactionId, invoiceAmount, asset === "usdg" ? invoiceAmount : null, asset],
+        [
+          invoiceId,
+          invoice.payer_id,
+          invoice.issuer_id,
+          transactionId,
+          invoiceAmount,
+          asset === "usdg" ? invoiceAmount : null,
+          asset,
+        ],
       );
       const refunded = await client.query<InvoiceRow>(
         "UPDATE invoices SET status='refunded', refunded_at=now(), updated_at=now() WHERE id=$1 RETURNING *",
