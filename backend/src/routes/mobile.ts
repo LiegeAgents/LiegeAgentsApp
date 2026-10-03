@@ -12,16 +12,25 @@ let latestReleaseCache: { expiresAt: number; value: unknown } | null = null;
 const latestRelease = async () => {
   if (latestReleaseCache && latestReleaseCache.expiresAt > Date.now())
     return latestReleaseCache.value;
-  const repository = process.env.MOBILE_RELEASE_REPO ?? "liegeagents/liegeagentsapp";
+  const repository = "LiegeAgents/LiegeAgentsApp";
+  const fallbackTag = process.env.MOBILE_RELEASE_TAG ?? "android-v0.1.2";
   const response = await fetch(`https://api.github.com/repos/${repository}/releases?per_page=20`, {
     headers: { Accept: "application/vnd.github+json", "User-Agent": "liege-api" },
   });
-  if (!response.ok)
-    throw new ApiError(
-      503,
-      "mobile_release_unavailable",
-      "The Android release metadata is temporarily unavailable.",
-    );
+  if (!response.ok) {
+    const value = {
+      tag: fallbackTag,
+      name: `Liege Android ${fallbackTag.replace(/^android-v/, "v")}`,
+      publishedAt: null,
+      asset: {
+        name: "liege-mobile.apk",
+        size: null,
+        url: `https://github.com/${repository}/releases/download/${fallbackTag}/liege-mobile.apk`,
+      },
+    };
+    latestReleaseCache = { expiresAt: Date.now() + 60_000, value };
+    return value;
+  }
   const releases = (await response.json()) as Array<{
     tag_name?: string;
     name?: string;
