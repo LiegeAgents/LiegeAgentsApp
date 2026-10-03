@@ -21,11 +21,11 @@ npm run test:e2e
 - `/auth`: four-step preview of X identity, Liege wallet, permissions, and completion.
 - `/app`: sample dashboard. `?view=requests`, `agents`, `activity`, and `settings` deep-link to sections.
 
-This release is a frontend preview. It makes no X, wallet, or Liege API calls.
-Onboarding explicitly uses sample identities. Approvals and agent drafts only change
-demo data in session storage (`liege-superagents-preview-v1`), isolated from real
-Liege authentication. Reset it from Settings or exit the preview. No credentials
-or wallet addresses are collected. All requests are labeled as examples.
+The production build uses a same-origin `/api/*` proxy to `api.liegeagents.com`.
+Onboarding performs X OAuth first, then one Liege wallet SIWE signature, followed by
+the scoped Super Agents permission step. The dashboard chatbot creates proposal-only
+intents; it never funds or signs a job. Local development can point at the API with
+`VITE_API_URL`.
 
 ## Deployment
 
