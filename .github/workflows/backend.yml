@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   test:
+    if: github.repository == 'liegeagents/liegeagentsapp'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -38,7 +39,7 @@ jobs:
           fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: '1.4.2'
+          bun-version: "1.4.2"
       - run: bun install --frozen-lockfile
       - run: bun run check
       - run: bun run format:check
@@ -53,7 +54,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-push:
-    if: github.event_name == 'push'
+    if: github.repository == 'liegeagents/liegeagentsapp' && github.event_name == 'push'
     needs: test
     runs-on: ubuntu-latest
     permissions:
@@ -80,7 +81,7 @@ jobs:
             ${{ steps.image.outputs.name }}:${{ github.sha }}
 
   deploy:
-    if: github.event_name == 'push'
+    if: github.repository == 'liegeagents/liegeagentsapp' && github.event_name == 'push'
     needs: build-push
     runs-on: ubuntu-latest
     # Approval rules for production are configured on this environment in the repository settings.
@@ -120,7 +121,7 @@ jobs:
           exit 1
 
   release:
-    if: github.event_name == 'push'
+    if: github.repository == 'liegeagents/liegeagentsapp' && github.event_name == 'push'
     needs: deploy
     runs-on: ubuntu-latest
     permissions:
