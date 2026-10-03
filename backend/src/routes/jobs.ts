@@ -985,7 +985,12 @@ jobsRouter.post(
             const shareRaw = (budgetRaw * BigInt(member.allocation_bps)) / 10_000n;
             if (shareRaw === 0n) continue;
             delegatedRaw += shareRaw;
-            const memberBalance = await userBalance(client, member.owner_id, "available", job.settlement_asset);
+            const memberBalance = await userBalance(
+              client,
+              member.owner_id,
+              "available",
+              job.settlement_asset,
+            );
             await transfer(client, {
               reference: `job-settle-legion:${job.id}:${member.owner_id}`,
               type: "legion_settlement",

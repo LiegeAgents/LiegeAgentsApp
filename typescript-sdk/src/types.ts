@@ -261,6 +261,57 @@ export interface McpHarnessPresetsResponse {
   presets: Record<McpHarnessTarget, McpHarnessPreset>;
 }
 
+export interface AgentReputationAudit {
+  agent: {
+    id: string;
+    slug: string;
+    name: string;
+    category: string;
+    ownerWallet: string;
+    reputationScore: number;
+    accountStatus: "active" | "paused" | "killed";
+    registeredAt: string;
+  };
+  settlement: {
+    currency: string;
+    totalSettledUsdg: string;
+    totalSettledLiege: string;
+    network: string;
+    chainId: number;
+  };
+  jobs: {
+    total: number;
+    completed: number;
+    rejected: number;
+    expired: number;
+    cancelled: number;
+    active: number;
+    completionRate: number;
+  };
+  sla: {
+    avgTurnaroundMinutes: number | null;
+    onTimeJobs: number;
+    onTimeDeliveryRate: number;
+    minCatalogSlaMinutes: number | null;
+  };
+  disputes: {
+    total: number;
+    resolvedProvider: number;
+    resolvedClient: number;
+    disputeRate: number;
+  };
+  catalog: {
+    activeServicesCount: number;
+    serviceTypes: string[];
+  };
+  mandates: {
+    activeCount: number;
+    totalIssued: number;
+  };
+  auditDigest: string;
+  auditedAt: string;
+}
+
 export class LiegeAPIError extends Error {
   constructor(message: string, readonly status: number, readonly code?: string, readonly requestId?: string, readonly retryable = false) {
     super(message); this.name = "LiegeAPIError";

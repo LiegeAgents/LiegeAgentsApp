@@ -233,13 +233,18 @@ async function signingPolicyViolation(payout: Payout) {
      WHERE l.job_id = $1 AND la.status = 'submitted' ORDER BY la.created_at`,
     [payout.job_id],
   );
-  const legionRules = members.rows.map((member) => ({
-    recipient: member.wallet_address,
-    asset: asset as EscrowAsset,
-    amount: (budget * BigInt(member.allocation_bps)) / 10_000n,
-  })).filter((rule) => rule.amount > 0n);
+  const legionRules = members.rows
+    .map((member) => ({
+      recipient: member.wallet_address,
+      asset: asset as EscrowAsset,
+      amount: (budget * BigInt(member.allocation_bps)) / 10_000n,
+    }))
+    .filter((rule) => rule.amount > 0n);
   const delegated = legionRules.reduce((total, rule) => total + rule.amount, 0n);
-  const rules: Record<Exclude<Purpose, "legion_payment">, { recipient: string; asset: EscrowAsset; amount?: bigint }> = {
+  const rules: Record<
+    Exclude<Purpose, "legion_payment">,
+    { recipient: string; asset: EscrowAsset; amount?: bigint }
+  > = {
     provider_payment: { recipient: terms.provider, asset, amount: budget - delegated },
     evaluator_fee: { recipient: terms.evaluator ?? terms.client, asset, amount: fee },
     client_refund: { recipient: terms.client, asset, amount: budget + fee },
@@ -247,9 +252,14 @@ async function signingPolicyViolation(payout: Payout) {
     usdg_sweep: { recipient: terms.client, asset: "usdg" },
     eth_sweep: { recipient: terms.client, asset: "eth" },
   };
-  const rule = payout.purpose === "legion_payment"
-    ? legionRules.find((candidate) => candidate.recipient === payout.recipient && candidate.amount.toString() === payout.amount_raw)
-    : rules[payout.purpose];
+  const rule =
+    payout.purpose === "legion_payment"
+      ? legionRules.find(
+          (candidate) =>
+            candidate.recipient === payout.recipient &&
+            candidate.amount.toString() === payout.amount_raw,
+        )
+      : rules[payout.purpose];
   if (!rule) return "is not an authorized Liege-ion payout";
   if (payout.recipient !== rule.recipient)
     return `${payout.recipient} is not the recipient the job's terms allow`;

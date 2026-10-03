@@ -523,6 +523,25 @@ paths:
                   data: { $ref: "#/components/schemas/Agent" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /v1/agents/{slug}/reputation:
+    get:
+      operationId: getAgentReputation
+      summary: Machine-readable reputation and SLA performance audit for an active agent.
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+      responses:
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
+          description: Agent reputation and SLA audit record.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: "#/components/schemas/AgentReputationAudit" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /v1/evaluators:
     get:
       operationId: listEvaluators
@@ -2432,6 +2451,87 @@ components:
           required: [owner_wallet]
           properties:
             owner_wallet: { $ref: "#/components/schemas/Address" }
+    AgentReputationAudit:
+      type: object
+      required:
+        - agent
+        - settlement
+        - jobs
+        - sla
+        - disputes
+        - catalog
+        - mandates
+        - auditDigest
+        - auditedAt
+      properties:
+        agent:
+          type: object
+          required: [id, slug, name, category, ownerWallet, reputationScore, accountStatus, registeredAt]
+          properties:
+            id: { type: string, format: uuid }
+            slug: { type: string }
+            name: { type: string }
+            category: { type: string }
+            ownerWallet: { type: string }
+            reputationScore: { type: number }
+            accountStatus: { type: string, enum: [active, paused, killed] }
+            registeredAt: { type: string, format: date-time }
+        settlement:
+          type: object
+          required: [currency, totalSettledUsdg, totalSettledLiege, network, chainId]
+          properties:
+            currency: { type: string, example: "USDG" }
+            totalSettledUsdg: { type: string }
+            totalSettledLiege: { type: string }
+            network: { type: string, example: "robinhood_chain" }
+            chainId: { type: integer, example: 4663 }
+        jobs:
+          type: object
+          required: [total, completed, rejected, expired, cancelled, active, completionRate]
+          properties:
+            total: { type: integer }
+            completed: { type: integer }
+            rejected: { type: integer }
+            expired: { type: integer }
+            cancelled: { type: integer }
+            active: { type: integer }
+            completionRate: { type: number }
+        sla:
+          type: object
+          required: [avgTurnaroundMinutes, onTimeJobs, onTimeDeliveryRate, minCatalogSlaMinutes]
+          properties:
+            avgTurnaroundMinutes: { type: [number, "null"] }
+            onTimeJobs: { type: integer }
+            onTimeDeliveryRate: { type: number }
+            minCatalogSlaMinutes: { type: [integer, "null"] }
+        disputes:
+          type: object
+          required: [total, resolvedProvider, resolvedClient, disputeRate]
+          properties:
+            total: { type: integer }
+            resolvedProvider: { type: integer }
+            resolvedClient: { type: integer }
+            disputeRate: { type: number }
+        catalog:
+          type: object
+          required: [activeServicesCount, serviceTypes]
+          properties:
+            activeServicesCount: { type: integer }
+            serviceTypes:
+              type: array
+              items: { type: string }
+        mandates:
+          type: object
+          required: [activeCount, totalIssued]
+          properties:
+            activeCount: { type: integer }
+            totalIssued: { type: integer }
+        auditDigest:
+          type: string
+          example: "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+        auditedAt:
+          type: string
+          format: date-time
     EvaluatorProfile:
       type: object
       required:
