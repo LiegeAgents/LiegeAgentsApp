@@ -44,7 +44,12 @@ jobs:
           s = s.replace(marker, block, 1)
           p.write_text(s)
           PY
-      - run: cd android && ./gradlew assembleRelease
+      - name: Build signed release APK
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: cd android && ./gradlew assembleRelease
       - run: cp android/app/build/outputs/apk/release/app-release.apk liege-mobile.apk
       - uses: actions/upload-artifact@v4
         with: { name: liege-mobile-apk, path: android/liege-mobile.apk, retention-days: 1 }
