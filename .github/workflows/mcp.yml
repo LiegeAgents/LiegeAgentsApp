@@ -13,6 +13,7 @@ permissions:
 
 jobs:
   test:
+    if: github.repository == 'liegeagents/liegeagentsapp'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -26,7 +27,7 @@ jobs:
       - run: bun run check
 
   build-push:
-    if: github.event_name == 'push'
+    if: github.repository == 'liegeagents/liegeagentsapp' && github.event_name == 'push'
     needs: test
     runs-on: ubuntu-latest
     permissions:
@@ -53,7 +54,7 @@ jobs:
             ${{ steps.image.outputs.name }}:${{ github.sha }}
 
   deploy:
-    if: github.event_name == 'push'
+    if: github.repository == 'liegeagents/liegeagentsapp' && github.event_name == 'push'
     needs: build-push
     runs-on: ubuntu-latest
     environment: production
