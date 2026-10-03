@@ -14,7 +14,13 @@ import { ensureAccount, publicAccount } from "./agentAccounts.js";
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const connectionInput = z.object({ agentId: z.string().uuid(), name: z.string().min(2).max(80) });
 const proposalInput = z.object({
-  action: z.enum(["accept_job", "submit_deliverable", "update_agent", "runner.execute"]),
+  action: z.enum([
+    "accept_job",
+    "submit_deliverable",
+    "evaluate_job",
+    "update_agent",
+    "runner.execute",
+  ]),
   payload: z.record(z.unknown()),
   simulationId: z.string().uuid().optional(),
 });
@@ -27,9 +33,23 @@ const policyInput = z.object({
   payloadAccess: z.enum(["none", "metadata", "brief", "full"]).default("full"),
   approvalMode: z.enum(["always", "within_policy"]).default("always"),
   allowedActions: z
-    .array(z.enum(["accept_job", "submit_deliverable", "update_agent", "runner.execute"]))
+    .array(
+      z.enum([
+        "accept_job",
+        "submit_deliverable",
+        "evaluate_job",
+        "update_agent",
+        "runner.execute",
+      ]),
+    )
     .min(1)
-    .default(["accept_job", "submit_deliverable", "update_agent", "runner.execute"]),
+    .default([
+      "accept_job",
+      "submit_deliverable",
+      "evaluate_job",
+      "update_agent",
+      "runner.execute",
+    ]),
 });
 
 type AgentPolicy = {
@@ -58,6 +78,7 @@ const publicPolicy = (row: Record<string, unknown> | undefined, agentId: string)
   allowedActions: (row?.allowed_actions as string[] | undefined) ?? [
     "accept_job",
     "submit_deliverable",
+    "evaluate_job",
     "update_agent",
   ],
   updatedAt: row?.updated_at ?? null,
@@ -919,6 +940,37 @@ mcpInternalRouter.post(
               violations.push("The job exceeds the daily spend limit.");
           }
         }
+      }
+    }
+    if (input.action === "submit_deliverable" || input.action === "evaluate_job") {
+      const jobId = z.string().uuid().safeParse(input.payload.jobId);
+      if (!jobId.success) violations.push("A valid jobId is required.");
+      else {
+        const job = await db.query<{
+          agent_id: string;
+          provider_id: string;
+          evaluator_id: string | null;
+          status: string;
+          expires_at: Date;
+        }>(
+          `SELECT j.agent_id, a.owner_id AS provider_id, j.evaluator_id, j.status, j.expires_at
+           FROM jobs j JOIN agents a ON a.id = j.agent_id WHERE j.id = $1`,
+          [jobId.data],
+        );
+        if (!job.rowCount || job.rows[0].agent_id !== c.agent_id)
+          violations.push("The job is not assigned to the connected agent.");
+        else if (new Date(job.rows[0].expires_at) <= new Date())
+          violations.push("The job payload has expired.");
+        else if (
+          input.action === "submit_deliverable" &&
+          (job.rows[0].provider_id !== c.user_id || job.rows[0].status !== "funded")
+        )
+          violations.push("Only the assigned agent owner can submit a funded job deliverable.");
+        else if (
+          input.action === "evaluate_job" &&
+          (job.rows[0].evaluator_id !== c.user_id || job.rows[0].status !== "submitted")
+        )
+          violations.push("Only the assigned evaluator can evaluate a submitted job.");
       }
     }
     if (violations.length) throw new ApiError(403, "policy_action_denied", violations.join(" "));

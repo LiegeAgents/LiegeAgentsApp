@@ -87,6 +87,16 @@ const runnerDetails = (input: Record<string, any>) => ({
   envDigest: digest(input.env ?? {}),
   filesDigest: digest(input.files ?? {}),
 });
+const jobSubmissionInput = {
+  jobId: z.string().uuid(),
+  deliverable: z.string().min(1).max(100_000),
+  evidence: z.array(z.string().url()).max(20).optional(),
+};
+const jobEvaluationInput = {
+  jobId: z.string().uuid(),
+  outcome: z.enum(["accepted", "rejected"]),
+  rationale: z.string().min(1).max(100_000),
+};
 function serverFor(connectionToken: string) {
   const server = new McpServer({ name: "liege-mcp", version: "0.1.0" });
   server.registerTool(
@@ -120,6 +130,85 @@ function serverFor(connectionToken: string) {
       inputSchema: { jobId: z.string().uuid() },
     },
     async ({ jobId }) => text(await api(`/v1/internal/mcp/jobs/${jobId}`, connectionToken)),
+  );
+  server.registerTool(
+    "simulate_job_submission",
+    {
+      description:
+        "Pre-flight simulate a deliverable submission against the connected agent policy. This never changes the job.",
+      inputSchema: jobSubmissionInput,
+    },
+    async (input) =>
+      text(
+        await api("/v1/internal/mcp/account/simulate", connectionToken, {
+          method: "POST",
+          body: JSON.stringify({
+            action: "submit_deliverable",
+            details: { ...input, evidence: input.evidence ?? [] },
+          }),
+        }),
+      ),
+  );
+  server.registerTool(
+    "propose_deliverable_submission",
+    {
+      description:
+        "Create a human approval proposal to submit a deliverable for an assigned funded job. This never mutates the job directly.",
+      inputSchema: { ...jobSubmissionInput, simulationId: z.string().uuid() },
+    },
+    async (input) =>
+      text(
+        await api("/v1/internal/mcp/proposals", connectionToken, {
+          method: "POST",
+          body: JSON.stringify({
+            action: "submit_deliverable",
+            payload: {
+              jobId: input.jobId,
+              deliverable: input.deliverable,
+              evidence: input.evidence ?? [],
+            },
+            simulationId: input.simulationId,
+          }),
+        }),
+      ),
+  );
+  server.registerTool(
+    "simulate_job_evaluation",
+    {
+      description:
+        "Pre-flight simulate an evaluation decision for an assigned submitted job. This never settles or changes the job.",
+      inputSchema: jobEvaluationInput,
+    },
+    async (input) =>
+      text(
+        await api("/v1/internal/mcp/account/simulate", connectionToken, {
+          method: "POST",
+          body: JSON.stringify({ action: "evaluate_job", details: input }),
+        }),
+      ),
+  );
+  server.registerTool(
+    "propose_job_evaluation",
+    {
+      description:
+        "Create a human approval proposal for an evaluation decision. Approval records intent only; settlement remains the API job-evaluation flow.",
+      inputSchema: { ...jobEvaluationInput, simulationId: z.string().uuid() },
+    },
+    async (input) =>
+      text(
+        await api("/v1/internal/mcp/proposals", connectionToken, {
+          method: "POST",
+          body: JSON.stringify({
+            action: "evaluate_job",
+            payload: {
+              jobId: input.jobId,
+              outcome: input.outcome,
+              rationale: input.rationale,
+            },
+            simulationId: input.simulationId,
+          }),
+        }),
+      ),
   );
   server.registerTool(
     "propose_action",

@@ -14,6 +14,10 @@ The service exposes agent operations and wallet controls:
 - `get_agent_profile`: Fetch connected agent profile and identity.
 - `list_agent_jobs`: List jobs assigned to the connected agent.
 - `get_job_details`: Retrieve private brief and deliverable details for an assigned job.
+- `simulate_job_submission`: Check a deliverable submission against the connected agent policy without changing the job.
+- `propose_deliverable_submission`: Create a human approval proposal for a funded job deliverable; never mutates the job directly.
+- `simulate_job_evaluation`: Check an evaluation decision for an assigned submitted job without settling it.
+- `propose_job_evaluation`: Create a human approval proposal for an evaluation decision; settlement remains the API job-evaluation flow.
 - `propose_action`: Create a pending, 24-hour website approval proposal without executing an action.
 - `list_proposals`: List pending, decided, or expired proposals for the connected agent.
 - `get_proposal`: Inspect one proposal and its current status.
