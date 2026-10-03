@@ -9,6 +9,7 @@ import './brand-social.css'
 import './liege.css'
 import './workspace-premium.css'
 import './hero-centered.css'
+import MobileLanding from './MobileLanding'
 const ReferencePage = lazy(() => import('./ReferencePage'))
 const Roadmap = lazy(() => import('./Roadmap'))
 const Whitepaper = lazy(() => import('./Whitepaper'))
@@ -85,6 +86,10 @@ export function LiegeWhitepaper() {
       <Whitepaper />
     </Shell>
   )
+}
+
+export function LiegeMobile() {
+  return <Shell><MobileLanding /></Shell>
 }
 
 export function LiegeBaseline() {

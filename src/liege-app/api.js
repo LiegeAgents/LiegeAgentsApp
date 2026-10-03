@@ -157,6 +157,10 @@ export const api = {
     const qs = params.toString();
     return request(`/v1/mcp/presets${qs ? `?${qs}` : ""}`, { token });
   },
+  mobilePairingCode: (token) => request("/v1/mobile/pairing-codes", { token, method: "POST" }),
+  mobileDevices: (token) => request("/v1/mobile/devices", { token }),
+  revokeMobileDevice: (token, id) =>
+    request(`/v1/mobile/devices/${encodeURIComponent(id)}`, { token, method: "DELETE" }),
   agentAccounts: (token) => request("/v1/agent-accounts", { token }),
   receipts: (token, limit = 25) => request(`/v1/receipts?limit=${limit}`, { token }),
   receipt: (token, id) => request(`/v1/receipts/${encodeURIComponent(id)}`, { token }),

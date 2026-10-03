@@ -531,6 +531,7 @@ export default function Workspace() {
                 />
               )}
               {wallet.apiSession && <ReceiptsPanel token="cookie" onNotice={notify} />}
+              {wallet.apiSession && <MobileCompanion token="cookie" onNotice={notify} />}
               {wallet.apiSession && (
                 <AgentRulebook
                   token="cookie"
@@ -2518,6 +2519,51 @@ function AgentRulebook({ token, agents, ownerAddress, onNotice }) {
       )}
     </section>
   );
+}
+
+function MobileCompanion({ token, onNotice }) {
+  const [code, setCode] = useState(null);
+  const [devices, setDevices] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const load = async () => {
+    try {
+      const result = await api.mobileDevices(token);
+      setDevices(result.data || []);
+    } catch (error) {
+      onNotice(error.message);
+    }
+  };
+  useEffect(() => { load(); }, []);
+  const generate = async () => {
+    setLoading(true);
+    try {
+      const result = await api.mobilePairingCode(token);
+      setCode(result.data);
+      onNotice("Pairing code created. It expires in five minutes.");
+    } catch (error) {
+      onNotice(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+  const revoke = async (id) => {
+    try {
+      await api.revokeMobileDevice(token, id);
+      await load();
+      onNotice("Mobile device revoked.");
+    } catch (error) {
+      onNotice(error.message);
+    }
+  };
+  return <section className="settings-panel mobile-companion-panel">
+    <div className="mcp-settings-heading"><div><span className="eyebrow">ANDROID COMPANION</span><h2>Pair a mobile workspace.</h2></div><span className="status active">SCOPED ACCESS</span></div>
+    <p>Generate a one-time code in your browser, enter it in the Liege Android app, and monitor jobs or approve proposals on the go. Mobile sessions cannot fund, settle, or sign wallet transactions.</p>
+    <div className="mobile-pairing-actions">
+      <Button onClick={generate} disabled={loading}>{loading ? "Generating…" : "Generate pairing code"}</Button>
+      {code && <div className="mobile-pairing-code"><span className="eyebrow">ONE-TIME CODE</span><strong>{code.code}</strong><small>Expires {new Date(code.expiresAt).toLocaleTimeString()}</small></div>}
+    </div>
+    <div className="mobile-device-list"><span className="eyebrow">PAIRED DEVICES</span>{devices.length ? devices.map((device) => <div className="mobile-device-row" key={device.id}><span><strong>{device.name}</strong><small>{device.platform} · last seen {device.last_seen_at ? new Date(device.last_seen_at).toLocaleString() : "never"}</small></span><button className="subtle-link" onClick={() => revoke(device.id)} disabled={Boolean(device.revoked_at)}>{device.revoked_at ? "Revoked" : "Revoke"}</button></div>) : <p className="muted">No Android devices paired yet.</p>}</div>
+  </section>;
 }
 
 function SearchField({ value, onChange, label }) {

@@ -14,6 +14,7 @@ import { Route as AppRouteImport } from './routes/app'
 import { Route as BaselineRouteImport } from './routes/baseline'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as MarketplaceRouteImport } from './routes/marketplace'
+import { Route as MobileRouteImport } from './routes/mobile'
 import { Route as RoadmapRouteImport } from './routes/roadmap'
 import { Route as WhitepaperRouteImport } from './routes/whitepaper'
 import { Route as ZhRouteImport } from './routes/zh'
@@ -44,6 +45,11 @@ const DocsRoute = DocsRouteImport.update({
 const MarketplaceRoute = MarketplaceRouteImport.update({
   id: '/marketplace',
   path: '/marketplace',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MobileRoute = MobileRouteImport.update({
+  id: '/mobile',
+  path: '/mobile',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RoadmapRoute = RoadmapRouteImport.update({
@@ -83,6 +89,7 @@ export interface FileRoutesByFullPath {
   '/baseline': typeof BaselineRoute
   '/docs': typeof DocsRouteWithChildren
   '/marketplace': typeof MarketplaceRouteWithChildren
+  '/mobile': typeof MobileRoute
   '/roadmap': typeof RoadmapRoute
   '/whitepaper': typeof WhitepaperRoute
   '/zh': typeof ZhRoute
@@ -96,6 +103,7 @@ export interface FileRoutesByTo {
   '/baseline': typeof BaselineRoute
   '/docs': typeof DocsRouteWithChildren
   '/marketplace': typeof MarketplaceRouteWithChildren
+  '/mobile': typeof MobileRoute
   '/roadmap': typeof RoadmapRoute
   '/whitepaper': typeof WhitepaperRoute
   '/zh': typeof ZhRoute
@@ -110,6 +118,7 @@ export interface FileRoutesById {
   '/baseline': typeof BaselineRoute
   '/docs': typeof DocsRouteWithChildren
   '/marketplace': typeof MarketplaceRouteWithChildren
+  '/mobile': typeof MobileRoute
   '/roadmap': typeof RoadmapRoute
   '/whitepaper': typeof WhitepaperRoute
   '/zh': typeof ZhRoute
@@ -125,6 +134,7 @@ export interface FileRouteTypes {
     | '/baseline'
     | '/docs'
     | '/marketplace'
+    | '/mobile'
     | '/roadmap'
     | '/whitepaper'
     | '/zh'
@@ -138,6 +148,7 @@ export interface FileRouteTypes {
     | '/baseline'
     | '/docs'
     | '/marketplace'
+    | '/mobile'
     | '/roadmap'
     | '/whitepaper'
     | '/zh'
@@ -151,6 +162,7 @@ export interface FileRouteTypes {
     | '/baseline'
     | '/docs'
     | '/marketplace'
+    | '/mobile'
     | '/roadmap'
     | '/whitepaper'
     | '/zh'
@@ -165,6 +177,7 @@ export interface RootRouteChildren {
   BaselineRoute: typeof BaselineRoute
   DocsRoute: typeof DocsRouteWithChildren
   MarketplaceRoute: typeof MarketplaceRouteWithChildren
+  MobileRoute: typeof MobileRoute
   RoadmapRoute: typeof RoadmapRoute
   WhitepaperRoute: typeof WhitepaperRoute
   ZhRoute: typeof ZhRoute
@@ -206,6 +219,13 @@ declare module '@tanstack/react-router' {
       path: '/marketplace'
       fullPath: '/marketplace'
       preLoaderRoute: typeof MarketplaceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mobile': {
+      id: '/mobile'
+      path: '/mobile'
+      fullPath: '/mobile'
+      preLoaderRoute: typeof MobileRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/roadmap': {
@@ -281,6 +301,7 @@ const rootRouteChildren: RootRouteChildren = {
   BaselineRoute: BaselineRoute,
   DocsRoute: DocsRouteWithChildren,
   MarketplaceRoute: MarketplaceRouteWithChildren,
+  MobileRoute: MobileRoute,
   RoadmapRoute: RoadmapRoute,
   WhitepaperRoute: WhitepaperRoute,
   ZhRoute: ZhRoute,

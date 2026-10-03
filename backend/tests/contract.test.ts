@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { app, routers } from "../src/app.js";
-import { requireAuth } from "../src/auth.js";
+import { requireAuth, requireMobileAuth } from "../src/auth.js";
 import { adminKey } from "./setup.js";
 import {
   api,
@@ -103,7 +103,10 @@ type Layer = {
 function implementedRoutes() {
   const routes: { operation: string; path: string; authenticated: boolean }[] = [];
   const collect = (stack: Layer[], prefix: string) => {
-    const guardedRouter = stack.some((layer) => !layer.route && layer.handle === requireAuth);
+    const guardedRouter = stack.some(
+      (layer) =>
+        !layer.route && (layer.handle === requireAuth || layer.handle === requireMobileAuth),
+    );
     for (const layer of stack)
       if (layer.route) {
         const path = `${prefix}${layer.route.path === "/" ? "" : layer.route.path}`.replace(
@@ -111,7 +114,10 @@ function implementedRoutes() {
           "{$1}",
         );
         const authenticated =
-          guardedRouter || layer.route.stack.some((inner) => inner.handle === requireAuth);
+          guardedRouter ||
+          layer.route.stack.some(
+            (inner) => inner.handle === requireAuth || inner.handle === requireMobileAuth,
+          );
         for (const method of Object.keys(layer.route.methods))
           routes.push({ operation: `${method.toUpperCase()} ${path}`, path, authenticated });
       }
@@ -133,11 +139,14 @@ test("each operation declares the authentication its route enforces", () => {
   for (const route of implementedRoutes()) {
     const [method] = route.operation.toLowerCase().split(" ");
     const security = spec.paths[route.path][method].security ?? spec.security ?? [];
-    const expected = route.path.startsWith("/v1/cron/")
-      ? [{ cronSecret: [] }]
-      : route.authenticated
-        ? [{ bearerAuth: [] }]
-        : [];
+    const expected =
+      route.path.startsWith("/v1/mobile/overview") || route.path.startsWith("/v1/mobile/proposals/")
+        ? [{ mobileAuth: [] }]
+        : route.path.startsWith("/v1/cron/")
+          ? [{ cronSecret: [] }]
+          : route.authenticated
+            ? [{ bearerAuth: [] }]
+            : [];
     expect({ operation: route.operation, security }).toEqual({
       operation: route.operation,
       security: expected,
