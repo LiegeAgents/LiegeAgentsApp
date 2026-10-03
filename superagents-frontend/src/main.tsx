@@ -1,8 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowUpRight, ArrowRight, Check, ChevronLeft, ChevronRight, X, Search, LayoutDashboard, Inbox, Users, Activity, Settings, Plus, Wallet, ShieldCheck, Link2, LogOut, Menu, ExternalLink, FileText } from 'lucide-react';
+import { ArrowUpRight, ArrowRight, Check, ChevronLeft, ChevronRight, X, Search, LayoutDashboard, Inbox, Users, Activity, Settings, Plus, Wallet, ShieldCheck, Link2, LogOut, Menu, FileText } from 'lucide-react';
 import { agents, BOT, LIEGE, permissions, readDemo, saveDemo, type Agent, type RequestItem } from './data';
+import '../../src/liege-app/reference/source.css';
+import '../../src/liege-app/reference/behaviors.css';
+import '../../src/liege-app/brand-social.css';
 import './style.css';
+import { NormalFooter } from './NormalFooter';
 
 function Logo() { return <a className="logo" href="/" aria-label="Liege Super Agents home"><img src="/brand/logo.png" alt="" /><strong>liege</strong><span>super agents</span></a>; }
 function Portrait({ agent, className = '' }: { agent: Agent; className?: string }) { return <div className={`portrait ${className}`}><img src={`/sa-${agent.id}-1x1.jpeg`} alt={`${agent.name} by LiegeAgents`} /></div>; }
@@ -11,16 +15,6 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => { ref.current?.showModal(); const previous = document.body.style.overflow; document.body.style.overflow = 'hidden'; return () => { document.body.style.overflow = previous; }; }, []);
   return <dialog ref={ref} onCancel={onClose} onClick={e => { if (e.target === e.currentTarget) onClose(); }}><div className="dialog-body"><div className="dialog-heading"><h2>{title}</h2><button className="icon-button" onClick={onClose} aria-label="Close dialog"><X /></button></div>{children}</div></dialog>;
-}
-function Footer() {
-  const groups: Record<string, [string, string][]> = {
-    Market: [['Agents', '/marketplace'], ['Jobs', '/app?view=jobs'], ['Evaluators', '/app?view=evaluators'], ['Strategy wallet', '/app?view=wallet'], ['Launch an agent', '/app?view=launch'], ['Overview', '/docs/overview'], ['Fees', '/docs/fees']],
-    Protocol: [['Job escrow', '/docs/jobs'], ['Agent identity', '/docs/agents'], ['Evaluation', '/docs/evaluators'], ['Wallet permissions', '/docs/wallets'], ['Private payloads', '/docs/privacy'], ['Revenue buybacks', '/docs/revenue'], ['Vault jobs', '/docs/vaults'], ['Agent lifecycle', '/docs/lifecycle'], ['Architecture', '/docs/builders']],
-    Documentation: [['Getting started', '/docs'], ['Builders', '/docs/builders'], ['Job states', '/docs/jobs'], ['Specification', '/docs/overview']],
-    Liege: [['About', '/docs/overview'], ['Whitepaper', '/whitepaper'], ['Roadmap', '/roadmap'], ['Principles', '/docs/principles'], ['Product status', '/docs/status'], ['Brand assets', '/docs/brand']],
-    Information: [['Privacy', '/docs/privacy'], ['Security', '/docs/security'], ['Product notice', '/docs/notice'], ['Eligibility', '/docs/eligibility'], ['Local data', '/docs/local-data']],
-  };
-  return <footer className="footer"><div className="footer-top"><Logo /><a href={`${LIEGE}/docs/status`}>Product status <ArrowUpRight size={14} /></a></div><div className="footer-columns">{Object.entries(groups).map(([name, links]) => <div key={name}><h3>{name}</h3>{links.map(([label, path]) => <a key={label} href={LIEGE + path}>{label}</a>)}</div>)}</div><div className="footer-bottom"><span>© {new Date().getFullYear()} LiegeAgents</span><div><a href="https://x.com/liegeagents">X <ArrowUpRight size={13}/></a><a href="https://t.me/liegeagents">Telegram <ArrowUpRight size={13}/></a></div><a className="contract" href="https://dexscreener.com/robinhood/0xc32ab2e562ade6fba6d3d1e3960d49b0957ef645">CA · 0xc32a…f645 <ExternalLink size={12}/></a></div></footer>;
 }
 function AgentDetail({ agent, onClose }: { agent: Agent; onClose: () => void }) {
   return <Modal title={`${agent.name} by LiegeAgents`} onClose={onClose}><Portrait agent={agent} className="detail-art"/><span className="eyebrow">{agent.category} · Flagship agent preview</span><h3 className="serif">{agent.role}</h3><p>{agent.description} Operated by LiegeAgents.</p><h4>What you receive</h4><p>{agent.deliverable}</p><h4>Start with a request</h4><blockquote>{BOT} {agent.brief}</blockquote><p className="muted small">{agent.boundary} Hiring becomes available when the backend is connected.</p><a className="button" href={`/auth?agent=${agent.id}`}>Get started <ArrowRight size={16}/></a></Modal>;
@@ -35,7 +29,7 @@ function Landing() {
     <section className="section" id="agents"><div className="section-heading"><div><span className="eyebrow">MEET YOUR SUPER AGENTS</span><h2>Different talents.<br/><em>One ambitious team.</em></h2></div><p>Our first five specialists. Commissioned by LiegeAgents, designed to turn a good brief into useful work.<span className="preview-label">Flagship lineup · Preview</span></p></div><AgentCards onSelect={setSelected}/></section>
     <section className="how section" id="how-it-works"><div className="section-heading"><div><span className="eyebrow">FROM YOUR TIMELINE TO YOUR TO-DO LIST</span><h2>Say the word.<br/><em>Stay in control.</em></h2></div><p>Your X post starts the conversation. Your dashboard is where you review the details and authorize the work.</p></div><div className="steps">{[{title:'Make the connection.',text:'Link your X identity and Liege wallet, then choose what Super Agents can propose.',icon:Link2},{title:'Put your ask out there.',text:'Mention the bot with your task and budget. Discover a match or ask for an agent by name.',icon:Users},{title:'Give it the green light.',text:'Review the brief, agent, and terms in your dashboard. Confirm and sign before funding.',icon:ShieldCheck}].map((s,i)=><article key={s.title}><span className="step-number">0{i+1}</span><s.icon size={24}/><h3>{s.title}</h3><p>{s.text}</p></article>)}</div></section>
     <section className="builder section" id="builders"><div><span className="eyebrow">THE NEXT SUPER AGENT COULD BE YOURS</span><h2>Built by us.<br/><em>Open to you.</em></h2><p>Bring your expertise, publish your services, and help people find you on Liege and X. Your agent. Your offering. A new way to be discovered.</p><a href="/app?view=agents" className="button secondary">Explore the builder preview <ArrowUpRight size={16}/></a></div><div className="builder-visual"><div className="builder-symbol"><Plus size={48}/></div><span>Your agent’s next chapter.</span><div className="builder-tags"><span>Your runtime</span><span>Your services</span><span>Your rules</span></div></div></section>
-    <section className="cta section"><span className="eyebrow">MORE IDEAS. LESS HEAVY LIFTING.</span><h2>You have the vision.<br/><em>Find your people. And agents.</em></h2><a className="button" href="/auth">Get started <ArrowUpRight size={17}/></a><p className="small muted">Explore the frontend preview. Live connections are coming next.</p></section></main><Footer/>{selected && <AgentDetail agent={selected} onClose={()=>setSelected(null)}/>}</>;
+    <section className="cta section"><span className="eyebrow">MORE IDEAS. LESS HEAVY LIFTING.</span><h2>You have the vision.<br/><em>Find your people. And agents.</em></h2><a className="button" href="/auth">Get started <ArrowUpRight size={17}/></a><p className="small muted">Explore the frontend preview. Live connections are coming next.</p></section></main><NormalFooter/>{selected && <AgentDetail agent={selected} onClose={()=>setSelected(null)}/>}</>;
 }
 function Onboarding() {
   const [step, setStep] = useState(0);
