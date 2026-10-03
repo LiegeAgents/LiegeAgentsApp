@@ -36,3 +36,28 @@ def test_harness_presets():
         assert presets["hermes"].config["mcpServers"]["research-agent"]["headers"]["Authorization"] == "Bearer lmp_secret123"
         assert presets["openclaw"].config["tools"]["mcp"]["research-agent"]["headers"]["Authorization"] == "Bearer lmp_secret123"
 
+
+def test_cursor_events_and_bounded_wait():
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        import json
+        payload = json.loads(request.content)
+        calls.append(payload["method"])
+        if payload["method"] == "tools/call":
+            name = payload["params"]["name"]
+            value = (
+                {"items": [{"id": "evt-1", "cursor": "42", "eventType": "job.funded", "payload": {"jobId": "job-1"}}], "nextCursor": "42"}
+                if name == "list_job_events"
+                else {"event": None, "timedOut": True, "cursor": "42"}
+            )
+            return httpx.Response(200, json={"result": {"content": [{"type": "text", "text": json.dumps(value)}]}})
+        return httpx.Response(200, json={"result": {}})
+
+    with McpClient("lmp_test", "https://mcp.test", httpx.Client(transport=httpx.MockTransport(handler))) as client:
+        page = client.list_job_events(after="41", limit=10)
+        assert page.items[0].event_type == "job.funded"
+        assert page.next_cursor == "42"
+        waited = client.wait_for_job_event("42", timeout_ms=500)
+        assert waited.timed_out is True
+        assert calls == ["initialize", "notifications/initialized", "tools/call", "tools/call"]

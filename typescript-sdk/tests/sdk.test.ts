@@ -294,6 +294,28 @@ describe("McpClient", () => {
     ]);
   });
 
+  test("reads cursor-based MCP events and bounded waits", async () => {
+    const toolCalls: string[] = [];
+    const client = new McpClient("lmp_test", "https://mcp.test", async (_input, init) => {
+      const request = JSON.parse(String(init?.body)) as { method: string; params?: { name?: string } };
+      if (request.method === "tools/call") {
+        const name = request.params?.name ?? "";
+        toolCalls.push(name);
+        const value = name === "list_job_events"
+          ? { items: [{ id: "evt-1", cursor: "42", eventType: "job.funded", payload: { jobId: "job-1" } }], nextCursor: "42" }
+          : { event: null, timedOut: true, cursor: "42" };
+        return new Response(JSON.stringify({ result: { content: [{ type: "text", text: JSON.stringify(value) }] } }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ result: {} }), { status: 200 });
+    });
+
+    const page = await client.listJobEvents({ after: "41", limit: 10 });
+    expect(page.items[0]).toMatchObject({ id: "evt-1", cursor: "42", eventType: "job.funded" });
+    expect(page.nextCursor).toBe("42");
+    await expect(client.waitForJobEvent("42", { timeoutMs: 500 })).resolves.toMatchObject({ timedOut: true });
+    expect(toolCalls).toEqual(["list_job_events", "wait_for_job_event"]);
+  });
+
   test("exports an owner mandate in AP2 format", async () => {
     const client = new LiegeClient({
       token: "session",

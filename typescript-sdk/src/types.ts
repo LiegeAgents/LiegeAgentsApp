@@ -1,5 +1,5 @@
 export type Signer = (message: string) => Promise<string> | string;
-export const SDK_VERSION = "0.1.11";
+export const SDK_VERSION = "0.1.12";
 
 export interface X402PaymentRequired {
   x402Version: number;
@@ -104,6 +104,9 @@ export interface EventStreamOptions {
   backoffMs?: number;
 }
 export interface McpProposal { id: string; status: string; [key: string]: unknown; }
+export interface McpEvent { id: string; cursor: string; eventType: string; payload: Record<string, unknown>; }
+export interface McpEventPage { items: McpEvent[]; nextCursor: string | null; }
+export interface McpEventWait { event: McpEvent | null; timedOut: boolean; cursor?: string; }
 
 export interface ReceiptSubject {
   type: "job" | "invoice";

@@ -2,7 +2,7 @@ from typing import Any
 
 import httpx
 
-from .models import Job, McpProposal, McpHarnessPreset
+from .models import Job, McpEvent, McpEventPage, McpEventWait, McpProposal, McpHarnessPreset
 
 
 class McpClient:
@@ -76,6 +76,29 @@ class McpClient:
 
     def get_job(self, job_id: str) -> dict[str, Any]:
         return self._tool("get_job_details", {"jobId": job_id})
+
+    def list_job_events(self, after: str | None = None, limit: int = 50) -> McpEventPage:
+        arguments: dict[str, Any] = {"limit": limit}
+        if after is not None:
+            arguments["after"] = after
+        value = self._tool("list_job_events", arguments)
+        return McpEventPage(
+            [McpEvent.from_dict(item) for item in value.get("items", [])],
+            value.get("nextCursor"),
+        )
+
+    def wait_for_job_event(self, after: str, timeout_ms: int = 30_000, poll_ms: int = 2_000) -> McpEventWait:
+        value = self._tool("wait_for_job_event", {
+            "after": after,
+            "timeoutMs": timeout_ms,
+            "pollMs": poll_ms,
+        })
+        event = value.get("event")
+        return McpEventWait(
+            McpEvent.from_dict(event) if isinstance(event, dict) else None,
+            bool(value.get("timedOut", False)),
+            value.get("cursor"),
+        )
 
     def propose(self, action: str, payload: dict[str, Any]) -> McpProposal:
         value = self._tool("propose_action", {"action": action, "payload": payload})
@@ -207,4 +230,3 @@ class McpClient:
             token=self.connection_token,
             agent_name=agent_name,
         )
-

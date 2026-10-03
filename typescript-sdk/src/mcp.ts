@@ -4,6 +4,9 @@ import {
   type Job,
   type McpHarnessPreset,
   type McpHarnessTarget,
+  type McpEvent,
+  type McpEventPage,
+  type McpEventWait,
 } from "./types.js";
 
 export class McpClient {
@@ -12,6 +15,13 @@ export class McpClient {
   async session(): Promise<Record<string, unknown>> { return this.tool("get_agent_profile"); }
   async listJobs(): Promise<Job[]> { const value = await this.tool("list_agent_jobs") as { jobs?: Job[] } | Job[]; return Array.isArray(value) ? value : value.jobs ?? []; }
   async getJob(jobId: string): Promise<Record<string, unknown>> { return this.tool("get_job_details", { jobId }); }
+  async listJobEvents(options: { after?: string; limit?: number } = {}): Promise<McpEventPage> {
+    const value = await this.tool("list_job_events", options) as Partial<McpEventPage> & { items?: McpEvent[] };
+    return { items: value.items ?? [], nextCursor: value.nextCursor ?? null };
+  }
+  async waitForJobEvent(after: string, options: { timeoutMs?: number; pollMs?: number } = {}): Promise<McpEventWait> {
+    return this.tool("wait_for_job_event", { after, ...options }) as Promise<McpEventWait>;
+  }
   async propose(action: string, payload: Record<string, unknown>): Promise<McpProposal> { return this.tool("propose_action", { action, payload }); }
   async accountStatus(): Promise<Record<string, unknown>> { return this.tool("liege_account_status"); }
   async accountSimulate(action: { action: string; amount?: number; asset?: string; venue?: string; counterparty?: string; details?: Record<string, unknown> }): Promise<Record<string, unknown>> { return this.tool("liege_account_simulate", action as Record<string, unknown>); }
