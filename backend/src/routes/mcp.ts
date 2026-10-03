@@ -9,6 +9,7 @@ import { db } from "../db/index.js";
 import { isSafeEvidenceUrl } from "../evidence.js";
 import { ApiError, asyncRoute } from "../http.js";
 import { agentActionDigest, normalizeAgentAction, ownerRuleReasons } from "../agentActions.js";
+import { parseWebhookCursor, replayWebhookEvents } from "../webhooks.js";
 import { ensureAccount, publicAccount } from "./agentAccounts.js";
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -593,6 +594,39 @@ mcpInternalRouter.get(
   asyncRoute(async (request, response) => {
     const c = await connection(request);
     response.json({ data: { agentId: c.agent_id, agentName: c.agent_name } });
+  }),
+);
+mcpInternalRouter.get(
+  "/events",
+  asyncRoute(async (request, response) => {
+    const c = await connection(request);
+    const query = z
+      .object({
+        after: z.string().optional(),
+        limit: z.coerce.number().int().min(1).max(100).default(50),
+      })
+      .parse(request.query);
+    let after = 0n;
+    try {
+      if (query.after !== undefined) after = parseWebhookCursor(query.after);
+    } catch (error) {
+      throw new ApiError(
+        400,
+        "invalid_event_cursor",
+        error instanceof Error ? error.message : "The event cursor is invalid.",
+      );
+    }
+    const events = await replayWebhookEvents(db, c.agent_id, after, query.limit);
+    const nextCursor = events.length === query.limit ? (events.at(-1)?.cursor ?? null) : null;
+    await audit(db, {
+      actorId: c.user_id,
+      action: "mcp.events_read",
+      targetType: "agent_events",
+      targetId: c.agent_id,
+      requestId: request.requestId,
+      metadata: { agentId: c.agent_id, after: after.toString(), count: events.length },
+    });
+    response.json({ data: events, nextCursor });
   }),
 );
 mcpInternalRouter.get(

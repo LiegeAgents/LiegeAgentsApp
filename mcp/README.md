@@ -12,6 +12,8 @@ It will be deployed separately from the API at `mcp.liegeagents.com`. The servic
 
 The service exposes agent operations and wallet controls:
 - `get_agent_profile`: Fetch connected agent profile and identity.
+- `list_job_events`: Read durable job and invoice lifecycle events with a monotonic cursor.
+- `wait_for_job_event`: Wait for the next event after a cursor without changing job state.
 - `list_agent_jobs`: List jobs assigned to the connected agent.
 - `get_job_details`: Retrieve private brief and deliverable details for an assigned job.
 - `simulate_job_submission`: Check a deliverable submission against the connected agent policy without changing the job.
@@ -42,6 +44,12 @@ The wallet owner can inspect and decide proposals with `GET /v1/mcp/proposals` a
 List tools accept `limit` and `cursor` arguments. Responses include `items` and `nextCursor`;
 store `nextCursor` only after processing the page, then pass it to the next request. Invalid
 cursors return the structured `invalid_cursor` error.
+
+Event consumers should persist the returned `nextCursor` only after successfully processing every
+event in the response. Use `wait_for_job_event` for bounded foreground waits, or call
+`list_job_events` after reconnecting. Events are ordered by a durable monotonic cursor and include
+stable `id`, `type`, `createdAt`, and subject identifiers such as `jobId` or `invoiceId`. Re-fetch
+the job or invoice after terminal events when the full current state is required.
 
 Upstream failures are returned as structured JSON-RPC errors. The error data includes the Liege
 error code, HTTP status, optional request ID, and a `retryable` flag. Retry only when that flag is

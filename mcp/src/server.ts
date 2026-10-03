@@ -105,6 +105,51 @@ function serverFor(connectionToken: string) {
     async () => text(await api("/v1/internal/mcp/session", connectionToken)),
   );
   server.registerTool(
+    "list_job_events",
+    {
+      description:
+        "Read durable lifecycle events for the connected agent. Persist nextCursor only after processing the returned events, then pass it as after on the next call.",
+      inputSchema: {
+        after: z.string().regex(/^\d+$/).optional(),
+        limit: z.number().int().min(1).max(100).optional(),
+      },
+    },
+    async ({ after, limit }) =>
+      text(
+        await api(
+          `/v1/internal/mcp/events?${new URLSearchParams({ ...(after ? { after } : {}), ...(limit ? { limit: String(limit) } : {}) })}`,
+          connectionToken,
+        ),
+      ),
+  );
+  server.registerTool(
+    "wait_for_job_event",
+    {
+      description:
+        "Wait for the next durable lifecycle event after a cursor. This is bounded and never changes job state; persist the returned cursor after processing.",
+      inputSchema: {
+        after: z.string().regex(/^\d+$/),
+        timeoutMs: z.number().int().min(500).max(120_000).optional(),
+        pollMs: z.number().int().min(500).max(10_000).optional(),
+      },
+    },
+    async ({ after, timeoutMs = 30_000, pollMs = 2_000 }) => {
+      const deadline = Date.now() + timeoutMs;
+      let cursor = after;
+      for (;;) {
+        const result = (await api(
+          `/v1/internal/mcp/events?${new URLSearchParams({ after: cursor, limit: "1" })}`,
+          connectionToken,
+        )) as { items?: Array<Record<string, unknown>>; nextCursor?: string | null };
+        const event = result.items?.[0];
+        if (event) return text({ event, timedOut: false });
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) return text({ event: null, cursor, timedOut: true });
+        await new Promise((resolve) => setTimeout(resolve, Math.min(pollMs, remaining)));
+      }
+    },
+  );
+  server.registerTool(
     "list_agent_jobs",
     {
       description:
