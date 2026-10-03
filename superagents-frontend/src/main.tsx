@@ -69,11 +69,14 @@ function Onboarding() {
     {step===3&&<><div className="auth-icon success"><Check size={30}/></div><span className="eyebrow">STEP 04 / READY TO EXPLORE</span><h2>Meet your new workspace.</h2><p>The preview is ready. Explore sample requests, review an agent match, and try the approval flow.</p><div className="ready-card"><span>Connected accounts</span><strong>Sample X + sample Liege account</strong><small>Live authorization will be available after backend integration.</small></div><Button onClick={finish}>Open preview dashboard <ArrowUpRight size={16}/></Button></>}
     </div>{step>0&&step<3&&<button className="back-button" onClick={()=>setStep(step-1)}><ChevronLeft size={14}/> Previous step</button>}<div className="auth-bottom"><a href={`${LIEGE}/docs/privacy`}>Privacy</a><a href={`${LIEGE}/docs/permissions`}>About permissions <ArrowUpRight size={12}/></a></div></main></div>{notice&&<Modal title="Browser storage unavailable" onClose={()=>setNotice(false)}><p>Allow session storage to save this walkthrough, or open the dashboard directly to explore its sample data.</p><a href="/app" className="button">Explore dashboard</a></Modal>}</div>;
 }
-const tabs = [{id:'overview',label:'Overview',icon:LayoutDashboard},{id:'requests',label:'Requests',icon:Inbox},{id:'agents',label:'Agents',icon:Users},{id:'activity',label:'Activity',icon:Activity},{id:'settings',label:'Settings',icon:Settings}];
+const tabs = [{id:'chat',label:'Chat',icon:MessageCircle},{id:'overview',label:'Overview',icon:LayoutDashboard},{id:'requests',label:'Requests',icon:Inbox},{id:'agents',label:'Agents',icon:Users},{id:'activity',label:'Activity',icon:Activity},{id:'settings',label:'Settings',icon:Settings}];
 function SuperAgentChat({ live = false }: { live?: boolean }) {
   const [messages, setMessages] = useState<Array<{ role: 'assistant' | 'user'; text: string }>>([{ role: 'assistant', text: 'Tell me what you need done. I’ll find a specialist, shape a proposal, and leave the final decision with you.' }]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+  const [active, setActive] = useState(new URLSearchParams(location.search).get('view') === 'chat' || !new URLSearchParams(location.search).get('view'));
+  useEffect(() => { const onTab = (event: Event) => setActive((event as CustomEvent<string>).detail === 'chat'); window.addEventListener('sa-tab-change', onTab); return () => window.removeEventListener('sa-tab-change', onTab); }, []);
+  if (!active) return null;
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     const value = text.trim();
@@ -100,7 +103,7 @@ function SuperAgentChat({ live = false }: { live?: boolean }) {
 function Dashboard() {
   const [demo,setDemo] = useState(readDemo);
   const initial = new URLSearchParams(location.search).get('view');
-  const [tab,setTab] = useState(tabs.some(t=>t.id===initial)?initial!:'overview');
+  const [tab,setTab] = useState(tabs.some(t=>t.id===initial)?initial!:'chat');
   const [query,setQuery] = useState('');
   const [filter,setFilter] = useState('All');
   const [selected,setSelected] = useState<RequestItem|null>(null);
@@ -110,7 +113,7 @@ function Dashboard() {
   const [revoke,setRevoke] = useState(false);
   const [menu,setMenu] = useState(false);
   const pending = demo.requests.filter(r=>r.status==='Needs review');
-  function changeTab(id:string){setTab(id);setMenu(false);setQuery('');setFilter('All');history.replaceState(null,'',`/app?view=${id}`);}
+  function changeTab(id:string){setTab(id);setMenu(false);setQuery('');setFilter('All');history.replaceState(null,'',`/app?view=${id}`);window.dispatchEvent(new CustomEvent('sa-tab-change',{detail:id}));}
   function update(next:ReturnType<typeof readDemo>){setDemo(next);if(!saveDemo(next))setNotice({title:'Preview updated for this visit',body:'Your browser could not save the preview. Changes will reset when this page is reloaded.'});}
   function decide(status:'Approved draft'|'Dismissed'){
     if(!selected)return;
