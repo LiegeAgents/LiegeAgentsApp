@@ -3120,7 +3120,10 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
     [busy, setBusy] = useState(""),
     [deliverable, setDeliverable] = useState(""),
     [evidence, setEvidence] = useState(""),
-    [rationale, setRationale] = useState("");
+    [rationale, setRationale] = useState(""),
+    [legion, setLegion] = useState(null),
+    [agents, setAgents] = useState([]),
+    [assignment, setAssignment] = useState({ agentId: "", title: "", brief: "", allocationBps: "" });
   const wallet = useWallet();
   const load = async () => {
     setError("");
@@ -3132,11 +3135,15 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
         base.submission ? api.jobPayload(token, job.id, "deliverable") : Promise.resolve(null),
         api.jobPayloadAccess(token, job.id),
         api.jobObservability(token, job.id),
+        api.legion(token, job.id),
+        api.agents(),
       ]);
       const brief = payloads[0].status === "fulfilled" ? payloads[0].value?.data : null;
       const delivery = payloads[1].status === "fulfilled" ? payloads[1].value?.data : null;
       setPayloadAccess(payloads[2].status === "fulfilled" ? payloads[2].value?.data || [] : []);
       setObservability(payloads[3].status === "fulfilled" ? payloads[3].value?.data || [] : []);
+      setLegion(payloads[4].status === "fulfilled" ? payloads[4].value?.data || null : null);
+      setAgents(payloads[5].status === "fulfilled" ? payloads[5].value?.data || [] : []);
       setDetail({
         ...base,
         brief: brief?.content || "Private brief unavailable or expired.",
@@ -3263,6 +3270,39 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
             </li>
           ))}
         </ul>
+        {detail && (isProvider || legion) && (
+          <section className="settings-panel">
+            <h3>Liege-ion</h3>
+            <p>Delegate parts of this job to other agents. Submitted members are paid their agreed share only when this parent job is accepted.</p>
+            {legion?.assignments?.map((item) => (
+              <div className="key-values grid-2" key={item.id}>
+                <div><span>{item.agent_name}</span><b>{item.title}</b></div>
+                <div><span>Share</span><b>{Number(item.allocation_bps) / 100}% · {item.status}</b></div>
+                {item.member_owner_id === account?.id && item.status === "proposed" && (
+                  <Button small onClick={() => act("legion-accept", () => api.respondToLegionAssignment(token, job.id, item.id, "accept"), "Liege-ion assignment accepted.")}>Accept assignment</Button>
+                )}
+                {item.member_owner_id === account?.id && item.status === "accepted" && (
+                  <Button small onClick={() => {
+                    const work = window.prompt("Submit your delegated deliverable");
+                    if (work) act("legion-submit", () => api.respondToLegionAssignment(token, job.id, item.id, "submit", { deliverable: work }), "Delegated work submitted.");
+                  }}>Submit delegated work</Button>
+                )}
+              </div>
+            ))}
+            {isProvider && ["Open", "Funded"].includes(status) && (
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                act("legion-propose", () => api.createLegionAssignment(token, job.id, { ...assignment, allocationBps: Number(assignment.allocationBps) }), "Liege-ion assignment sent.");
+              }}>
+                <Field label="Agent"><select required value={assignment.agentId} onChange={(e) => setAssignment({ ...assignment, agentId: e.target.value })}><option value="">Choose an agent</option>{agents.filter((item) => item.id !== detail.agent_id).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
+                <Field label="Sub-task"><input required minLength={3} value={assignment.title} onChange={(e) => setAssignment({ ...assignment, title: e.target.value })} placeholder="Research the source material" /></Field>
+                <Field label="Private instructions"><textarea required minLength={1} rows={3} value={assignment.brief} onChange={(e) => setAssignment({ ...assignment, brief: e.target.value })} /></Field>
+                <Field label="Member share (%)"><input required type="number" min="0.01" max="100" step="0.01" value={assignment.allocationBps ? Number(assignment.allocationBps) / 100 : ""} onChange={(e) => setAssignment({ ...assignment, allocationBps: String(Math.round(Number(e.target.value) * 100)) })} /></Field>
+                <Button type="submit" disabled={busy === "legion-propose"}>{busy === "legion-propose" ? "Sending…" : "Ask agent to join"}</Button>
+              </form>
+            )}
+          </section>
+        )}
         {current.submission && (
           <>
             <h3>Delivery</h3>

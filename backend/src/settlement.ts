@@ -29,6 +29,7 @@ export function useEscrowChain(replacement: EscrowChain) {
 
 type Purpose =
   | "provider_payment"
+  | "legion_payment"
   | "evaluator_fee"
   | "client_refund"
   | "token_sweep"
@@ -73,7 +74,22 @@ export async function planSettlement(
   const fee = parseUnits(input.evaluatorFee ?? input.evaluatorFeeUsdg ?? "0", decimals);
   const payouts: [Purpose, EscrowAsset, string, bigint | null][] = [];
   if (input.funded && input.outcome === "accepted") {
-    payouts.push(["provider_payment", asset, input.providerAddress, budget]);
+    // A member is paid only after submitting their delegated deliverable. The lead receives the
+    // exact remainder, so the parent job can never pay more than its agreed budget.
+    const members = await client.query<{ wallet_address: string; allocation_bps: number }>(
+      `SELECT u.wallet_address, la.allocation_bps FROM legion_assignments la
+       JOIN legions l ON l.id = la.legion_id JOIN agents a ON a.id = la.agent_id JOIN users u ON u.id = a.owner_id
+       WHERE l.job_id = $1 AND la.status = 'submitted' ORDER BY la.created_at`,
+      [input.jobId],
+    );
+    let delegated = 0n;
+    for (const member of members.rows) {
+      const amount = (budget * BigInt(member.allocation_bps)) / 10_000n;
+      if (amount === 0n) continue;
+      delegated += amount;
+      payouts.push(["legion_payment", asset, member.wallet_address, amount]);
+    }
+    payouts.push(["provider_payment", asset, input.providerAddress, budget - delegated]);
     if (fee > 0n) payouts.push(["evaluator_fee", asset, input.evaluatorAddress, fee]);
   }
   if (input.funded && input.outcome === "rejected")
@@ -211,15 +227,30 @@ async function signingPolicyViolation(payout: Payout) {
   const decimals = asset === "liege" ? env.LIEGE_DECIMALS : env.USDG_DECIMALS;
   const budget = parseUnits(terms.budget_amount, decimals);
   const fee = parseUnits(terms.evaluator_fee_amount, decimals);
-  const rules: Record<Purpose, { recipient: string; asset: EscrowAsset; amount?: bigint }> = {
-    provider_payment: { recipient: terms.provider, asset, amount: budget },
+  const members = await db.query<{ wallet_address: string; allocation_bps: number }>(
+    `SELECT u.wallet_address, la.allocation_bps FROM legion_assignments la
+     JOIN legions l ON l.id = la.legion_id JOIN agents a ON a.id = la.agent_id JOIN users u ON u.id = a.owner_id
+     WHERE l.job_id = $1 AND la.status = 'submitted' ORDER BY la.created_at`,
+    [payout.job_id],
+  );
+  const legionRules = members.rows.map((member) => ({
+    recipient: member.wallet_address,
+    asset: asset as EscrowAsset,
+    amount: (budget * BigInt(member.allocation_bps)) / 10_000n,
+  })).filter((rule) => rule.amount > 0n);
+  const delegated = legionRules.reduce((total, rule) => total + rule.amount, 0n);
+  const rules: Record<Exclude<Purpose, "legion_payment">, { recipient: string; asset: EscrowAsset; amount?: bigint }> = {
+    provider_payment: { recipient: terms.provider, asset, amount: budget - delegated },
     evaluator_fee: { recipient: terms.evaluator ?? terms.client, asset, amount: fee },
     client_refund: { recipient: terms.client, asset, amount: budget + fee },
     token_sweep: { recipient: terms.client, asset },
     usdg_sweep: { recipient: terms.client, asset: "usdg" },
     eth_sweep: { recipient: terms.client, asset: "eth" },
   };
-  const rule = rules[payout.purpose];
+  const rule = payout.purpose === "legion_payment"
+    ? legionRules.find((candidate) => candidate.recipient === payout.recipient && candidate.amount.toString() === payout.amount_raw)
+    : rules[payout.purpose];
+  if (!rule) return "is not an authorized Liege-ion payout";
   if (payout.recipient !== rule.recipient)
     return `${payout.recipient} is not the recipient the job's terms allow`;
   if (payout.asset !== rule.asset) return `${payout.asset} is not the asset the job's terms allow`;

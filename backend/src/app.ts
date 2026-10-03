@@ -16,6 +16,7 @@ import { invoicesRouter } from "./routes/invoices.js";
 import { agentAccountsRouter } from "./routes/agentAccounts.js";
 import { receiptsRouter } from "./routes/receipts.js";
 import { servicesRouter } from "./routes/services.js";
+import { legionsRouter } from "./routes/legions.js";
 import { ApiError, asyncRoute, errorHandler } from "./http.js";
 import { parseTrustProxy, rateLimit, requestContext } from "./operations.js";
 import { getAcpStatus } from "./acp.js";
@@ -87,6 +88,7 @@ export const routers = [
   ["/v1", accountRouter],
   ["/v1/agents", agentsRouter],
   ["/v1/jobs", jobsRouter],
+  ["/v1/jobs", legionsRouter],
   ["/v1/evaluators", evaluatorsRouter],
   ["/v1/admin", adminRouter],
   ["/v1/cron", cronRouter],
