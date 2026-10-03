@@ -325,7 +325,7 @@ paths:
           description: Paired devices.
           content: { application/json: { schema: { type: object } } }
         "401": { $ref: "#/components/responses/Unauthenticated" }
-    
+
   /v1/mobile/devices/{id}:
     delete:
       operationId: revokeMobileDevice
@@ -343,6 +343,11 @@ paths:
       operationId: getMobileOverview
       summary: Read mobile-safe jobs, approvals, and account activity.
       security: [{ mobileAuth: [] }]
+      parameters:
+        - in: query
+          name: jobsOffset
+          description: Job pagination offset. Follow nextJobsOffset until null; each page includes up to 50 jobs ordered by creation time and ID descending.
+          schema: { type: integer, minimum: 0, maximum: 2147483647, default: 0 }
       responses:
         "200":
           description: Mobile-safe workspace overview without private payload content.
@@ -2089,7 +2094,13 @@ paths:
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, description: A session token from /v1/auth/verify. }
-    mobileAuth: { type: http, scheme: bearer, bearerFormat: MobileAccessToken, description: A scoped mobile companion access token. }
+    mobileAuth:
+      {
+        type: http,
+        scheme: bearer,
+        bearerFormat: MobileAccessToken,
+        description: A scoped mobile companion access token.,
+      }
     cronSecret: { type: apiKey, in: header, name: X-Cron-Secret }
 
   parameters:
