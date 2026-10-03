@@ -160,7 +160,7 @@ export const xCallback = asyncRoute(async (request, response) => {
   const tokens = (await tokenResponse.json()) as {
     access_token?: string;
     refresh_token?: string;
-    scope?: string[];
+    scope?: string[] | string;
   };
   if (!tokens.access_token)
     throw new ApiError(502, "x_oauth_failed", "X returned no access token.");
@@ -172,6 +172,11 @@ export const xCallback = asyncRoute(async (request, response) => {
   const profile = (await profileResponse.json()) as { data?: { id: string; username?: string } };
   if (!profile.data?.id || !profile.data.username)
     throw new ApiError(502, "x_profile_failed", "X returned an incomplete profile.");
+  const scopes = Array.isArray(tokens.scope)
+    ? tokens.scope
+    : typeof tokens.scope === "string"
+      ? tokens.scope.split(/\s+/).filter(Boolean)
+      : [];
   const userId = stateResult.rows[0].user_id;
   if (!userId) {
     const claimToken = randomBytes(32).toString("base64url");
@@ -184,7 +189,7 @@ export const xCallback = asyncRoute(async (request, response) => {
         profile.data.username,
         encryptPayload(tokens.access_token, "superagent:x:pending"),
         tokens.refresh_token ? encryptPayload(tokens.refresh_token, "superagent:x:pending") : null,
-        tokens.scope ?? [],
+        scopes,
         new Date(Date.now() + 10 * 60_000),
       ],
     );
@@ -205,7 +210,7 @@ export const xCallback = asyncRoute(async (request, response) => {
       profile.data.username,
       encryptPayload(tokens.access_token, oauthContext(userId)),
       tokens.refresh_token ? encryptPayload(tokens.refresh_token, oauthContext(userId)) : null,
-      tokens.scope ?? [],
+      scopes,
     ],
   );
   await audit(db, {
