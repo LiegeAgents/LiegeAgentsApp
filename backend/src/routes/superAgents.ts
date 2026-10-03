@@ -23,6 +23,14 @@ const intentShape = z.object({
 
 const stateHash = (value: string) => createHash("sha256").update(value).digest("hex");
 const oauthContext = (userId: string) => `superagent:x:${userId}`;
+const xTokenHeaders = () => ({
+  "content-type": "application/x-www-form-urlencoded",
+  ...(env.X_CLIENT_ID && env.X_CLIENT_SECRET
+    ? {
+        authorization: `Basic ${Buffer.from(`${env.X_CLIENT_ID}:${env.X_CLIENT_SECRET}`).toString("base64")}`,
+      }
+    : {}),
+});
 
 export function fallbackSuperAgentIntent(text: string) {
   const budget = text.match(/(?:budget|for)\s*[$]?([0-9]+(?:\.[0-9]+)?)\s*(?:USDG|USD)?/i);
@@ -126,7 +134,7 @@ export const xCallback = asyncRoute(async (request, response) => {
     throw new ApiError(503, "x_auth_unavailable", "X authorization is not configured.");
   const tokenResponse = await fetch("https://api.x.com/2/oauth2/token", {
     method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
+    headers: xTokenHeaders(),
     body: new URLSearchParams({
       code,
       grant_type: "authorization_code",
