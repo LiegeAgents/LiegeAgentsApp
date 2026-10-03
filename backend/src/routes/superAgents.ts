@@ -114,14 +114,26 @@ superAgentsRouter.get(
       code_challenge_method: "S256",
     });
     response.json({
-      data: { authorizationUrl: `https://twitter.com/i/oauth2/authorize?${params}`, expiresAt },
+      data: { authorizationUrl: `https://x.com/i/oauth2/authorize?${params}`, expiresAt },
     });
   }),
 );
 
 export const xCallback = asyncRoute(async (request, response) => {
-  const state = z.string().min(16).parse(request.query.state);
-  const code = z.string().min(1).parse(request.query.code);
+  const oauthError = typeof request.query.error === "string" ? request.query.error : null;
+  if (oauthError) {
+    const description =
+      typeof request.query.error_description === "string"
+        ? request.query.error_description
+        : oauthError;
+    throw new ApiError(400, "x_authorization_denied", description);
+  }
+  if (typeof request.query.state !== "string" || request.query.state.length < 16)
+    throw new ApiError(400, "x_oauth_state_missing", "X returned an invalid OAuth state.");
+  if (typeof request.query.code !== "string" || request.query.code.length < 1)
+    throw new ApiError(400, "x_oauth_code_missing", "X returned no authorization code.");
+  const state = request.query.state;
+  const code = request.query.code;
   const stateResult = await db.query<{ id: string; user_id: string | null; code_verifier: string }>(
     `UPDATE superagent_x_oauth_states SET consumed_at=now()
      WHERE state_hash=$1 AND consumed_at IS NULL AND expires_at > now()
@@ -138,7 +150,6 @@ export const xCallback = asyncRoute(async (request, response) => {
     body: new URLSearchParams({
       code,
       grant_type: "authorization_code",
-      client_id: env.X_CLIENT_ID,
       redirect_uri: env.X_OAUTH_REDIRECT_URI,
       code_verifier: stateResult.rows[0].code_verifier,
     }),
