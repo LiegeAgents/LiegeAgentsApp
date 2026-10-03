@@ -36,7 +36,8 @@ function Landing() {
     <section className="cta section"><span className="eyebrow">MORE IDEAS. LESS HEAVY LIFTING.</span><h2>You have the vision.<br/><em>Find your people. And agents.</em></h2><a className="button" href="/auth">Get started <ArrowUpRight size={17}/></a><p className="small muted">Explore the frontend preview. Live connections are coming next.</p></section></main><NormalFooter/>{selected && <AgentDetail agent={selected} onClose={()=>setSelected(null)}/>}</div>;
 }
 type EthereumProvider = { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> };
-const superAgentsApi = ((import.meta.env.VITE_API_URL as string | undefined) || 'https://api.liegeagents.com').replace(/\/$/, '');
+// Production uses the Vercel same-origin proxy; local development can provide VITE_API_URL.
+const superAgentsApi = ((import.meta.env.VITE_API_URL as string | undefined) || '/api').replace(/\/$/, '');
 async function connectLiegeWallet() {
   const provider = (window as Window & { ethereum?: EthereumProvider }).ethereum;
   if (!provider) throw new Error('Install a wallet extension to connect your Liege account.');
