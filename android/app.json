@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Liege Companion",
+    "slug": "liege-companion",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "icon": "./assets/logo.png",
+    "splash": {
+      "image": "./assets/logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#080B0A"
+    },
+    "scheme": "liege",
+    "android": {
+      "package": "com.liegeagents.companion",
+      "versionCode": 1,
+      "adaptiveIcon": { "backgroundColor": "#06100c" }
+    },
+    "plugins": ["expo-secure-store"],
+    "extra": { "apiBaseUrl": "https://api.liegeagents.com" }
+  }
+}

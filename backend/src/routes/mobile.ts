@@ -261,14 +261,21 @@ mobileRouter.get(
   requireMobileAuth,
   asyncRoute(async (request, response) => {
     const userId = request.mobileAuth!.userId;
+    const jobsOffset = z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(2147483647)
+      .default(0)
+      .parse(request.query.jobsOffset);
     const [jobs, proposals, activity] = await Promise.all([
       db.query(
         `SELECT j.id, j.public_id, j.title, j.status, j.settlement_asset, j.budget_amount,
                 j.deadline_at, j.expires_at, j.created_at, a.name AS agent_name
          FROM jobs j JOIN agents a ON a.id=j.agent_id
          WHERE j.client_id=$1 OR a.owner_id=$1 OR j.evaluator_id=$1
-         ORDER BY j.updated_at DESC LIMIT 25`,
-        [userId],
+         ORDER BY j.created_at DESC, j.id DESC LIMIT 51 OFFSET $2`,
+        [userId, jobsOffset],
       ),
       db.query(
         `SELECT id, agent_id, action, status,
@@ -287,7 +294,12 @@ mobileRouter.get(
       ),
     ]);
     response.json({
-      data: { jobs: jobs.rows, proposals: proposals.rows, activity: activity.rows },
+      data: {
+        jobs: jobs.rows.slice(0, 50),
+        nextJobsOffset: jobs.rows.length > 50 ? jobsOffset + 50 : null,
+        proposals: proposals.rows,
+        activity: activity.rows,
+      },
     });
   }),
 );
