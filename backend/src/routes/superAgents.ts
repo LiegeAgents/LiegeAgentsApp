@@ -12,6 +12,7 @@ export const superAgentsRouter = Router();
 
 const textInput = z.object({ text: z.string().trim().min(1).max(10_000) });
 const decisionInput = z.object({ decision: z.enum(["approved", "rejected"]) });
+const claimInput = z.object({ claimToken: z.string().min(24).max(200) });
 const intentShape = z.object({
   agentName: z.string().trim().max(80).nullable().default(null),
   request: z.string().trim().min(1).max(10_000),
@@ -84,7 +85,6 @@ async function findAgent(agentName: string | null) {
 
 superAgentsRouter.get(
   "/auth/x/start",
-  requireAuth,
   asyncRoute(async (request, response) => {
     if (!env.X_CLIENT_ID || !env.X_OAUTH_REDIRECT_URI)
       throw new ApiError(503, "x_auth_unavailable", "X authorization is not configured.");
@@ -94,7 +94,7 @@ superAgentsRouter.get(
     const expiresAt = new Date(Date.now() + 10 * 60_000);
     await db.query(
       `INSERT INTO superagent_x_oauth_states (user_id, state_hash, code_verifier, expires_at) VALUES ($1,$2,$3,$4)`,
-      [request.auth!.userId, stateHash(state), verifier, expiresAt],
+      [request.auth?.userId ?? null, stateHash(state), verifier, expiresAt],
     );
     const params = new URLSearchParams({
       response_type: "code",
@@ -114,7 +114,7 @@ superAgentsRouter.get(
 export const xCallback = asyncRoute(async (request, response) => {
   const state = z.string().min(16).parse(request.query.state);
   const code = z.string().min(1).parse(request.query.code);
-  const stateResult = await db.query<{ id: string; user_id: string; code_verifier: string }>(
+  const stateResult = await db.query<{ id: string; user_id: string | null; code_verifier: string }>(
     `UPDATE superagent_x_oauth_states SET consumed_at=now()
      WHERE state_hash=$1 AND consumed_at IS NULL AND expires_at > now()
      RETURNING id, user_id, code_verifier`,
@@ -154,6 +154,26 @@ export const xCallback = asyncRoute(async (request, response) => {
   if (!profile.data?.id || !profile.data.username)
     throw new ApiError(502, "x_profile_failed", "X returned an incomplete profile.");
   const userId = stateResult.rows[0].user_id;
+  if (!userId) {
+    const claimToken = randomBytes(32).toString("base64url");
+    await db.query(
+      `INSERT INTO superagent_x_claims (claim_hash,x_user_id,x_username,access_token_ciphertext,refresh_token_ciphertext,scopes,expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [
+        stateHash(claimToken),
+        profile.data.id,
+        profile.data.username,
+        encryptPayload(tokens.access_token, "superagent:x:pending"),
+        tokens.refresh_token ? encryptPayload(tokens.refresh_token, "superagent:x:pending") : null,
+        tokens.scope ?? [],
+        new Date(Date.now() + 10 * 60_000),
+      ],
+    );
+    response.redirect(
+      `${env.SUPERAGENTS_URL.replace(/\/$/, "")}/auth?x=connected&claim=${claimToken}`,
+    );
+    return;
+  }
   await db.query(
     `INSERT INTO superagent_x_identities (user_id,x_user_id,x_username,access_token_ciphertext,refresh_token_ciphertext,scopes)
      VALUES ($1,$2,$3,$4,$5,$6)
@@ -180,6 +200,53 @@ export const xCallback = asyncRoute(async (request, response) => {
   response.redirect(`${env.SUPERAGENTS_URL.replace(/\/$/, "")}/auth?x=connected`);
 });
 superAgentsRouter.get("/auth/x/callback", xCallback);
+
+superAgentsRouter.post(
+  "/auth/x/claim",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const { claimToken } = claimInput.parse(request.body);
+    const claim = await db.query<{
+      x_user_id: string;
+      x_username: string;
+      access_token_ciphertext: string;
+      refresh_token_ciphertext: string | null;
+      scopes: string[];
+    }>(
+      `UPDATE superagent_x_claims SET claimed_at=now()
+       WHERE claim_hash=$1 AND claimed_at IS NULL AND expires_at > now()
+       RETURNING x_user_id,x_username,access_token_ciphertext,refresh_token_ciphertext,scopes`,
+      [stateHash(claimToken)],
+    );
+    if (!claim.rowCount)
+      throw new ApiError(400, "invalid_x_claim", "This X connection is expired or already linked.");
+    const item = claim.rows[0];
+    await db.query(
+      `INSERT INTO superagent_x_identities (user_id,x_user_id,x_username,access_token_ciphertext,refresh_token_ciphertext,scopes)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (user_id) DO UPDATE SET x_user_id=EXCLUDED.x_user_id,x_username=EXCLUDED.x_username,
+         access_token_ciphertext=EXCLUDED.access_token_ciphertext,refresh_token_ciphertext=EXCLUDED.refresh_token_ciphertext,
+         scopes=EXCLUDED.scopes,updated_at=now()`,
+      [
+        request.auth!.userId,
+        item.x_user_id,
+        item.x_username,
+        item.access_token_ciphertext,
+        item.refresh_token_ciphertext,
+        item.scopes,
+      ],
+    );
+    await audit(db, {
+      actorId: request.auth!.userId,
+      action: "superagent.x_connected",
+      targetType: "x_identity",
+      targetId: item.x_user_id,
+      requestId: request.requestId,
+      metadata: { username: item.x_username },
+    });
+    response.json({ data: { xUsername: item.x_username } });
+  }),
+);
 
 superAgentsRouter.delete(
   "/auth/x",

@@ -2213,7 +2213,7 @@ paths:
     get:
       operationId: superAgentsXAuthStart
       summary: Create an X OAuth authorization URL for the signed-in Liege owner.
-      security: [{ bearerAuth: [] }]
+      security: []
       responses:
         "200":
           {
@@ -2252,6 +2252,26 @@ paths:
         "204": { description: X identity disconnected. }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /v1/super-agents/auth/x/claim:
+    post:
+      operationId: superAgentsXAuthClaim
+      summary: Claim a pending X OAuth connection after the wallet session is established.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              { type: object, required: [claimToken], properties: { claimToken: { type: string } } }
+      responses:
+        "200":
+          {
+            description: X identity linked.,
+            content:
+              { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } },
+          }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
   /v1/super-agents/dashboard:
     get:
       operationId: superAgentsDashboard
