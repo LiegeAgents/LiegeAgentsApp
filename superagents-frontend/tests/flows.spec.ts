@@ -7,7 +7,7 @@ test('landing renders the flagship team and accessible details without overflow'
   await expect(page.getByRole('heading', { name: 'A little mention. A lot of possibility.' })).toBeVisible();
   await page.locator('.agent-card').filter({ hasText: 'Scott' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Scott by LiegeAgents' })).toBeVisible();
+  await expect(page.getByRole('dialog').getByRole('heading', { name: 'Scott by LiegeAgents' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
