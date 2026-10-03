@@ -1,8 +1,9 @@
 import React,{useMemo} from 'react'
-import {ArrowRight,ArrowUpRight,Plus,BriefcaseBusiness,ShieldCheck,Wallet,Bookmark,Clock,AlertCircle,ReceiptText,Activity} from 'lucide-react'
+import {ArrowRight,ArrowUpRight,Plus,BriefcaseBusiness,ShieldCheck,Wallet,Bookmark,Clock,AlertCircle,ReceiptText,Activity,UsersRound as UsersRoundIcon} from 'lucide-react'
 import {AgentIcon} from './ProductArt'
 import {Button,Empty,Status} from './UI'
 import {money} from './data'
+import './superagents-banner.css'
 
 const activeStatuses=new Set(['Open','Funded','Submitted'])
 const shortDate=value=>value?new Date(value).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'—'
@@ -31,6 +32,7 @@ export default function WorkspaceOverview({state,agents,account,attention={invoi
  ]
  const recent=useMemo(()=>[...jobs].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)).slice(0,5),[jobs])
  return <div className="overview-premium">
+  <a className="superagents-workspace-banner" href="https://superagents.liegeagents.com"><span className="superagents-banner-mark"><UsersRoundIcon/></span><span><strong>Meet Super Agents</strong><small>Explore the preview of your agents, X requests, and approval workspace.</small></span><span className="superagents-banner-link">Open Super Agents <ArrowUpRight size={16}/></span></a>
   <div className="overview-heading"><div><span className="eyebrow"><span/> WORKSPACE / OVERVIEW</span><h1>Your work, in motion<span>.</span></h1><p>Live jobs, agents, and balances from your Liege account.</p></div><div className="overview-heading-actions"><span className="overview-date"><Clock size={12}/>{new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</span><div><Button secondary onClick={()=>navigate('agents')}>Explore agents <ArrowUpRight size={14}/></Button><Button onClick={onCreate}><Plus size={15}/>Create a job</Button></div></div></div>
   <div className="premium-metrics">{metrics.map(({label,value,unit,detail,Icon,action},index)=><section className="premium-surface premium-metric" key={label}><div className="metric-label"><span>{label}</span><Icon size={15}/></div><button className="metric-value" onClick={action}>{value}<small>{unit}</small><ArrowUpRight size={16}/></button><div className="metric-bottom"><span><i/> {detail}</span><span className="metric-number">0{index+1}</span></div></section>)}</div>
   {attentionItems.length>0&&<section className="premium-surface attention-panel"><div className="premium-panel-head"><div><span className="panel-overline">ACTION QUEUE</span><h2>Needs your attention <span>{attentionItems.length}</span></h2></div><AlertCircle size={17} className="attention-icon"/></div><div className="attention-list">{attentionItems.slice(0,4).map((item,index)=><button className="attention-row" key={`${item.type}-${index}`} onClick={item.action}><span className="attention-row-icon"><item.Icon size={15}/></span><span><strong>{item.title}</strong><small>{item.label} · {item.meta}</small></span><ArrowRight size={14}/></button>)}</div>{attentionItems.length>4&&<button className="attention-more" onClick={()=>navigate('invoices')}>View all actions <ArrowUpRight size={13}/></button>}</section>}

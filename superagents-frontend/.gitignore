@@ -1,0 +1,9 @@
+node_modules/
+.bun-tmp/
+dist/
+test-results/
+playwright-report/
+.vercel/
+.env
+.env.*
+.DS_Store
