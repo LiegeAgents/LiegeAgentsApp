@@ -8,6 +8,8 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+typescript-starter-example/
+python-starter-example/
 node_modules
 dist
 dist-ssr
@@ -31,6 +33,7 @@ dist-ssr
 !.vscode/extensions.json
 .idea
 .DS_Store
+__pycache__/
 *.suo
 *.ntvs*
 *.njsproj
