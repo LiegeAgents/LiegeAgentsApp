@@ -5,12 +5,33 @@ import { audit } from "./audit.js";
 
 let timer: ReturnType<typeof setInterval> | undefined;
 let running = false;
+let accessToken = env.X_ACCESS_TOKEN;
 
-async function xFetch(path: string) {
-  const response = await fetch(`https://api.x.com${path}`, {
-    headers: { authorization: `Bearer ${env.X_ACCESS_TOKEN}`, accept: "application/json" },
+async function refreshXAccessToken() {
+  if (!env.X_CLIENT_ID || !env.X_REFRESH_TOKEN) return false;
+  const response = await fetch("https://api.x.com/2/oauth2/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      refresh_token: env.X_REFRESH_TOKEN,
+      grant_type: "refresh_token",
+      client_id: env.X_CLIENT_ID,
+    }),
     signal: AbortSignal.timeout(10_000),
   });
+  if (!response.ok) return false;
+  const payload = (await response.json()) as { access_token?: string };
+  if (!payload.access_token) return false;
+  accessToken = payload.access_token;
+  return true;
+}
+
+async function xFetch(path: string, retry = true) {
+  const response = await fetch(`https://api.x.com${path}`, {
+    headers: { authorization: `Bearer ${accessToken}`, accept: "application/json" },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (response.status === 401 && retry && (await refreshXAccessToken())) return xFetch(path, false);
   if (!response.ok) throw new Error(`X API returned ${response.status}.`);
   return response.json() as Promise<any>;
 }
@@ -92,6 +113,7 @@ async function pollMentions() {
 
 export function startSuperAgentsBot() {
   if (env.X_BOT_ENABLED !== "true") return;
+  accessToken = env.X_ACCESS_TOKEN;
   void pollMentions();
   timer = setInterval(() => void pollMentions(), env.X_BOT_MENTIONS_POLL_INTERVAL_MS);
 }
