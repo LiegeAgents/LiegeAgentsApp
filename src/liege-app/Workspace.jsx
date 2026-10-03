@@ -23,6 +23,7 @@ import {
   Power,
   Globe,
   Activity,
+  Bell,
   ReceiptText,
   AlertCircle,
   SquareTerminal,
@@ -61,6 +62,130 @@ const tabs = [
   ["launch", "Launch an agent", Plus],
   ["settings", "Workspace settings", Settings2],
 ];
+
+const notificationDate = (value) => {
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
+};
+const notificationDateLabel = (value) =>
+  value
+    ? new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    : "Recently";
+
+function buildWorkspaceNotifications({ jobs, invoices, evaluations, proposals, runs, activity, navigate }) {
+  const now = Date.now();
+  const items = [
+    ...proposals
+      .filter((item) => (item.effective_status || item.status) === "pending")
+      .map((item) => ({
+        id: `proposal-${item.id}`,
+        tone: "warning",
+        label: "Approval",
+        title: item.action?.replaceAll("_", " ") || "Agent action",
+        detail: "An agent is waiting for your decision.",
+        date: item.created_at,
+        target: "approvals",
+      })),
+    ...jobs
+      .filter((job) => ["Open", "Funded", "Submitted"].includes(job.status))
+      .filter((job) => {
+        const deadline = notificationDate(job.deadline || job.deadline_at);
+        return deadline > now && deadline - now <= 48 * 60 * 60 * 1000;
+      })
+      .map((job) => ({
+        id: `job-${job.id}`,
+        tone: "warning",
+        label: "Job deadline",
+        title: job.title || "Active job",
+        detail: `Due ${notificationDateLabel(job.deadline || job.deadline_at)}.`,
+        date: job.deadline || job.deadline_at,
+        target: "jobs",
+      })),
+    ...invoices
+      .filter((invoice) => invoice.status === "issued")
+      .filter((invoice) => {
+        const expires = notificationDate(invoice.expiresAt || invoice.expires_at);
+        return expires > now && expires - now <= 7 * 86400000;
+      })
+      .map((invoice) => ({
+        id: `invoice-${invoice.id}`,
+        tone: "warning",
+        label: "Invoice expiry",
+        title: invoice.description || invoice.publicId || "Invoice",
+        detail: `Awaiting payment · expires ${notificationDateLabel(invoice.expiresAt || invoice.expires_at)}.`,
+        date: invoice.expiresAt || invoice.expires_at,
+        target: "invoices",
+      })),
+    ...evaluations
+      .filter((task) => ["assigned", "submitted"].includes(String(task.status).toLowerCase()))
+      .map((task) => ({
+        id: `evaluation-${task.id}`,
+        tone: "active",
+        label: "Evaluation",
+        title: task.title || task.job_title || "Evaluation review",
+        detail: "A review is ready for your attention.",
+        date: task.created_at || task.createdAt,
+        target: "evaluations",
+      })),
+    ...runs
+      .filter((run) => ["failed", "error", "timed_out"].includes(String(run.status).toLowerCase()))
+      .slice(0, 5)
+      .map((run) => ({
+        id: `run-${run.id}`,
+        tone: "danger",
+        label: "Runner failed",
+        title: run.command || "Sandboxed workload",
+        detail: "Inspect the execution run and captured artifacts.",
+        date: run.finished_at || run.created_at,
+        target: "runner",
+      })),
+    ...activity
+      .filter((entry) => ["job_settlement", "job_expiry", "invoice_refund"].includes(entry.type))
+      .slice(0, 3)
+      .map((entry) => ({
+        id: `activity-${entry.id}`,
+        tone: "positive",
+        label: "Account update",
+        title: String(entry.type).replaceAll("_", " "),
+        detail: "A settlement or refund outcome was recorded.",
+        date: entry.created_at,
+        target: "receipts",
+      })),
+  ];
+  return items
+    .sort((a, b) => notificationDate(b.date) - notificationDate(a.date))
+    .slice(0, 20)
+    .map((item) => ({ ...item, action: () => navigate(item.target) }));
+}
+
+function WorkspaceNotifications({ items, onClose }) {
+  return (
+    <section className="workspace-notification-panel" role="dialog" aria-label="Workspace notifications">
+      <div className="workspace-notification-heading">
+        <div>
+          <span className="eyebrow">WORKSPACE SIGNALS</span>
+          <h2>Notifications</h2>
+        </div>
+        <button className="subtle-link" type="button" onClick={onClose}>Close</button>
+      </div>
+      {items.length ? (
+        <div className="workspace-notification-list">
+          {items.map((item) => {
+            const Icon = item.tone === "danger" ? AlertCircle : item.tone === "positive" ? Check : item.tone === "active" ? Activity : Bell;
+            return <button className="workspace-notification-item" key={item.id} onClick={item.action}>
+              <span className={`workspace-notification-icon ${item.tone}`}><Icon size={14} /></span>
+              <span><strong>{item.title}</strong><small>{item.label} · {item.detail}</small></span>
+              <ArrowRight size={13} />
+            </button>;
+          })}
+        </div>
+      ) : (
+        <div className="workspace-notification-empty"><Bell size={18} /><strong>All clear.</strong><span>Nothing needs your attention right now.</span></div>
+      )}
+    </section>
+  );
+}
+
 export default function Workspace() {
   const [state, setState] = useState(read),
     [storageError, setStorageError] = useState(""),
@@ -82,6 +207,7 @@ export default function Workspace() {
     [activity, setActivity] = useState([]),
     [runnerRuns, setRunnerRuns] = useState([]),
     [mcpProposals, setMcpProposals] = useState([]),
+    [notificationsOpen, setNotificationsOpen] = useState(false),
     [apiError, setApiError] = useState(""),
     [loadingLive, setLoadingLive] = useState(false);
   const allAgents = liveAgents;
@@ -205,6 +331,18 @@ export default function Workspace() {
   const draftFor = (a) => setModal({ type: "create-job", agent: a?.id });
   const active = allJobs.filter((j) => ["Funded", "Submitted"].includes(j.status)),
     escrow = active.reduce((n, j) => n + j.budget, 0);
+  const notifications = useMemo(() => buildWorkspaceNotifications({
+    jobs: allJobs,
+    invoices: attention.invoices,
+    evaluations: attention.evaluations,
+    proposals: mcpProposals,
+    runs: runnerRuns,
+    activity,
+    navigate: (target) => {
+      setNotificationsOpen(false);
+      navigate(target);
+    },
+  }), [allJobs, attention.invoices, attention.evaluations, mcpProposals, runnerRuns, activity]);
   const visibleAgents = allAgents.filter(
     (a) =>
       (filter === "All" ||
@@ -315,6 +453,23 @@ export default function Workspace() {
               <i />
               {wallet.apiSession ? "" : "Connect to begin"}
             </span>
+            <div className="workspace-notifications">
+              <button
+                className={`icon-button notification-trigger${notificationsOpen ? " active" : ""}`}
+                aria-label={`Notifications${notifications.length ? ` (${notifications.length} unread)` : ""}`}
+                aria-expanded={notificationsOpen}
+                onClick={() => setNotificationsOpen((open) => !open)}
+              >
+                <Bell size={15} />
+                {notifications.length > 0 && <span className="notification-count">{Math.min(notifications.length, 99)}</span>}
+              </button>
+              {notificationsOpen && (
+                <WorkspaceNotifications
+                  items={notifications}
+                  onClose={() => setNotificationsOpen(false)}
+                />
+              )}
+            </div>
             <WalletButton />
             <button
               className="icon-button export-workspace"
