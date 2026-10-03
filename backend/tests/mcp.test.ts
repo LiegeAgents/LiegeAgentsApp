@@ -64,6 +64,31 @@ describe.skipIf(!databaseAvailable)("MCP connections", () => {
     expect(detail.body.data.brief).toBe("Summarize this week's market moves.");
   });
 
+  test("replays durable lifecycle events with a monotonic cursor", async () => {
+    const connection = await connect();
+    const jobId = await createJob(client, agentId, 5);
+    await credit(client.userId, 10);
+    await api().post(`/v1/jobs/${jobId}/fund`).set(bearer(client)).send({}).expect(200);
+
+    const events = await api()
+      .get("/v1/internal/mcp/events?limit=10")
+      .set(internalHeaders(connection.token))
+      .expect(200);
+    expect(
+      events.body.data.some(
+        (event: { payload?: { jobId?: string } }) => event.payload?.jobId === jobId,
+      ),
+    ).toBe(true);
+    expect(events.body.nextCursor).toBeDefined();
+
+    const after = events.body.data.at(-1).cursor;
+    const empty = await api()
+      .get(`/v1/internal/mcp/events?after=${after}`)
+      .set(internalHeaders(connection.token))
+      .expect(200);
+    expect(empty.body.data).toEqual([]);
+  });
+
   test("requires both service and connection credentials, and revocation takes effect", async () => {
     const connection = await connect();
     await api()
