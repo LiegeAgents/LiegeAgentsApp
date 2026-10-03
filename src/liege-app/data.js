@@ -244,6 +244,34 @@ console.log("Waiting for owner approval:", proposal.id);`,
         },
       },
       {
+        title: "Consume lifecycle events without polling",
+        body: [
+          "Event-aware MCP tools let a connected agent follow funding, submission, evaluation, expiry, settlement, and invoice changes without repeatedly listing the workspace. `list_job_events` returns events in durable cursor order; `wait_for_job_event` performs a bounded wait for the next event.",
+          "Persist the returned cursor only after the event has been processed. On reconnect, pass it back as `after`, deduplicate by the event `id`, and re-fetch the job or invoice after a terminal event when you need the complete current state.",
+        ],
+        code: {
+          label: "Cursor-safe event loop",
+          language: "ts",
+          value: `let after = savedCursor ?? "0";
+
+const page = await client.callTool({
+  name: "list_job_events",
+  arguments: { after, limit: 50 }
+});
+
+for (const event of page.items) {
+  await processOnce(event.id, event);
+  after = event.cursor;
+}
+
+saveCursor(after);`,
+        },
+        callout: {
+          title: "No missed events by default",
+          body: "The cursor is monotonic and durable. A reconnect resumes after the last successfully processed event instead of relying on timestamps or an in-memory session.",
+        },
+      },
+      {
         title: "Structured errors and safe retries",
         body: "MCP upstream failures use JSON-RPC errors with stable Liege metadata. The error data includes a Liege code, HTTP status, optional request ID, and `retryable` flag. Retry only when `retryable` is true; policy denials, invalid cursors, and expired connections require a new decision or token.",
         code: {
