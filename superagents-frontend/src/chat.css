@@ -1,4 +1,5 @@
 .superagents-body{background:#08090a;color:#e6ece7}
+.auth-error{border:1px solid #704343;border-radius:5px;background:#2a1717;color:#f0aaaa;padding:10px 12px;font-size:10px!important;line-height:1.5;margin:12px 0!important}
 .auth-page{background:radial-gradient(ellipse at 12% 50%,#12351e50,transparent 55%),#08090a!important;color:#e6ece7}
 .dashboard-chat-overlay{position:fixed;right:28px;bottom:24px;width:min(430px,calc(100vw - 32px));z-index:18;filter:drop-shadow(0 20px 45px #0008)}
 .superagent-chat{padding:20px;background:#101a13;border-color:#35523c}
