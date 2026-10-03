@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowUpRight, ArrowRight, Check, ChevronLeft, ChevronRight, X, Search, LayoutDashboard, Inbox, Users, Activity, Settings, Plus, Wallet, ShieldCheck, Link2, LogOut, Menu, FileText } from 'lucide-react';
+import { ArrowUpRight, ArrowRight, Check, ChevronLeft, ChevronRight, X, Search, LayoutDashboard, Inbox, Users, Activity, Settings, Plus, Wallet, ShieldCheck, Link2, LogOut, Menu, FileText, MessageCircle, Send } from 'lucide-react';
 import { agents, BOT, LIEGE, permissions, readDemo, saveDemo, type Agent, type RequestItem } from './data';
 import '../../src/liege-app/reference/source.css';
 import '../../src/liege-app/reference/behaviors.css';
 import '../../src/liege-app/brand-social.css';
 import './style.css';
 import './landing-system.css';
+import './chat.css';
 import { NormalFooter } from './NormalFooter';
 // @ts-expect-error local shared renderer is plain JavaScript
 import Dither from './Dither';
@@ -49,6 +50,33 @@ function Onboarding() {
     </div>{step>0&&step<3&&<button className="back-button" onClick={()=>setStep(step-1)}><ChevronLeft size={14}/> Previous step</button>}<div className="auth-bottom"><a href={`${LIEGE}/docs/privacy`}>Privacy</a><a href={`${LIEGE}/docs/permissions`}>About permissions <ArrowUpRight size={12}/></a></div></main></div>{notice&&<Modal title="Browser storage unavailable" onClose={()=>setNotice(false)}><p>Allow session storage to save this walkthrough, or open the dashboard directly to explore its sample data.</p><a href="/app" className="button">Explore dashboard</a></Modal>}</div>;
 }
 const tabs = [{id:'overview',label:'Overview',icon:LayoutDashboard},{id:'requests',label:'Requests',icon:Inbox},{id:'agents',label:'Agents',icon:Users},{id:'activity',label:'Activity',icon:Activity},{id:'settings',label:'Settings',icon:Settings}];
+function SuperAgentChat() {
+  const [messages, setMessages] = useState<Array<{ role: 'assistant' | 'user'; text: string }>>([{ role: 'assistant', text: 'Tell me what you need done. I’ll find a specialist, shape a proposal, and leave the final decision with you.' }]);
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    const value = text.trim();
+    if (!value || busy) return;
+    setText('');
+    setMessages(current => [...current, { role: 'user', text: value }]);
+    setBusy(true);
+    try {
+      const token = sessionStorage.getItem('liege-session-token');
+      const api = import.meta.env.VITE_API_URL as string | undefined;
+      const response = token && api ? await fetch(`${api.replace(/\/$/, '')}/v1/super-agents/intents/parse`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ text: value }) }) : null;
+      const parsed = response?.ok ? (await response.json()).data : null;
+      const proposal = token && api ? await fetch(`${api.replace(/\/$/, '')}/v1/super-agents/intents`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ text: value }) }) : null;
+      const match = parsed?.agentName || value.match(/(?:hire|ask|assign)\s+([A-Za-z][A-Za-z0-9 -]{1,50}?)(?:\s+to|\s+for|,|$)/i)?.[1];
+      const budget = parsed?.budgetUsdg ?? value.match(/(?:budget|for)\s*\$?([0-9]+(?:\.[0-9]+)?)/i)?.[1];
+      const created = Boolean(proposal?.ok);
+      setMessages(current => [...current, { role: 'assistant', text: match ? `I’d route this to ${match}${budget ? ` with a ${budget} USDG budget` : ''}. ${created ? 'A proposal is waiting in Requests for your review.' : 'I’ve prepared a proposal preview.'} No job was funded and no wallet action was taken.` : 'I understand the request. Add an agent name or service and an optional budget, then I’ll prepare a reviewable proposal.' }]);
+    } catch {
+      setMessages(current => [...current, { role: 'assistant', text: 'I couldn’t reach the live parser, so nothing was created. Try again or use the Requests section to review existing proposals.' }]);
+    } finally { setBusy(false); }
+  }
+  return <section className="panel superagent-chat"><div className="chat-heading"><div><span className="eyebrow">ASK LIEGE</span><h2>What should your agents do?</h2></div><span className="chat-status"><MessageCircle size={13}/> Proposal-first</span></div><div className="chat-messages" aria-live="polite">{messages.map((message, index) => <div className={`chat-message ${message.role}`} key={`${message.role}-${index}`}><span className="chat-avatar">{message.role === 'assistant' ? 'L' : 'D'}</span><p>{message.text}</p></div>)}{busy && <div className="chat-message assistant"><span className="chat-avatar">L</span><p>Reading your request…</p></div>}</div><form className="chat-form" onSubmit={submit}><input value={text} onChange={event => setText(event.target.value)} placeholder="Hire an agent to…" aria-label="Ask Liege to hire an agent" maxLength={10000}/><button className="button" type="submit" disabled={!text.trim() || busy} aria-label="Send request"><Send size={16}/></button></form><p className="chat-note">Natural language creates a proposal only. You approve before any job, spend, or signing step.</p></section>;
+}
 function Dashboard() {
   const [demo,setDemo] = useState(readDemo);
   const initial = new URLSearchParams(location.search).get('view');
@@ -85,5 +113,5 @@ function Dashboard() {
     {revoke&&<Modal title="Reset this preview?" onClose={()=>setRevoke(false)}><p>This clears your sample approvals, agent drafts, and walkthrough progress from this browser session. No real account is affected.</p><div className="dialog-actions"><Button secondary onClick={()=>setRevoke(false)}>Keep preview</Button><Button onClick={()=>{try{sessionStorage.removeItem('liege-superagents-preview-v1');}catch{/* Navigation still works. */}location.assign('/auth');}}>Reset preview</Button></div></Modal>}
   </div>;
 }
-function App() { const path = location.pathname.replace(/\/$/,'') || '/'; return path==='/'?<Landing/>:path==='/auth'?<Onboarding/>:path==='/app'?<Dashboard/>:<div className="not-found"><Logo/><h1>A small detour.</h1><p>This page doesn’t exist. Let’s get you back to the agents.</p><a className="button" href="/">Back to home <ArrowRight size={16}/></a></div>; }
+function App() { useEffect(() => { document.documentElement.classList.add('dark'); document.body.classList.add('superagents-body'); return () => { document.documentElement.classList.remove('dark'); document.body.classList.remove('superagents-body'); }; }, []); const path = location.pathname.replace(/\/$/,'') || '/'; return path==='/'?<Landing/>:path==='/auth'?<Onboarding/>:path==='/app'?<><Dashboard/><div className="dashboard-chat-overlay"><SuperAgentChat/></div></>:<div className="not-found"><Logo/><h1>A small detour.</h1><p>This page doesn’t exist. Let’s get you back to the agents.</p><a className="button" href="/">Back to home <ArrowRight size={16}/></a></div>; }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
