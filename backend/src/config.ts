@@ -31,6 +31,22 @@ const env = z
     USDG_TOKEN_VERSION: z.string().min(1).default("1"),
     X402_FACILITATOR_URL: z.string().url().optional(),
     X402_MAX_TIMEOUT_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
+    X_BOT_ENABLED: z.enum(["true", "false"]).default("false"),
+    X_BOT_HANDLE: z.string().min(1).optional(),
+    X_ACCESS_TOKEN: z.string().min(1).optional(),
+    X_CLIENT_ID: z.string().min(1).optional(),
+    X_CLIENT_SECRET: z.string().min(1).optional(),
+    X_REFRESH_TOKEN: z.string().min(1).optional(),
+    X_OAUTH_REDIRECT_URI: z.string().url().optional(),
+    X_BOT_MENTIONS_POLL_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .min(15_000)
+      .max(3_600_000)
+      .default(30_000),
+    GROQ_API_KEY: z.string().min(1).optional(),
+    GROQ_MODEL: z.string().min(1).default("qwen/qwen3-32b"),
+    SUPERAGENTS_URL: z.string().url().default("https://superagents.liegeagents.com"),
     LIEGE_TOKEN_ADDRESS: z
       .string()
       .regex(/^0x[0-9a-fA-F]{40}$/)
@@ -93,6 +109,9 @@ if (
   throw new Error(
     "AUTH_TOKEN_PEPPER, CRON_SECRET, ADMIN_WALLET_ADDRESSES, AUTH_DOMAIN, AUTH_URI, MCP_INTERNAL_API_TOKEN, RUNNER_WORKER_URL, and RUNNER_WORKER_TOKEN are required in production.",
   );
+}
+if (env.X_BOT_ENABLED === "true" && (!env.X_ACCESS_TOKEN || !env.X_BOT_HANDLE)) {
+  throw new Error("X_ACCESS_TOKEN and X_BOT_HANDLE are required when X_BOT_ENABLED=true.");
 }
 if (
   env.NODE_ENV === "production" &&

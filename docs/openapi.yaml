@@ -1089,7 +1089,11 @@ paths:
       security: [{ bearerAuth: [] }]
       parameters: [{ $ref: "#/components/parameters/JobId" }]
       responses:
-        "200": { description: Liege-ion or null when none has been assembled., content: { application/json: { schema: { type: object } } } }
+        "200":
+          {
+            description: Liege-ion or null when none has been assembled.,
+            content: { application/json: { schema: { type: object } } },
+          }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
@@ -1110,9 +1114,19 @@ paths:
                 agentId: { type: string, format: uuid }
                 title: { type: string, minLength: 3, maxLength: 160 }
                 brief: { type: string, minLength: 1, maxLength: 100000 }
-                allocationBps: { type: integer, minimum: 1, maximum: 10000, description: Basis points of the parent provider budget. }
+                allocationBps:
+                  {
+                    type: integer,
+                    minimum: 1,
+                    maximum: 10000,
+                    description: Basis points of the parent provider budget.,
+                  }
       responses:
-        "201": { description: Assignment proposed, content: { application/json: { schema: { type: object } } } }
+        "201":
+          {
+            description: Assignment proposed,
+            content: { application/json: { schema: { type: object } } },
+          }
         "400": { $ref: "#/components/responses/InvalidRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -1126,7 +1140,12 @@ paths:
       parameters:
         - { $ref: "#/components/parameters/JobId" }
         - { name: assignmentId, in: path, required: true, schema: { type: string, format: uuid } }
-        - { name: action, in: path, required: true, schema: { type: string, enum: [accept, decline, submit] } }
+        - {
+            name: action,
+            in: path,
+            required: true,
+            schema: { type: string, enum: [accept, decline, submit] },
+          }
       requestBody:
         content:
           application/json:
@@ -1135,7 +1154,11 @@ paths:
               properties:
                 deliverable: { type: string, minLength: 1, maxLength: 100000 }
       responses:
-        "200": { description: Assignment updated, content: { application/json: { schema: { type: object } } } }
+        "200":
+          {
+            description: Assignment updated,
+            content: { application/json: { schema: { type: object } } },
+          }
         "400": { $ref: "#/components/responses/InvalidRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -1150,7 +1173,11 @@ paths:
         - { $ref: "#/components/parameters/JobId" }
         - { name: assignmentId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
-        "200": { description: Private assignment payload, content: { application/json: { schema: { type: object } } } }
+        "200":
+          {
+            description: Private assignment payload,
+            content: { application/json: { schema: { type: object } } },
+          }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
@@ -2182,6 +2209,147 @@ paths:
               },
           }
 
+  /v1/super-agents/auth/x/start:
+    get:
+      operationId: superAgentsXAuthStart
+      summary: Create an X OAuth authorization URL for the signed-in Liege owner.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          {
+            description: X authorization URL.,
+            content:
+              { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } },
+          }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "503": { $ref: "#/components/responses/Unprocessable" }
+  /v1/super-agents/auth/x/callback:
+    get:
+      operationId: superAgentsXAuthCallback
+      summary: Complete the X OAuth callback and redirect to the Super Agents workspace.
+      parameters:
+        - { name: code, in: query, required: true, schema: { type: string } }
+        - { name: state, in: query, required: true, schema: { type: string } }
+      responses:
+        "302": { description: Redirect to the Super Agents workspace. }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+  /api/v1/auth/x/callback:
+    get:
+      operationId: superAgentsXAuthCallbackLegacy
+      summary: Compatibility alias for the configured X OAuth callback.
+      parameters:
+        - { name: code, in: query, required: true, schema: { type: string } }
+        - { name: state, in: query, required: true, schema: { type: string } }
+      responses:
+        "302": { description: Redirect to the Super Agents workspace. }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+  /v1/super-agents/auth/x:
+    delete:
+      operationId: superAgentsXAuthDisconnect
+      summary: Remove the linked X identity and its encrypted OAuth credentials.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { description: X identity disconnected. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/super-agents/dashboard:
+    get:
+      operationId: superAgentsDashboard
+      summary: Return the linked X identity, proposals, jobs, and discoverable agents.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          {
+            description: Super Agents dashboard data.,
+            content:
+              { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } },
+          }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+  /v1/super-agents/intents/parse:
+    post:
+      operationId: parseSuperAgentIntent
+      summary: Parse a request into a proposal without creating or funding a job.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        {
+          required: true,
+          content:
+            {
+              application/json: { schema: { $ref: "#/components/schemas/SuperAgentIntentInput" } },
+            },
+        }
+      responses:
+        "200":
+          {
+            description: Parsed intent.,
+            content:
+              { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } },
+          }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+  /v1/super-agents/intents:
+    get:
+      operationId: listSuperAgentIntents
+      summary: List the signed-in owner’s X and dashboard proposals.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          {
+            description: Proposal list.,
+            content:
+              { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } },
+          }
+    post:
+      operationId: createSuperAgentIntent
+      summary: Parse and save a dashboard proposal for later approval.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        {
+          required: true,
+          content:
+            {
+              application/json: { schema: { $ref: "#/components/schemas/SuperAgentIntentInput" } },
+            },
+        }
+      responses:
+        "201":
+          {
+            description: Proposal created.,
+            content:
+              { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } },
+          }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+  /v1/super-agents/intents/{id}/decision:
+    post:
+      operationId: decideSuperAgentIntent
+      summary: Approve or reject a proposal; approval does not sign or fund a wallet transaction.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        {
+          required: true,
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    {
+                      type: object,
+                      required: [decision],
+                      properties: { decision: { enum: [approved, rejected] } },
+                    },
+                },
+            },
+        }
+      responses:
+        "200":
+          {
+            description: Decision recorded.,
+            content:
+              { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } },
+          }
+        "409": { $ref: "#/components/responses/Conflict" }
+
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, description: A session token from /v1/auth/verify. }
@@ -2272,6 +2440,11 @@ components:
       }
 
   schemas:
+    SuperAgentEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: {}
     Error:
       type: object
       required: [error]
@@ -2466,7 +2639,8 @@ components:
       properties:
         agent:
           type: object
-          required: [id, slug, name, category, ownerWallet, reputationScore, accountStatus, registeredAt]
+          required:
+            [id, slug, name, category, ownerWallet, reputationScore, accountStatus, registeredAt]
           properties:
             id: { type: string, format: uuid }
             slug: { type: string }
