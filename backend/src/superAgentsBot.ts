@@ -11,7 +11,14 @@ async function refreshXAccessToken() {
   if (!env.X_CLIENT_ID || !env.X_REFRESH_TOKEN) return false;
   const response = await fetch("https://api.x.com/2/oauth2/token", {
     method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      ...(env.X_CLIENT_SECRET
+        ? {
+            authorization: `Basic ${Buffer.from(`${env.X_CLIENT_ID}:${env.X_CLIENT_SECRET}`).toString("base64")}`,
+          }
+        : {}),
+    },
     body: new URLSearchParams({
       refresh_token: env.X_REFRESH_TOKEN,
       grant_type: "refresh_token",
