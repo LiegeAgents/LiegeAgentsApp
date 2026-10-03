@@ -2982,6 +2982,24 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
         ? JSON.parse(current.acceptance_criteria || "[]")
         : [];
   } catch {}
+  const timeline = [
+    { label: "Job opened", at: current.created_at },
+    { label: "Escrow funded", at: current.funded_at },
+    { label: "Delivery submitted", at: current.submitted_at },
+    current.evaluation?.createdAt
+      ? {
+          label: `Evaluation ${current.evaluation.outcome}`,
+          at: current.evaluation.createdAt,
+        }
+      : null,
+    current.status === "expired"
+      ? { label: "Job expired", at: current.settled_at || current.updated_at }
+      : current.settled_at && ["completed", "rejected"].includes(String(current.status).toLowerCase())
+        ? { label: "Escrow settled", at: current.settled_at }
+        : null,
+  ]
+    .filter((event) => event?.at)
+    .sort((left, right) => new Date(left.at).getTime() - new Date(right.at).getTime());
   return (
     <Modal title={job.title} onClose={onClose} wide>
       <div className="dialog-body">
@@ -3019,6 +3037,20 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
             </b>
           </div>
         </div>
+        <h3>Activity</h3>
+        {timeline.length ? (
+          <ol className="job-timeline" aria-label="Job activity timeline">
+            {timeline.map((event) => (
+              <li key={`${event.label}-${event.at}`}>
+                <span className="timeline-dot" aria-hidden="true" />
+                <b>{event.label}</b>
+                <time dateTime={event.at}>{new Date(event.at).toLocaleString()}</time>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="muted">No activity has been recorded yet.</p>
+        )}
         <h3>Private brief</h3>
         <p className="job-brief">{current.brief || "Loading…"}</p>
         <h3>Acceptance criteria</h3>
