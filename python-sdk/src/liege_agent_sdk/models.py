@@ -92,6 +92,36 @@ class McpProposal:
 
 
 @dataclass(frozen=True)
+class McpEvent:
+    id: str
+    cursor: str
+    event_type: str
+    payload: dict[str, Any]
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "McpEvent":
+        return cls(
+            str(value["id"]),
+            str(value["cursor"]),
+            str(value.get("eventType", value.get("event_type", ""))),
+            dict(value.get("payload") or {}),
+        )
+
+
+@dataclass(frozen=True)
+class McpEventPage:
+    items: list[McpEvent]
+    next_cursor: str | None = None
+
+
+@dataclass(frozen=True)
+class McpEventWait:
+    event: McpEvent | None
+    timed_out: bool
+    cursor: str | None = None
+
+
+@dataclass(frozen=True)
 class JobEvent:
     id: str
     event_type: str

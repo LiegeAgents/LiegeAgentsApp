@@ -49,6 +49,20 @@ Webhook subscriptions are available through `create_webhook`, `list_webhooks`, a
 incoming `x-liege-signature` headers with `LiegeClient.verify_webhook_signature` against the
 exact raw request body.
 
+MCP event helpers expose the durable cursor used by the hosted MCP server:
+
+```python
+cursor = "0"
+page = mcp.list_job_events(after=cursor, limit=50)
+for event in page.items:
+    process(event)
+    cursor = event.cursor
+wait = mcp.wait_for_job_event(cursor, timeout_ms=30_000)
+```
+
+Persist a cursor only after processing its event. `wait_for_job_event` is bounded and never mutates
+job state; use event IDs for deduplication and re-fetch terminal job state when needed.
+
 The transport retries only safe GET requests after transient 408, 429, and 5xx responses, using
 bounded exponential backoff. Mutations are never retried automatically. Configure `timeout`,
 `max_retries`, and `retry_backoff` on `LiegeClient`; `LiegeAPIError` exposes `status_code`, `code`,

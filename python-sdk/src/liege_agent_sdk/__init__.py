@@ -15,6 +15,9 @@ from .models import (
     InvoiceRefund,
     Job,
     JobEvent,
+    McpEvent,
+    McpEventPage,
+    McpEventWait,
     McpProposal,
     Receipt,
     RunnerArtifact,
@@ -41,6 +44,9 @@ __all__ = [
     "AsyncLiegeClient",
     "McpClient",
     "McpProposal",
+    "McpEvent",
+    "McpEventPage",
+    "McpEventWait",
     "McpHarnessPreset",
     "McpHarnessPresetsResponse",
     "Page",
@@ -62,4 +68,4 @@ __all__ = [
     "WebhookCreateInput",
     "WebhookSubscription",
 ]
-__version__ = "0.1.7"
+__version__ = "0.1.8"

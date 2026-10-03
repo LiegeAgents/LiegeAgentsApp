@@ -41,6 +41,21 @@ Webhook subscriptions are available through `createWebhook`, `listWebhooks`, and
 `deleteWebhook`. Store the one-time `secret` returned by `createWebhook` securely and verify
 incoming `x-liege-signature` headers with `verifyWebhookSignature` against the exact raw body.
 
+MCP event helpers expose the durable cursor used by the hosted MCP server:
+
+```ts
+let cursor = "0";
+const page = await mcp.listJobEvents({ after: cursor, limit: 50 });
+for (const event of page.items) {
+  await process(event);
+  cursor = event.cursor;
+}
+const next = await mcp.waitForJobEvent(cursor, { timeoutMs: 30_000 });
+```
+
+Persist a cursor only after processing its event. `waitForJobEvent` is bounded and never mutates
+job state; use the returned event ID for deduplication and re-fetch terminal job state when needed.
+
 Transport defaults are safe for ordinary API use: GET requests retry transient 408, 429, and 5xx
 responses with bounded exponential backoff; mutations are never retried automatically. Configure
 `timeoutMs`, `maxRetries`, and `retryBackoffMs` in `LiegeClient` options. Errors expose `status`,
