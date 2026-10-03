@@ -8,7 +8,7 @@ import { ApiError, asyncRoute } from "./http.js";
 
 const SESSION_DAYS = 7;
 const normalizeAddress = (address: string) => address.toLowerCase();
-const digest = (value: string) =>
+export const hashSessionToken = (value: string) =>
   createHash("sha256")
     .update(`${env.AUTH_TOKEN_PEPPER ?? ""}:${value}`)
     .digest("hex");
@@ -78,7 +78,7 @@ export async function createSession(address: string, nonce: string, signature: `
     const expiresAt = new Date(Date.now() + SESSION_DAYS * 86_400_000);
     await client.query(
       "INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
-      [user.rows[0].id, digest(token), expiresAt],
+      [user.rows[0].id, hashSessionToken(token), expiresAt],
     );
     await client.query("COMMIT");
     return { token, expiresAt, userId: user.rows[0].id, walletAddress };
@@ -94,6 +94,7 @@ declare global {
   namespace Express {
     interface Request {
       auth?: { userId: string; walletAddress: string };
+      mobileAuth?: { userId: string; deviceId: string; scopes: string[] };
     }
   }
 }
@@ -105,7 +106,7 @@ export async function requireAuth(request: Request, _response: Response, next: N
     const session = await db.query<{ user_id: string; wallet_address: string }>(
       `SELECT s.user_id, u.wallet_address FROM sessions s JOIN users u ON u.id = s.user_id
        WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > now()`,
-      [digest(bearer)],
+      [hashSessionToken(bearer)],
     );
     if (!session.rowCount)
       throw new ApiError(401, "invalid_session", "This session is invalid or expired.");
@@ -123,7 +124,39 @@ export const revokeSession = asyncRoute(async (request: Request, response: Respo
   const bearer = request.header("authorization")?.match(/^Bearer (.+)$/i)?.[1];
   if (bearer)
     await db.query("UPDATE sessions SET revoked_at = now() WHERE token_hash = $1", [
-      digest(bearer),
+      hashSessionToken(bearer),
     ]);
   response.status(204).end();
 });
+
+export async function requireMobileAuth(request: Request, _response: Response, next: NextFunction) {
+  try {
+    const bearer = request.header("authorization")?.match(/^Bearer (.+)$/i)?.[1];
+    if (!bearer)
+      throw new ApiError(401, "mobile_unauthenticated", "A mobile access token is required.");
+    const result = await db.query<{ user_id: string; device_id: string; scopes: string[] }>(
+      `SELECT s.user_id, s.device_id, s.scopes
+       FROM mobile_sessions s JOIN mobile_devices d ON d.id = s.device_id
+       WHERE s.access_token_hash = $1 AND s.revoked_at IS NULL AND s.access_expires_at > now()
+         AND d.revoked_at IS NULL`,
+      [hashSessionToken(bearer)],
+    );
+    if (!result.rowCount)
+      throw new ApiError(
+        401,
+        "invalid_mobile_session",
+        "This mobile session is invalid or expired.",
+      );
+    await db.query("UPDATE mobile_devices SET last_seen_at = now() WHERE id = $1", [
+      result.rows[0].device_id,
+    ]);
+    request.mobileAuth = {
+      userId: result.rows[0].user_id,
+      deviceId: result.rows[0].device_id,
+      scopes: result.rows[0].scopes ?? [],
+    };
+    next();
+  } catch (error) {
+    next(error);
+  }
+}

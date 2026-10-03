@@ -24,6 +24,7 @@ export function requestContext(request: Request, response: Response, next: NextF
 // Requests per client IP per minute. Sign-in and the routes that call the chain RPC get their
 // own, smaller budgets so they cannot be used to exhaust the general one or the RPC provider.
 const budgets = [
+  { name: "mobile_pair", limit: 10, matches: (path: string) => path === "/v1/mobile/pair" },
   { name: "auth", limit: 20, matches: (path: string) => path.startsWith("/v1/auth/") },
   {
     name: "chain",

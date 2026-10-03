@@ -269,6 +269,118 @@ paths:
         "429": { $ref: "#/components/responses/RateLimited" }
         "204": { description: The session, if one was presented, is revoked. }
 
+  /v1/mobile/pairing-codes:
+    post:
+      operationId: createMobilePairingCode
+      summary: Create a short-lived code for pairing an Android companion device.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "201":
+          description: One-time pairing code. The code is returned only at creation.
+          content: { application/json: { schema: { type: object } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/mobile/pair:
+    post:
+      operationId: pairMobileDevice
+      summary: Exchange an eight-digit pairing code for a scoped mobile session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, name, platform]
+              properties:
+                code: { type: string, pattern: "^[0-9]{8}$" }
+                name: { type: string }
+                platform: { const: android }
+                appVersion: { type: string }
+      responses:
+        "201":
+          description: Scoped access and refresh tokens.
+          content: { application/json: { schema: { type: object } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/mobile/refresh:
+    post:
+      operationId: refreshMobileSession
+      summary: Rotate a mobile refresh token.
+      responses:
+        "200":
+          description: Rotated scoped mobile session.
+          content: { application/json: { schema: { type: object } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /v1/mobile/devices:
+    get:
+      operationId: listMobileDevices
+      summary: List paired mobile devices for the signed-in account.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Paired devices.
+          content: { application/json: { schema: { type: object } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+    
+  /v1/mobile/devices/{id}:
+    delete:
+      operationId: revokeMobileDevice
+      summary: Revoke a paired mobile device and its sessions.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Device revoked. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/mobile/overview:
+    get:
+      operationId: getMobileOverview
+      summary: Read mobile-safe jobs, approvals, and account activity.
+      security: [{ mobileAuth: [] }]
+      responses:
+        "200":
+          description: Mobile-safe workspace overview without private payload content.
+          content: { application/json: { schema: { type: object } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /v1/mobile/proposals/{id}/{decision}:
+    post:
+      operationId: decideMobileProposal
+      summary: Approve or reject an owner-scoped MCP proposal from mobile.
+      security: [{ mobileAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: decision, required: true, schema: { enum: [approved, rejected] } }
+      responses:
+        "200":
+          description: Proposal decision recorded.
+          content: { application/json: { schema: { type: object } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/mobile/releases/latest:
+    get:
+      operationId: getLatestMobileRelease
+      summary: Return metadata for the latest published Android companion APK.
+      responses:
+        "200":
+          description: Latest Android release metadata.
+          content: { application/json: { schema: { type: object } } }
+
+  /v1/mobile/releases/latest/download:
+    get:
+      operationId: downloadLatestMobileRelease
+      summary: Redirect to the latest published Android companion APK.
+      responses:
+        "302": { description: Redirect to the APK asset. }
+
   /v1/me:
     get:
       operationId: getAccount
@@ -1977,6 +2089,7 @@ paths:
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, description: A session token from /v1/auth/verify. }
+    mobileAuth: { type: http, scheme: bearer, bearerFormat: MobileAccessToken, description: A scoped mobile companion access token. }
     cronSecret: { type: apiKey, in: header, name: X-Cron-Secret }
 
   parameters:
