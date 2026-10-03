@@ -103,6 +103,21 @@ export const api = {
     request(`/v1/jobs/${id}/submit`, { token, method: "POST", body: JSON.stringify(input) }),
   evaluateJob: (token, id, input) =>
     request(`/v1/jobs/${id}/evaluate`, { token, method: "POST", body: JSON.stringify(input) }),
+  legion: (token, id) => request(`/v1/jobs/${id}/legion`, { token }),
+  createLegionAssignment: (token, id, input) =>
+    request(`/v1/jobs/${id}/legion/assignments`, {
+      token,
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  respondToLegionAssignment: (token, id, assignmentId, action, input) =>
+    request(`/v1/jobs/${id}/legion/assignments/${assignmentId}/${action}`, {
+      token,
+      method: "POST",
+      body: input ? JSON.stringify(input) : undefined,
+    }),
+  legionAssignmentPayload: (token, id, assignmentId) =>
+    request(`/v1/jobs/${id}/legion/assignments/${assignmentId}/payload`, { token }),
   evaluationTasks: (token) => request("/v1/evaluations/tasks", { token }),
   createEvaluationTask: (token, input) =>
     request("/v1/evaluations/tasks", { token, method: "POST", body: JSON.stringify(input) }),

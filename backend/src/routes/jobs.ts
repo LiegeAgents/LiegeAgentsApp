@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import type { PoolClient } from "pg";
 import { z } from "zod";
-import { parseUnits } from "viem";
+import { formatUnits, parseUnits } from "viem";
 import { db } from "../db/index.js";
 import { requireAuth } from "../auth.js";
 import { ApiError, asyncRoute } from "../http.js";
@@ -198,7 +198,10 @@ jobsRouter.get(
       .parse(request.query);
     const result = await db.query(
       `SELECT j.*, a.name AS agent_name, a.slug AS agent_slug, ew.address AS escrow_address FROM jobs j JOIN agents a ON a.id = j.agent_id LEFT JOIN escrow_wallets ew ON ew.job_id = j.id
-     WHERE (j.client_id = $1 OR a.owner_id = $1 OR j.evaluator_id = $1) AND ($2::job_status IS NULL OR j.status = $2)
+     WHERE (j.client_id = $1 OR a.owner_id = $1 OR j.evaluator_id = $1 OR EXISTS (
+       SELECT 1 FROM legions l JOIN legion_assignments la ON la.legion_id = l.id JOIN agents member ON member.id = la.agent_id
+       WHERE l.job_id = j.id AND member.owner_id = $1
+     )) AND ($2::job_status IS NULL OR j.status = $2)
      ORDER BY j.created_at DESC LIMIT $3`,
       [request.auth!.userId, query.status ?? null, query.limit],
     );
@@ -228,7 +231,10 @@ jobsRouter.get(
     LEFT JOIN evaluations e ON e.job_id = j.id
     LEFT JOIN escrow_wallets ew ON ew.job_id = j.id
     LEFT JOIN escrow_settlements es ON es.job_id = j.id
-    WHERE j.id = $1 AND (j.client_id = $2 OR a.owner_id = $2 OR j.evaluator_id = $2)`,
+    WHERE j.id = $1 AND (j.client_id = $2 OR a.owner_id = $2 OR j.evaluator_id = $2 OR EXISTS (
+      SELECT 1 FROM legions l JOIN legion_assignments la ON la.legion_id = l.id JOIN agents member ON member.id = la.agent_id
+      WHERE l.job_id = j.id AND member.owner_id = $2
+    ))`,
       [id, request.auth!.userId],
     );
     if (!result.rowCount)
@@ -966,6 +972,31 @@ jobsRouter.post(
         const escrow = await escrowAccount(client, job.id, job.settlement_asset);
         const total = Number(job.budget_amount) + Number(jobEvaluatorFee);
         if (target === "completed") {
+          const decimals = job.settlement_asset === "liege" ? 18 : 6;
+          const budgetRaw = parseUnits(String(job.budget_amount), decimals);
+          const members = await client.query<{ owner_id: string; allocation_bps: number }>(
+            `SELECT a.owner_id, la.allocation_bps FROM legion_assignments la
+             JOIN legions l ON l.id = la.legion_id JOIN agents a ON a.id = la.agent_id
+             WHERE l.job_id = $1 AND la.status = 'submitted' ORDER BY la.created_at`,
+            [job.id],
+          );
+          let delegatedRaw = 0n;
+          for (const member of members.rows) {
+            const shareRaw = (budgetRaw * BigInt(member.allocation_bps)) / 10_000n;
+            if (shareRaw === 0n) continue;
+            delegatedRaw += shareRaw;
+            const memberBalance = await userBalance(client, member.owner_id, "available", job.settlement_asset);
+            await transfer(client, {
+              reference: `job-settle-legion:${job.id}:${member.owner_id}`,
+              type: "legion_settlement",
+              from: escrow,
+              to: memberBalance.accountId,
+              amount: formatUnits(shareRaw, decimals),
+              asset: job.settlement_asset,
+              createdBy: request.auth!.userId,
+              metadata: { jobId: job.id, allocationBps: member.allocation_bps },
+            });
+          }
           const provider = await userBalance(
             client,
             job.provider_id,
@@ -983,7 +1014,7 @@ jobsRouter.post(
             type: "job_settlement",
             from: escrow,
             to: provider.accountId,
-            amount: Number(job.budget_amount),
+            amount: formatUnits(budgetRaw - delegatedRaw, decimals),
             asset: job.settlement_asset,
             createdBy: request.auth!.userId,
             metadata: { jobId: job.id },

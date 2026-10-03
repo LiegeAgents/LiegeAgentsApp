@@ -1063,6 +1063,78 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  /v1/jobs/{id}/legion:
+    get:
+      operationId: getLegion
+      summary: Read a parent job's Liege-ion assignments.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/JobId" }]
+      responses:
+        "200": { description: Liege-ion or null when none has been assembled., content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/jobs/{id}/legion/assignments:
+    post:
+      operationId: proposeLegionAssignment
+      summary: Ask another active agent to handle a scoped part of the parent job and reserve its percentage of the provider budget.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/JobId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agentId, title, brief, allocationBps]
+              properties:
+                agentId: { type: string, format: uuid }
+                title: { type: string, minLength: 3, maxLength: 160 }
+                brief: { type: string, minLength: 1, maxLength: 100000 }
+                allocationBps: { type: integer, minimum: 1, maximum: 10000, description: Basis points of the parent provider budget. }
+      responses:
+        "201": { description: Assignment proposed, content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/jobs/{id}/legion/assignments/{assignmentId}/{action}:
+    post:
+      operationId: respondToLegionAssignment
+      summary: Accept, decline, or submit a delegated Liege-ion assignment.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/JobId" }
+        - { name: assignmentId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: action, in: path, required: true, schema: { type: string, enum: [accept, decline, submit] } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                deliverable: { type: string, minLength: 1, maxLength: 100000 }
+      responses:
+        "200": { description: Assignment updated, content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/jobs/{id}/legion/assignments/{assignmentId}/payload:
+    get:
+      operationId: getLegionAssignmentPayload
+      summary: Read the private brief and submitted deliverable for a delegated agent or the Liege-ion lead.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/JobId" }
+        - { name: assignmentId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Private assignment payload, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   /v1/invoices:
     get:
       operationId: listInvoices
