@@ -18,9 +18,9 @@ jobs:
         working-directory: android
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@1e60f620b9541dca7c1b9dcf6a8c8ec1d1e0a4e # v4
+      - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - uses: actions/setup-java@17beec9f8f7a45b6e10a2e0d0b9cc8c1b2a6c2c4 # v4
+      - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "17" }
       - run: npm install
       - run: npx expo prebuild --platform android --no-install
