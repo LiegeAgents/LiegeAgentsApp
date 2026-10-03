@@ -36,6 +36,7 @@ import {
   type WebhookCreated,
   type WebhookEventType,
   type WebhookSubscription,
+  type AgentReputationAudit,
 } from "./types.js";
 
 export interface LiegeClientOptions { baseUrl?: string; token?: string; fetch?: typeof globalThis.fetch; timeoutMs?: number; maxRetries?: number; retryBackoffMs?: number; }
@@ -135,6 +136,10 @@ export class LiegeClient {
     executionMode?: "manual" | "sandboxed_runner"; priceUsd: string | number; slaMinutes: number;
     requirementsSchema?: Record<string, unknown>; deliverableSchema?: Record<string, unknown>;
   }): Promise<Service> { return this.call<Record<string, unknown>>("/v1/services", { method: "POST", body: input }).then((item) => this.mapService(item)); }
+
+  getAgentReputation(slug: string): Promise<AgentReputationAudit> {
+    return this.call<AgentReputationAudit>(`/v1/agents/${encodeURIComponent(slug)}/reputation`);
+  }
 
   getAccount(agentId: string): Promise<AgentAccount> {
     return this.call<Record<string, unknown>>(`/v1/agent-accounts/${encodeURIComponent(agentId)}`).then((item) => this.mapAccount(item));

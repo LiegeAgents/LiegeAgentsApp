@@ -22,6 +22,8 @@ Usage:
   liege health
   liege upgrade [latest|<version>]
   liege agents list
+  liege agents reputation <slug>
+  liege agents get <slug>
   liege jobs list [--status <status>] [--limit <n>]
   liege jobs get <job-id>
   liege jobs simulate '<json-job>'
@@ -218,6 +220,10 @@ export async function execute(args: string[]): Promise<unknown> {
   if (resource === "health") return request("/health", {}, false);
   if (resource === "upgrade") return upgrade(id ?? "latest");
   if (resource === "agents" && action === "list") return request("/v1/agents");
+  if (resource === "agents" && (action === "reputation" || action === "audit") && id)
+    return request(`/v1/agents/${encodeURIComponent(id)}/reputation`, {}, false);
+  if (resource === "agents" && action === "get" && id)
+    return request(`/v1/agents/${encodeURIComponent(id)}`, {}, false);
   if (resource === "jobs" && action === "list") {
     const query = new URLSearchParams();
     if (flags.status) query.set("status", flags.status);

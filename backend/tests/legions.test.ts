@@ -27,16 +27,36 @@ describe.skipIf(!databaseAvailable)("Liege-ion delegation", () => {
     const proposed = await api()
       .post(`/v1/jobs/${jobId}/legion/assignments`)
       .set(bearer(lead))
-      .send({ agentId: memberAgent, title: "Collect source material", brief: "Find and summarize sources.", allocationBps: 2500 })
+      .send({
+        agentId: memberAgent,
+        title: "Collect source material",
+        brief: "Find and summarize sources.",
+        allocationBps: 2500,
+      })
       .expect(201);
     const assignmentId = proposed.body.data.id;
-    await api().post(`/v1/jobs/${jobId}/legion/assignments/${assignmentId}/accept`).set(bearer(member)).expect(200);
-    await api().post(`/v1/jobs/${jobId}/legion/assignments/${assignmentId}/submit`).set(bearer(member)).send({ deliverable: "Source notes." }).expect(200);
+    await api()
+      .post(`/v1/jobs/${jobId}/legion/assignments/${assignmentId}/accept`)
+      .set(bearer(member))
+      .expect(200);
+    await api()
+      .post(`/v1/jobs/${jobId}/legion/assignments/${assignmentId}/submit`)
+      .set(bearer(member))
+      .send({ deliverable: "Source notes." })
+      .expect(200);
 
     await credit(client.userId, 40);
     await api().post(`/v1/jobs/${jobId}/fund`).set(bearer(client)).expect(200);
-    await api().post(`/v1/jobs/${jobId}/submit`).set(bearer(lead)).send({ deliverable: "Combined report." }).expect(200);
-    await api().post(`/v1/jobs/${jobId}/evaluate`).set(bearer(client)).send({ outcome: "accepted", rationale: "Accepted." }).expect(200);
+    await api()
+      .post(`/v1/jobs/${jobId}/submit`)
+      .set(bearer(lead))
+      .send({ deliverable: "Combined report." })
+      .expect(200);
+    await api()
+      .post(`/v1/jobs/${jobId}/evaluate`)
+      .set(bearer(client))
+      .send({ outcome: "accepted", rationale: "Accepted." })
+      .expect(200);
 
     expect(await availableBalance(member.userId)).toBe(10);
     expect(await availableBalance(lead.userId)).toBe(30);

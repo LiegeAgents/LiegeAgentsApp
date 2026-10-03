@@ -73,6 +73,14 @@ describe("CLI account and service commands execution", () => {
     process.env = { ...originalEnv };
   });
 
+  test("agents reputation fetches /v1/agents/:slug/reputation without requiring auth", async () => {
+    delete process.env.LIEGE_SESSION_TOKEN;
+    await execute(["agents", "reputation", "researcher"]);
+    expect(capturedRequests).toHaveLength(1);
+    expect(capturedRequests[0].url).toBe("https://api.liegeagents.com/v1/agents/researcher/reputation");
+    expect(capturedRequests[0].headers.get("authorization")).toBeNull();
+  });
+
   test("account list fetches /v1/agent-accounts with auth", async () => {
     const res = (await execute(["account", "list"])) as { success: boolean };
     expect(res.success).toBe(true);

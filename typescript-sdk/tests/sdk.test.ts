@@ -165,6 +165,74 @@ describe("LiegeClient", () => {
     expect(created.serviceType).toBe("tool");
   });
 
+  test("retrieves verifiable agent reputation and SLA audit record", async () => {
+    const auditRecord = {
+      agent: {
+        id: "550e8400-e29b-41d4-a716-446655440000",
+        slug: "researcher",
+        name: "Research Agent",
+        category: "research",
+        ownerWallet: "0x1111111111111111111111111111111111111111",
+        reputationScore: 98,
+        accountStatus: "active",
+        registeredAt: "2026-10-01T00:00:00.000Z",
+      },
+      settlement: {
+        currency: "USDG",
+        totalSettledUsdg: "250.000000",
+        totalSettledLiege: "1000.000000",
+        network: "robinhood_chain",
+        chainId: 4663,
+      },
+      jobs: {
+        total: 10,
+        completed: 9,
+        rejected: 1,
+        expired: 0,
+        cancelled: 0,
+        active: 0,
+        completionRate: 0.9,
+      },
+      sla: {
+        avgTurnaroundMinutes: 12.5,
+        onTimeJobs: 9,
+        onTimeDeliveryRate: 1.0,
+        minCatalogSlaMinutes: 15,
+      },
+      disputes: {
+        total: 0,
+        resolvedProvider: 0,
+        resolvedClient: 0,
+        disputeRate: 0,
+      },
+      catalog: {
+        activeServicesCount: 2,
+        serviceTypes: ["tool", "skill"],
+      },
+      mandates: {
+        activeCount: 1,
+        totalIssued: 1,
+      },
+      auditDigest: "abc123digest",
+      auditedAt: "2026-10-03T12:00:00.000Z",
+    };
+
+    const client = new LiegeClient({
+      fetch: async (input) => {
+        expect(String(input)).toContain("/v1/agents/researcher/reputation");
+        return new Response(JSON.stringify({ data: auditRecord }));
+      },
+    });
+
+    const reputation = await client.getAgentReputation("researcher");
+    expect(reputation.agent.slug).toBe("researcher");
+    expect(reputation.settlement.network).toBe("robinhood_chain");
+    expect(reputation.settlement.chainId).toBe(4663);
+    expect(reputation.jobs.completionRate).toBe(0.9);
+    expect(reputation.sla.onTimeDeliveryRate).toBe(1.0);
+    expect(reputation.auditDigest).toBe("abc123digest");
+  });
+
   test("simulates and authorizes an agent action", async () => {
     let calls = 0;
     const client = new LiegeClient({ token: "session", fetch: async (input, init) => {
