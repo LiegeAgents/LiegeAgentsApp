@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import parse, { attributesToProps, domToReact, type HTMLReactParserOptions } from 'html-react-parser';
 import footerMarkup from '../../src/liege-app/liege/footer.html?raw';
-import { Check, Copy, Moon, Sun, Monitor } from 'lucide-react';
+import { BookOpen, Check, Copy, Moon, Sun, Monitor } from 'lucide-react';
 import { LIEGE } from './data';
 import { ArrowUpRight, X as Close } from 'lucide-react';
+// @ts-expect-error local shared renderer is plain JavaScript
+import Dither from './Dither';
 
 const tokenAddress = '0xc32ab2e562ade6fba6d3d1e3960d49b0957ef645';
 const channels = [
@@ -35,7 +37,7 @@ function SocialLinks() {
 
 function TokenAddress() {
   const [copied, setCopied] = useState(false);
-  return <div className="normal-footer-token"><span>CA</span><code>{tokenAddress}</code><button type="button" aria-label="Copy contract address" onClick={() => { void navigator.clipboard?.writeText(tokenAddress); setCopied(true); window.setTimeout(() => setCopied(false), 1800); }}>{copied ? <Check size={14}/> : <Copy size={14}/>}<em>{copied ? 'Copied' : 'Copy'}</em></button></div>;
+  return <div className="token-address token-address-footer"><span>CA</span><code>{tokenAddress}</code><button type="button" aria-label="Copy contract address" onClick={() => { void navigator.clipboard?.writeText(tokenAddress); setCopied(true); window.setTimeout(() => setCopied(false), 1800); }}>{copied ? <Check size={14}/> : <Copy size={14}/>}<em>{copied ? 'Copied' : 'Copy'}</em></button></div>;
 }
 
 function ThemeButtons() {
@@ -45,11 +47,19 @@ function ThemeButtons() {
   return <div aria-label="Theme switcher" className="normal-footer-themes" role="radiogroup">{choices.map(([name, Icon]) => <button key={name} type="button" aria-label={name} aria-checked={theme === name} role="radio" onClick={() => { setTheme(name); document.documentElement.classList.toggle('dark', name !== 'Light'); }}><Icon size={17}/></button>)}</div>;
 }
 
+function HelpWidget() {
+  return <a className="help-toggle superagents-help" href={`${LIEGE}/docs`}><BookOpen size={15}/> Explore the docs</a>;
+}
+
 export function NormalFooter() {
   const html = footerMarkup.replaceAll('Local workspace', 'Product status');
   const options: HTMLReactParserOptions = { replace(node) {
     if (node.type !== 'tag') return;
     const attrs = node.attribs || {};
+    if (attrs['data-dots'] !== undefined) {
+      const parent = node.parent as { attribs?: Record<string, string> } | undefined;
+      return <Dither marginClip={parent?.attribs?.class?.includes('isolate') && !parent?.attribs?.class?.includes('pb-18')}/>;
+    }
     if (attrs['data-social-links'] !== undefined) return <SocialLinks />;
     if (node.name === 'div' && attrs['aria-label'] === 'Theme switcher') return <ThemeButtons />;
     if (node.name === 'button' && ['Light', 'Dark', 'System'].includes(attrs['aria-label'] || '')) return null;
@@ -64,5 +74,5 @@ export function NormalFooter() {
       return <a {...props}>{domToReact(node.children as any, options)}</a>;
     }
   }};
-  return <><div className="normal-footer-shell liege-site reference-page">{parse(html, options)}</div><TokenAddress /></>;
+  return <><div className="normal-footer-shell liege-site reference-page">{parse(html, options)}</div><TokenAddress /><HelpWidget /></>;
 }
