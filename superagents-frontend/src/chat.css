@@ -46,6 +46,56 @@
   opacity: 0.45;
   cursor: not-allowed;
 }
+.enrollment-panel .asset-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  margin: 10px 0;
+  color: #e5eee8;
+  cursor: pointer;
+  user-select: none;
+}
+.enrollment-panel .asset-choice-input {
+  position: absolute;
+  width: 1px !important;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.enrollment-panel .asset-choice-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  flex: 0 0 19px;
+  border: 1px solid #4c6d57;
+  border-radius: 6px;
+  color: #06130c;
+  background: transparent;
+  font-size: 13px;
+  line-height: 1;
+  transition: background .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+.enrollment-panel .asset-choice-box { color: transparent; }
+.enrollment-panel .asset-choice-input:checked + .asset-choice-box {
+  border-color: #9aefbb;
+  background: #9aefbb;
+  color: #06130c;
+  box-shadow: 0 0 0 3px rgba(154, 239, 187, .12);
+}
+.enrollment-panel .asset-choice-input:focus-visible + .asset-choice-box {
+  outline: 2px solid #9aefbb;
+  outline-offset: 2px;
+}
+.enrollment-panel .asset-choice img {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  object-fit: contain;
+  border-radius: 50%;
+}
 .chat-workspace .dash-heading,
 .chat-workspace .dash-footer {
   display: none;
