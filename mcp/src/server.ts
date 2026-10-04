@@ -105,6 +105,14 @@ function serverFor(connectionToken: string) {
     async () => text(await api("/v1/internal/mcp/session", connectionToken)),
   );
   server.registerTool(
+    "super_agent_enrollment_status",
+    {
+      description:
+        "Inspect whether the connected Liege agent is configured, verified, and discoverable as a Super Agent. Read-only.",
+    },
+    async () => text(await api("/v1/internal/mcp/super-agent/enrollment", connectionToken)),
+  );
+  server.registerTool(
     "list_job_events",
     {
       description:

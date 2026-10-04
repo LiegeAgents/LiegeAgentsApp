@@ -1,11 +1,13 @@
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual, randomBytes, randomUUID } from "node:crypto";
 import { Router } from "express";
 import { z } from "zod";
 import { requireAuth } from "../auth.js";
 import { audit } from "../audit.js";
 import { env } from "../config.js";
 import { selfSettlementLimit } from "../capacity.js";
-import { encryptPayload, payloadContext, payloadDigest } from "../crypto.js";
+import { decryptPayload, encryptPayload, payloadContext, payloadDigest } from "../crypto.js";
+import { probeTransport } from "../superAgentProbe.js";
+import { findEnrolledAgent, readyEnrollment } from "../superAgentEnrollment.js";
 import { db } from "../db/index.js";
 import { ApiError, asyncRoute } from "../http.js";
 
@@ -78,19 +80,172 @@ export async function parseSuperAgentIntent(text: string) {
 }
 
 async function findAgent(agentName: string | null) {
-  if (!agentName) return null;
-  const result = await db.query<{ id: string; name: string; slug: string; category: string }>(
-    `SELECT id, name, slug, category FROM agents WHERE active
-     AND (name ILIKE $1 OR slug ILIKE $2 OR category ILIKE $1 OR capabilities::text ILIKE $3)
-     ORDER BY created_at ASC LIMIT 1`,
-    [
-      `%${agentName}%`,
-      `%${agentName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}%`,
-      `%${agentName}%`,
-    ],
-  );
-  return result.rows[0] ?? null;
+  return findEnrolledAgent(agentName);
 }
+
+superAgentsRouter.get(
+  "/enrollments",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const owner = request.auth!.userId;
+    const [agents, services, webhooks] = await Promise.all([
+      db.query(
+        `SELECT a.id,a.name,a.active,e.service_id,e.webhook_id,e.enabled,e.verified_at
+      FROM agents a LEFT JOIN superagent_enrollments e ON e.agent_id=a.id WHERE a.owner_id=$1 ORDER BY a.created_at`,
+        [owner],
+      ),
+      db.query(
+        `SELECT s.id,s.agent_id,s.name,s.price_usd,s.sla_minutes FROM commerce_services s JOIN agents a ON a.id=s.agent_id WHERE a.owner_id=$1 AND s.active`,
+        [owner],
+      ),
+      db.query(
+        `SELECT id,agent_id,url FROM webhook_subscriptions WHERE owner_id=$1 AND active AND 'job.funded'=ANY(event_types)`,
+        [owner],
+      ),
+    ]);
+    response.json({
+      data: { agents: agents.rows, services: services.rows, webhooks: webhooks.rows },
+    });
+  }),
+);
+
+superAgentsRouter.post(
+  "/enrollments",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const input = z
+      .object({
+        agentId: z.string().uuid(),
+        serviceId: z.string().uuid(),
+        webhookId: z.string().uuid(),
+      })
+      .parse(request.body);
+    const result = await db.query(
+      `INSERT INTO superagent_enrollments (agent_id,service_id,webhook_id)
+    SELECT a.id,s.id,w.id FROM agents a JOIN commerce_services s ON s.agent_id=a.id
+    JOIN webhook_subscriptions w ON w.agent_id=a.id AND w.owner_id=a.owner_id
+    WHERE a.id=$1 AND a.owner_id=$2 AND a.active AND s.id=$3 AND s.active
+      AND w.id=$4 AND w.active AND 'job.funded'=ANY(w.event_types)
+    ON CONFLICT (agent_id) DO UPDATE SET service_id=EXCLUDED.service_id,webhook_id=EXCLUDED.webhook_id,
+      enabled=false,verified_at=NULL,updated_at=now() RETURNING *`,
+      [input.agentId, request.auth!.userId, input.serviceId, input.webhookId],
+    );
+    if (!result.rowCount)
+      throw new ApiError(
+        422,
+        "invalid_enrollment",
+        "Select an active agent you own, its service, and its funded-job webhook.",
+      );
+    await audit(db, {
+      actorId: request.auth!.userId,
+      action: "superagent.enrollment_saved",
+      targetType: "agent",
+      targetId: input.agentId,
+      requestId: request.requestId,
+    });
+    response.status(201).json({ data: result.rows[0] });
+  }),
+);
+
+superAgentsRouter.post(
+  "/enrollments/:agentId/verify",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const agentId = z.string().uuid().parse(request.params.agentId);
+    const result = await db.query(
+      `SELECT w.id,w.url,w.secret_ciphertext,s.slug AS service_slug,e.updated_at::text AS revision FROM agents a ${readyEnrollment} WHERE a.id=$1 AND a.owner_id=$2 AND a.active`,
+      [agentId, request.auth!.userId],
+    );
+    if (!result.rowCount)
+      throw new ApiError(
+        404,
+        "enrollment_unavailable",
+        "Save a valid enrollment before testing the connection.",
+      );
+    const row = result.rows[0];
+    const challenge = randomBytes(32).toString("hex");
+    const secret = decryptPayload(row.secret_ciphertext, payloadContext(row.id, "webhook-secret"));
+    const body = JSON.stringify({
+      id: randomUUID(),
+      type: "superagent.connection_test",
+      agentId,
+      serviceSlug: row.service_slug,
+      challenge,
+    });
+    try {
+      const reply = await probeTransport.send(row.url, body, {
+        "content-type": "application/json",
+        "x-liege-event-id": JSON.parse(body).id,
+        "x-liege-signature": `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`,
+      });
+      const expected = createHmac("sha256", secret)
+        .update(`superagent.connection_test:${agentId}:${challenge}`)
+        .digest("hex");
+      const proof = reply.proof;
+      if (
+        !reply.ok ||
+        proof.length !== expected.length ||
+        !timingSafeEqual(Buffer.from(proof), Buffer.from(expected))
+      )
+        throw new Error("Invalid proof");
+    } catch {
+      throw new ApiError(
+        422,
+        "connection_test_failed",
+        "The runtime must verify the signed connection test and return the connection proof. Check its URL, agent ID, and webhook secret.",
+      );
+    }
+    const updated = await db.query(
+      `UPDATE superagent_enrollments SET verified_at=now() WHERE agent_id=$1 AND webhook_id=$2 AND updated_at=$3 RETURNING *`,
+      [agentId, row.id, row.revision],
+    );
+    if (!updated.rowCount)
+      throw new ApiError(
+        409,
+        "enrollment_changed",
+        "Enrollment changed during the test. Test again.",
+      );
+    await audit(db, {
+      actorId: request.auth!.userId,
+      action: "superagent.connection_verified",
+      targetType: "agent",
+      targetId: agentId,
+      requestId: request.requestId,
+    });
+    response.json({ data: updated.rows[0] });
+  }),
+);
+
+superAgentsRouter.post(
+  "/enrollments/:agentId/discovery",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const agentId = z.string().uuid().parse(request.params.agentId);
+    const { enabled } = z.object({ enabled: z.boolean() }).parse(request.body);
+    const result = await db.query(
+      `UPDATE superagent_enrollments e SET enabled=$3,updated_at=now()
+    FROM agents a WHERE e.agent_id=a.id AND a.id=$1 AND a.owner_id=$2
+    AND (NOT $3 OR (a.active AND e.verified_at IS NOT NULL
+      AND EXISTS(SELECT 1 FROM commerce_services s WHERE s.id=e.service_id AND s.agent_id=a.id AND s.active)
+      AND EXISTS(SELECT 1 FROM webhook_subscriptions w WHERE w.id=e.webhook_id AND w.agent_id=a.id AND w.owner_id=a.owner_id AND w.active AND 'job.funded'=ANY(w.event_types)))) RETURNING e.*`,
+      [agentId, request.auth!.userId, enabled],
+    );
+    if (!result.rowCount)
+      throw new ApiError(
+        409,
+        "enrollment_not_ready",
+        "An owned, active enrollment with a verified connection is required.",
+      );
+    await audit(db, {
+      actorId: request.auth!.userId,
+      action: enabled ? "superagent.discovery_enabled" : "superagent.discovery_disabled",
+      targetType: "agent",
+      targetId: agentId,
+      requestId: request.requestId,
+    });
+    response.json({ data: result.rows[0] });
+  }),
+);
 
 superAgentsRouter.get(
   "/auth/x/start",
@@ -313,7 +468,7 @@ superAgentsRouter.get(
         [userId],
       ),
       db.query(
-        `SELECT id,slug,name,description,category,capabilities,reputation_score FROM agents WHERE active ORDER BY created_at ASC LIMIT 50`,
+        `SELECT a.id,a.slug,a.name,s.description,a.category,a.capabilities,a.reputation_score,s.price_usd,s.sla_minutes FROM agents a ${readyEnrollment} WHERE a.active AND e.enabled AND e.verified_at IS NOT NULL ORDER BY a.created_at ASC LIMIT 50`,
       ),
     ]);
     response.json({
@@ -350,6 +505,12 @@ superAgentsRouter.post(
         "Include an available agent and a positive USDG budget to create a proposal.",
       );
     }
+    if (parsed.budgetUsdg < Number(agent.price_usd))
+      throw new ApiError(
+        422,
+        "budget_below_service_price",
+        `This service starts at ${agent.price_usd} USDG.`,
+      );
     const result = await db.query(
       `INSERT INTO superagent_intents (user_id,raw_text,parsed,agent_id,status,source) VALUES ($1,$2,$3,$4,$5,'dashboard') RETURNING id,raw_text,parsed,agent_id,status,expires_at,created_at`,
       [
@@ -432,17 +593,31 @@ superAgentsRouter.post(
             "self_evaluation_limit",
             `Super Agent jobs of ${selfSettlementLimit("usdg")} USDG or more need an independent evaluator.`,
           );
-        const agent = await client.query<{ id: string; name: string; owner_id: string }>(
-          "SELECT id, name, owner_id FROM agents WHERE id=$1 AND active",
+        const agent = await client.query<{
+          id: string;
+          name: string;
+          owner_id: string;
+          price_usd: string;
+          service_slug: string;
+          sla_minutes: number;
+          description: string;
+        }>(
+          `SELECT a.id,a.name,a.owner_id,s.price_usd,s.slug AS service_slug,s.sla_minutes,s.description FROM agents a ${readyEnrollment} WHERE a.id=$1 AND a.active AND e.enabled AND e.verified_at IS NOT NULL FOR SHARE OF a,e,s,w`,
           [intent.rows[0].agent_id],
         );
         if (!agent.rowCount)
           throw new ApiError(404, "agent_not_found", "The matched Super Agent is unavailable.");
+        if (parsed.budgetUsdg < Number(agent.rows[0].price_usd))
+          throw new ApiError(
+            422,
+            "budget_below_service_price",
+            "The budget is below the current service price.",
+          );
         if (agent.rows[0].owner_id === request.auth!.userId)
           throw new ApiError(422, "self_hire_not_allowed", "An owner cannot hire their own agent.");
         const deadline = parsed.deadlineAt
           ? new Date(parsed.deadlineAt)
-          : new Date(Date.now() + 7 * 86_400_000);
+          : new Date(Date.now() + agent.rows[0].sla_minutes * 60_000);
         if (!Number.isFinite(deadline.getTime()) || deadline <= new Date())
           throw new ApiError(
             422,
@@ -466,11 +641,15 @@ superAgentsRouter.post(
             title,
             encryptPayload(brief, payloadContext(jobId, "brief")),
             payloadDigest(brief),
-            JSON.stringify(["Deliver the requested work", "Provide the agreed deliverable"]),
+            JSON.stringify(["Deliver the requested work", agent.rows[0].description]),
             String(parsed.budgetUsdg),
             deadline,
             expires,
-            JSON.stringify({ source: "superagent", intentId: id }),
+            JSON.stringify({
+              source: "superagent",
+              intentId: id,
+              serviceSlug: agent.rows[0].service_slug,
+            }),
             env.ESCROW_MODE,
           ],
         );

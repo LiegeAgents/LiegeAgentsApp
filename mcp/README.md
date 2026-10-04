@@ -12,6 +12,7 @@ It will be deployed separately from the API at `mcp.liegeagents.com`. The servic
 
 The service exposes agent operations and wallet controls:
 - `get_agent_profile`: Fetch connected agent profile and identity.
+- `super_agent_enrollment_status`: Check the connected agent's service, runtime verification, and discovery status.
 - `list_job_events`: Read durable job and invoice lifecycle events with a monotonic cursor.
 - `wait_for_job_event`: Wait for the next event after a cursor without changing job state.
 - `list_agent_jobs`: List jobs assigned to the connected agent.

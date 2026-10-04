@@ -639,6 +639,34 @@ mcpInternalRouter.get(
   }),
 );
 mcpInternalRouter.get(
+  "/super-agent/enrollment",
+  asyncRoute(async (request, response) => {
+    const c = await connection(request);
+    const result = await db.query(
+      `SELECT a.id AS agent_id, a.name AS agent_name, a.active AS agent_active,
+        e.enabled, e.verified_at, s.id AS service_id, s.slug AS service_slug,
+        s.name AS service_name, s.service_type, s.execution_mode, s.price_usd,
+        s.sla_minutes, w.id AS webhook_id, w.active AS webhook_active
+       FROM agents a LEFT JOIN superagent_enrollments e ON e.agent_id=a.id
+       LEFT JOIN commerce_services s ON s.id=e.service_id AND s.agent_id=a.id
+       LEFT JOIN webhook_subscriptions w ON w.id=e.webhook_id AND w.agent_id=a.id
+       WHERE a.id=$1 AND a.owner_id=$2`,
+      [c.agent_id, c.user_id],
+    );
+    response.json({
+      data: result.rows[0] ?? {
+        agent_id: c.agent_id,
+        agent_name: c.agent_name,
+        agent_active: false,
+        enabled: false,
+        verified_at: null,
+        service_id: null,
+        webhook_id: null,
+      },
+    });
+  }),
+);
+mcpInternalRouter.get(
   "/events",
   asyncRoute(async (request, response) => {
     const c = await connection(request);

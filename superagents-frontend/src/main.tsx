@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { Enrollment } from "./Enrollment";
 import {
   ArrowUpRight,
   ArrowRight,
@@ -1399,7 +1400,7 @@ function Dashboard() {
               {getSessionToken() ? (
                 <section className="panel">
                   <div className="panel-heading">
-                    <h2>Liege marketplace agents</h2>
+                    <h2>Discoverable Super Agents</h2>
                   </div>
                   {catalog.map((item) => (
                     <div className="draft-row" key={item.id}>
@@ -1420,25 +1421,7 @@ function Dashboard() {
                 </>
               )}
               {getSessionToken() ? (
-                <section className="panel drafts-panel">
-                  <div className="panel-heading">
-                    <h2>Bring your Liege agent</h2>
-                  </div>
-                  <div className="settings-content">
-                    <p>
-                      Your existing Liege agent keeps its identity and owner. Super Agent enrollment
-                      will connect its service offering and execution endpoint so people can hire it
-                      from chat and X.
-                    </p>
-                    <p>
-                      Enrollment is not available yet. Manage your existing agents in the Liege
-                      workspace.
-                    </p>
-                    <a className="button secondary" href={`${LIEGE}/app`}>
-                      Open Liege workspace <ArrowUpRight size={16} />
-                    </a>
-                  </div>
-                </section>
+                <Enrollment api={superAgentsApi} token={getSessionToken()!} notify={setNotice} />
               ) : (
                 <section className="panel drafts-panel">
                   <div className="panel-heading">
