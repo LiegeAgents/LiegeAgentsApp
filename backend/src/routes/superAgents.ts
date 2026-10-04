@@ -1,10 +1,11 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { Router } from "express";
 import { z } from "zod";
 import { requireAuth } from "../auth.js";
 import { audit } from "../audit.js";
 import { env } from "../config.js";
-import { encryptPayload } from "../crypto.js";
+import { selfSettlementLimit } from "../capacity.js";
+import { encryptPayload, payloadContext, payloadDigest } from "../crypto.js";
 import { db } from "../db/index.js";
 import { ApiError, asyncRoute } from "../http.js";
 
@@ -382,23 +383,102 @@ superAgentsRouter.post(
   asyncRoute(async (request, response) => {
     const id = z.string().uuid().parse(request.params.id);
     const { decision } = decisionInput.parse(request.body);
-    const result = await db.query(
-      `UPDATE superagent_intents SET status=$3,decided_at=now() WHERE id=$1 AND user_id=$2 AND status='pending' AND expires_at > now() RETURNING id,status,decided_at`,
-      [id, request.auth!.userId, decision],
-    );
-    if (!result.rowCount)
-      throw new ApiError(
-        409,
-        "proposal_unavailable",
-        "This Super Agent proposal is no longer available.",
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const intent = await client.query<{
+        id: string;
+        parsed: unknown;
+        agent_id: string | null;
+        status: string;
+      }>(
+        `SELECT id, parsed, agent_id, status FROM superagent_intents
+         WHERE id=$1 AND user_id=$2 AND status='pending' AND expires_at > now()
+         FOR UPDATE`,
+        [id, request.auth!.userId],
       );
-    await audit(db, {
-      actorId: request.auth!.userId,
-      action: `superagent.intent_${decision}`,
-      targetType: "superagent_intent",
-      targetId: id,
-      requestId: request.requestId,
-    });
-    response.json({ data: result.rows[0] });
+      if (!intent.rowCount)
+        throw new ApiError(
+          409,
+          "proposal_unavailable",
+          "This Super Agent proposal is no longer available.",
+        );
+
+      let job: Record<string, unknown> | null = null;
+      if (decision === "approved") {
+        if (!intent.rows[0].agent_id)
+          throw new ApiError(422, "agent_unmatched", "Match this request to an active agent before approving it.");
+        const parsed = intentShape.parse(intent.rows[0].parsed);
+        if (!parsed.budgetUsdg || parsed.budgetUsdg <= 0)
+          throw new ApiError(422, "budget_required", "Add a positive USDG budget before approving this request.");
+        if (parsed.budgetUsdg >= selfSettlementLimit("usdg"))
+          throw new ApiError(
+            422,
+            "self_evaluation_limit",
+            `Super Agent jobs of ${selfSettlementLimit("usdg")} USDG or more need an independent evaluator.`,
+          );
+        const agent = await client.query<{ id: string; name: string; owner_id: string }>(
+          "SELECT id, name, owner_id FROM agents WHERE id=$1 AND active",
+          [intent.rows[0].agent_id],
+        );
+        if (!agent.rowCount)
+          throw new ApiError(404, "agent_not_found", "The matched Super Agent is unavailable.");
+        if (agent.rows[0].owner_id === request.auth!.userId)
+          throw new ApiError(422, "self_hire_not_allowed", "An owner cannot hire their own agent.");
+        const deadline = parsed.deadlineAt ? new Date(parsed.deadlineAt) : new Date(Date.now() + 7 * 86_400_000);
+        if (!Number.isFinite(deadline.getTime()) || deadline <= new Date())
+          throw new ApiError(422, "invalid_deadline", "The request deadline must be in the future.");
+        const expires = new Date(deadline.getTime() + 7 * 86_400_000);
+        const jobId = randomUUID();
+        const title = `${agent.rows[0].name}: ${parsed.request}`.slice(0, 160);
+        const brief = parsed.request;
+        const created = await client.query(
+          `INSERT INTO jobs (id, client_id, agent_id, evaluator_id, kind, title, brief_ciphertext, brief_hash,
+             acceptance_criteria, settlement_asset, budget_amount, evaluator_fee_amount, budget_usdg,
+             evaluator_fee_usdg, deadline_at, expires_at, strategy_policy, escrow_mode)
+           VALUES ($1,$2,$3,NULL,'standard',$4,$5,$6,$7,'usdg',$8,0,$8,0,$9,$10,$11,$12)
+           RETURNING id, public_id, title, status, budget_usdg, deadline_at, expires_at`,
+          [
+            jobId,
+            request.auth!.userId,
+            agent.rows[0].id,
+            title,
+            encryptPayload(brief, payloadContext(jobId, "brief")),
+            payloadDigest(brief),
+            JSON.stringify(["Deliver the requested work", "Provide the agreed deliverable"]),
+            String(parsed.budgetUsdg),
+            deadline,
+            expires,
+            JSON.stringify({ source: "superagent", intentId: id }),
+            env.ESCROW_MODE,
+          ],
+        );
+        job = created.rows[0];
+        await client.query("INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,$3)", [
+          jobId,
+          request.auth!.userId,
+          "job.opened",
+        ]);
+      }
+      const result = await client.query(
+        `UPDATE superagent_intents SET status=$3,decided_at=now() WHERE id=$1 AND user_id=$2 RETURNING id,status,decided_at`,
+        [id, request.auth!.userId, decision],
+      );
+      await audit(client, {
+        actorId: request.auth!.userId,
+        action: `superagent.intent_${decision}`,
+        targetType: "superagent_intent",
+        targetId: id,
+        requestId: request.requestId,
+        metadata: job ? { jobId: job.id } : undefined,
+      });
+      await client.query("COMMIT");
+      response.json({ data: { ...result.rows[0], job } });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }),
 );

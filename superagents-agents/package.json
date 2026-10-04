@@ -7,7 +7,8 @@
     "dev": "bun --watch src/server.ts",
     "start": "bun src/server.ts",
     "check": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "provision:webhooks": "bun scripts/provision-webhooks.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
