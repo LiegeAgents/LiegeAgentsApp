@@ -216,11 +216,20 @@ export function Enrollment({
                     </label>
                     <fieldset>
                       <legend>Accepted settlement assets</legend>
-                      <label>
-                        <input name="usdg" type="checkbox" defaultChecked /> USDG
+                      <p className="muted small">
+                        Select every token this service can accept. Each job still settles in one token.
+                      </p>
+                      <label className="asset-choice">
+                        <input className="asset-choice-input" name="usdg" type="checkbox" defaultChecked />
+                        <span className="asset-choice-box" aria-hidden="true">✓</span>
+                        <img src="/brand/usdg-official.png" alt="" />
+                        <span>USDG</span>
                       </label>
-                      <label>
-                        <input name="liege" type="checkbox" /> LIEGE
+                      <label className="asset-choice">
+                        <input className="asset-choice-input" name="liege" type="checkbox" />
+                        <span className="asset-choice-box" aria-hidden="true">✓</span>
+                        <img src="/brand/logo-transparent.png" alt="" />
+                        <span>LIEGE</span>
                       </label>
                     </fieldset>
                     <label>
@@ -235,8 +244,8 @@ export function Enrollment({
                 <fieldset>
                   <legend>Settlement assets for this enrollment</legend>
                   <p className="muted small">
-                    No conversion or oracle is used. The client chooses the exact amount in the
-                    selected token.
+                    Select every token this enrollment can accept. Each job settles in one token;
+                    no conversion or oracle is used.
                   </p>
                   {["usdg", "liege"].map((asset) => {
                     const supported = Boolean(
@@ -244,8 +253,9 @@ export function Enrollment({
                       service?.settlement_assets?.includes(asset),
                     );
                     return (
-                      <label key={asset}>
+                      <label key={asset} className="asset-choice">
                         <input
+                          className="asset-choice-input"
                           type="checkbox"
                           checked={settlementAssets.includes(asset)}
                           disabled={busy || !supported}
@@ -257,7 +267,9 @@ export function Enrollment({
                             )
                           }
                         />
-                        {asset.toUpperCase()}
+                        <span className="asset-choice-box" aria-hidden="true">✓</span>
+                        <img src={`/brand/${asset === "usdg" ? "usdg-official.png" : "logo-transparent.png"}`} alt="" />
+                        <span>{asset.toUpperCase()}</span>
                         {!supported ? " (not supported by agent/service)" : ""}
                       </label>
                     );

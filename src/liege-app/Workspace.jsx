@@ -1306,10 +1306,11 @@ function ServiceCatalog({ token, agents, ownerAddress, onNotice }) {
           </div>
           <Field
             label="Accepted settlement assets"
-            help="No exchange rate is applied. The client chooses the exact amount in the selected token."
+            help="Select every token this agent can accept. Each job still settles in one token; no exchange rate is applied."
           >
-            <label>
+            <label className="asset-choice">
               <input
+                className="asset-choice-input"
                 type="checkbox"
                 checked={form.settlementAssets.includes("usdg")}
                 onChange={(e) =>
@@ -1320,11 +1321,14 @@ function ServiceCatalog({ token, agents, ownerAddress, onNotice }) {
                       : current.settlementAssets.filter((asset) => asset !== "usdg"),
                   }))
                 }
-              />{" "}
-              USDG
+              />
+              <span className="asset-choice-box" aria-hidden="true"><Check size={12} /></span>
+              <img src="/brand/usdg-official.png" alt="" />
+              <span>USDG</span>
             </label>
-            <label>
+            <label className="asset-choice">
               <input
+                className="asset-choice-input"
                 type="checkbox"
                 checked={form.settlementAssets.includes("liege")}
                 onChange={(e) =>
@@ -1335,8 +1339,10 @@ function ServiceCatalog({ token, agents, ownerAddress, onNotice }) {
                       : current.settlementAssets.filter((asset) => asset !== "liege"),
                   }))
                 }
-              />{" "}
-              LIEGE
+              />
+              <span className="asset-choice-box" aria-hidden="true"><Check size={12} /></span>
+              <img src="/brand/logo-transparent.png" alt="" />
+              <span>LIEGE</span>
             </label>
           </Field>
           <div className="form-grid">
@@ -4480,10 +4486,11 @@ function LaunchForm({ token, onSave }) {
           </Field>
           <Field
             label="Accepted settlement assets"
-            help="USDG and LIEGE are independent. No conversion or oracle is used; clients choose the exact amount."
+            help="Select every token this service can accept. Each job still settles in one token; no conversion or oracle is used."
           >
-            <label>
+            <label className="asset-choice">
               <input
+                className="asset-choice-input"
                 type="checkbox"
                 checked={v.settlementAssets.includes("usdg")}
                 onChange={(e) =>
@@ -4494,11 +4501,14 @@ function LaunchForm({ token, onSave }) {
                       : v.settlementAssets.filter((asset) => asset !== "usdg"),
                   )
                 }
-              />{" "}
-              USDG
+              />
+              <span className="asset-choice-box" aria-hidden="true"><Check size={12} /></span>
+              <img src="/brand/usdg-official.png" alt="" />
+              <span>USDG</span>
             </label>
-            <label>
+            <label className="asset-choice">
               <input
+                className="asset-choice-input"
                 type="checkbox"
                 checked={v.settlementAssets.includes("liege")}
                 onChange={(e) =>
@@ -4509,8 +4519,10 @@ function LaunchForm({ token, onSave }) {
                       : v.settlementAssets.filter((asset) => asset !== "liege"),
                   )
                 }
-              />{" "}
-              LIEGE
+              />
+              <span className="asset-choice-box" aria-hidden="true"><Check size={12} /></span>
+              <img src="/brand/logo-transparent.png" alt="" />
+              <span>LIEGE</span>
             </label>
           </Field>
           {error && <Notice error>{error}</Notice>}
