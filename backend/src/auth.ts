@@ -117,11 +117,10 @@ export async function requireRuntimeAuth(
     const result = await db.query<{
       id: string;
       owner_id: string;
-      agent_ids: string[];
       scopes: string[];
       wallet_address: string;
     }>(
-      `SELECT t.id,t.owner_id,t.agent_ids,t.scopes,u.wallet_address
+      `SELECT t.id,t.owner_id,t.scopes,u.wallet_address
        FROM runtime_tokens t JOIN users u ON u.id=t.owner_id
        WHERE t.token_hash=$1 AND t.revoked_at IS NULL`,
       [hashRuntimeToken(bearer)],
@@ -129,10 +128,18 @@ export async function requireRuntimeAuth(
     if (!result.rowCount)
       throw new ApiError(401, "invalid_runtime_token", "This runtime token is invalid or revoked.");
     await db.query("UPDATE runtime_tokens SET last_used_at=now() WHERE id=$1", [result.rows[0].id]);
+    // Resolve the current enabled enrollments on every request. Enabling or disabling an
+    // enrolled agent therefore takes effect immediately without rotating the runtime token.
+    const agents = await db.query<{ id: string }>(
+      `SELECT e.agent_id AS id FROM superagent_enrollments e
+       JOIN agents a ON a.id=e.agent_id
+       WHERE a.owner_id=$1 AND a.active AND e.enabled`,
+      [result.rows[0].owner_id],
+    );
     request.runtimeAuth = {
       tokenId: result.rows[0].id,
       userId: result.rows[0].owner_id,
-      agentIds: result.rows[0].agent_ids ?? [],
+      agentIds: agents.rows.map((row) => row.id),
       scopes: result.rows[0].scopes ?? [],
     };
     request.auth = {
