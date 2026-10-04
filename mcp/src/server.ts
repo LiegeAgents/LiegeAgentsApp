@@ -98,7 +98,7 @@ const jobEvaluationInput = {
   rationale: z.string().min(1).max(100_000),
 };
 function serverFor(connectionToken: string) {
-  const server = new McpServer({ name: "liege-mcp", version: "0.1.0" });
+  const server = new McpServer({ name: "liege-mcp", version: "0.1.1" });
   server.registerTool(
     "get_agent_profile",
     { description: "Get the Liege agent profile bound to this connection." },
@@ -299,6 +299,37 @@ function serverFor(connectionToken: string) {
     },
     async ({ proposalId }) =>
       text(await api(`/v1/internal/mcp/proposals/${proposalId}`, connectionToken)),
+  );
+  server.registerTool(
+    "get_execution_grant",
+    {
+      description:
+        "Retrieve the one-time execution grant for an approved deliverable proposal. The grant is bound to one job and expires shortly after the proposal.",
+      inputSchema: { proposalId: z.string().uuid() },
+    },
+    async ({ proposalId }) =>
+      text(await api(`/v1/internal/mcp/proposals/${proposalId}/grant`, connectionToken)),
+  );
+  server.registerTool(
+    "submit_granted_deliverable",
+    {
+      description:
+        "Submit one deliverable using a one-time execution grant returned by get_execution_grant. This cannot fund, sign, settle, or submit a second time.",
+      inputSchema: {
+        grantToken: z.string().regex(/^lxe_[A-Za-z0-9_-]+$/),
+        jobId: z.string().uuid(),
+        deliverable: z.string().min(1).max(100_000),
+        evidence: z.array(z.string().url()).max(20).optional(),
+      },
+    },
+    async ({ grantToken, jobId, deliverable, evidence }) =>
+      text(
+        await api("/v1/internal/mcp/execution-grants/submit", connectionToken, {
+          method: "POST",
+          headers: { "x-liege-execution-grant": grantToken },
+          body: JSON.stringify({ jobId, deliverable, evidence: evidence ?? [] }),
+        }),
+      ),
   );
   server.registerTool(
     "wait_for_proposal_decision",

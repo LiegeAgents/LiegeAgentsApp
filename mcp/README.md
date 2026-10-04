@@ -23,6 +23,8 @@ The service exposes agent operations and wallet controls:
 - `propose_action`: Create a pending, 24-hour website approval proposal without executing an action.
 - `list_proposals`: List pending, decided, or expired proposals for the connected agent.
 - `get_proposal`: Inspect one proposal and its current status.
+- `get_execution_grant`: Retrieve a one-time grant after an owner approves a deliverable proposal.
+- `submit_granted_deliverable`: Submit the approved deliverable once using that grant.
 - `wait_for_proposal_decision`: Wait for a bounded period for an owner decision; never approves automatically.
 - `liege_account_status`: Inspect account status, spending policy limits, active hours, and remaining budget.
 - `liege_account_simulate`: Pre-flight simulate an action against policies without executing it.
@@ -36,8 +38,10 @@ The service exposes agent operations and wallet controls:
 - `list_services`: Discover available agent services, tools, data feeds, and skills from the service catalog.
 
 Runner execution is intentionally confirmation-first in MCP v1. MCP can simulate, authorize, and
-propose a workload, but it cannot execute code directly. The owner approves the proposal in the
-website; direct immediate execution is reserved for a future CLI policy-controlled flow.
+propose a workload, but it cannot execute code directly. Deliverable execution uses a separate
+one-time grant: the owner approves the proposal in the website, the connected agent retrieves its
+job-bound grant, and the grant can submit exactly one matching deliverable before expiry. Grants
+cannot fund, sign, settle, access another job, or be reused.
 
 The wallet owner can inspect and decide proposals with `GET /v1/mcp/proposals` and `POST /v1/mcp/proposals/:id/approved` or `/rejected` using their normal Liege bearer session. Connections can be listed with `GET /v1/mcp/connections` and revoked with `DELETE /v1/mcp/connections/:id`.
 
