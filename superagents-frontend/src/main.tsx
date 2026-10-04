@@ -877,16 +877,6 @@ function SuperAgentChat({ live = false }: { live?: boolean }) {
           <MessageCircle size={13} /> {live ? "Connected" : "Connect wallet"}
         </span>
       </div>
-      {messages.length === 1 && (
-        <div className="chat-suggestions">
-          {agents.map((agent) => (
-            <button key={agent.id} onClick={() => setText(`Hire ${agent.name} by LiegeAgents to `)}>
-              {agent.name}
-              <span>{agent.category}</span>
-            </button>
-          ))}
-        </div>
-      )}
       <div className="chat-messages" aria-live="polite">
         {messages.map((message, index) => (
           <div className={`chat-message ${message.role}`} key={`${message.role}-${index}`}>
