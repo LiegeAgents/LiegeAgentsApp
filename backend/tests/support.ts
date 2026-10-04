@@ -76,9 +76,9 @@ export async function signIn(privateKey = generatePrivateKey()): Promise<User> {
 
 export const bearer = (user: User) => ({ Authorization: `Bearer ${user.token}` });
 
-export async function credit(userId: string, amount: number) {
+export async function credit(userId: string, amount: number, asset: "usdg" | "liege" = "usdg") {
   await inTransaction((client) =>
-    creditUser(client, userId, amount, userId, `test-credit:${crypto.randomUUID()}`),
+    creditUser(client, userId, amount, userId, `test-credit:${crypto.randomUUID()}`, {}, asset),
   );
 }
 

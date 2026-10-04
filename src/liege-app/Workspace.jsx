@@ -4063,7 +4063,8 @@ function EvaluatorSetup({ token }) {
       <h2>Evaluator profile</h2>
       <p>
         Activate this only if you are available to independently review delivery. Listing requires
-        operator-assigned stake of at least 5,000 USDG.
+        operator-assigned stake of at least 5,000 USDG or 10,000,000 LIEGE, depending on the job’s
+        settlement asset.
       </p>
       <Field label="Specialties" help="Comma-separated, for example: Research, Data analysis">
         <input
@@ -4092,6 +4093,7 @@ function OperatorControls({ token, currentUser, onNotice }) {
     [creditReference, setCreditReference] = useState("test-credit-" + Date.now()),
     [stakeUser, setStakeUser] = useState(currentUser.id),
     [stake, setStake] = useState("5000"),
+    [stakeAsset, setStakeAsset] = useState("usdg"),
     [stakeReference, setStakeReference] = useState("test-stake-" + Date.now()),
     [error, setError] = useState(""),
     [busy, setBusy] = useState("");
@@ -4164,24 +4166,38 @@ function OperatorControls({ token, currentUser, onNotice }) {
               () =>
                 api.setEvaluatorStake(token, {
                   userId: stakeUser,
-                  stakeUsdg: +stake,
+                  stakeAmount: +stake,
+                  settlementAsset: stakeAsset,
                   reference: stakeReference,
                 }),
-              "Evaluator test stake updated.",
+              `Evaluator ${stakeAsset.toUpperCase()} stake updated.`,
             );
           }}
         >
           <Field label="Evaluator account ID">
             <input required value={stakeUser} onChange={(e) => setStakeUser(e.target.value)} />
           </Field>
-          <Field label="Set evaluator stake (USDG)">
+          <Field label={`Set evaluator stake (${stakeAsset.toUpperCase()})`} help={stakeAsset === "liege" ? "LIEGE evaluators require 10,000,000 LIEGE minimum." : "USDG evaluators require 5,000 USDG minimum."}>
             <input
               type="number"
-              min="0"
+              min={stakeAsset === "liege" ? "0" : "0"}
               step="0.01"
               value={stake}
               onChange={(e) => setStake(e.target.value)}
             />
+          </Field>
+          <Field label="Stake asset">
+            <select
+              value={stakeAsset}
+              onChange={(e) => {
+                const asset = e.target.value;
+                setStakeAsset(asset);
+                setStake(asset === "liege" ? "10000000" : "5000");
+              }}
+            >
+              <option value="usdg">USDG</option>
+              <option value="liege">LIEGE</option>
+            </select>
           </Field>
           <Field label="Audit reference">
             <input

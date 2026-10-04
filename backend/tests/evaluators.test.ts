@@ -90,6 +90,17 @@ describe.skipIf(!databaseAvailable)("evaluator capacity", () => {
   });
 
   test("LIEGE jobs use the same independent-review and stake-capacity controls", async () => {
+    await credit(evaluator.userId, 10_000_000, "liege");
+    await api()
+      .post("/v1/admin/evaluators/stake")
+      .set(bearer(admin))
+      .send({
+        userId: evaluator.userId,
+        stakeAmount: 10_000_000,
+        settlementAsset: "liege",
+        reference: `stake-liege-${crypto.randomUUID()}`,
+      })
+      .expect(200);
     const base = {
       settlementAsset: "liege",
       budgetLiege: "600",
