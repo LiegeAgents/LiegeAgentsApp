@@ -11,14 +11,21 @@ process.env.GROQ_API_KEY = "groq-key";
 const { handlers } = await import("./handlers.js");
 
 describe("Super Agent handler registry", () => {
-  test("registers all five handlers with distinct service slugs", () => {
-    expect(Object.keys(handlers).sort()).toEqual(["anna", "chloe", "daniel", "marcus", "scott"]);
-    expect(new Set(Object.values(handlers).flatMap((handler) => handler.serviceSlugs)).size).toBe(16);
+  test("registers all six handlers with distinct service slugs", () => {
+    expect(Object.keys(handlers).sort()).toEqual(["anna", "chloe", "daniel", "kori", "marcus", "scott"]);
+    expect(new Set(Object.values(handlers).flatMap((handler) => handler.serviceSlugs)).size).toBe(17);
   });
 
   test("keeps service routing scoped to the handler", () => {
     expect(handlers.anna.serviceSlugs).toContain("research-brief");
     expect(handlers.anna.serviceSlugs).not.toContain("code-review");
     expect(handlers.marcus.serviceSlugs).toContain("security-review");
+    expect(handlers.kori.serviceSlugs).toEqual(["customer-support"]);
+    expect(handlers.scott.serviceSlugs).not.toContain("customer-support");
+  });
+
+  test("serves Kori only when its agent ID and webhook secret are deployed", async () => {
+    const { config } = await import("./config.js");
+    expect(Object.keys(config.agents)).not.toContain("kori");
   });
 });

@@ -7,13 +7,15 @@ const serverUrl = Bun.env.AGENT_SERVER_URL?.trim()?.replace(/\/$/, "");
 if (!sessionToken) throw new Error("LIEGE_RUNTIME_TOKEN is required in superagents-agents/.env");
 if (!serverUrl) throw new Error("AGENT_SERVER_URL is required in superagents-agents/.env");
 
-const agents = [
+const agents: Array<readonly [string, string, string]> = [
   ["SCOTT", "19ed8fe5-a862-42f2-a912-c730f464f251", "scott"],
   ["ANNA", "597709f8-e5b1-450d-8210-8a9e4b6ced0c", "anna"],
   ["MARCUS", "bfb46bd1-230f-4a62-91b0-53465f9f3636", "marcus"],
   ["CHLOE", "0c023086-c215-47ca-8207-858fac7b99f9", "chloe"],
   ["DANIEL", "d3ba1dbd-321b-4edf-accc-ee4a9405e4f0", "daniel"],
-] as const;
+];
+const koriAgentId = Bun.env.KORI_AGENT_ID?.trim();
+if (koriAgentId) agents.push(["KORI", koriAgentId, "kori"]);
 const eventTypes = ["job.funded", "job.submitted", "job.expired", "job.settled"];
 const headers = { authorization: `Bearer ${sessionToken}`, accept: "application/json" };
 

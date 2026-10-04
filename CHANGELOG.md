@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added Kori by LiegeAgents, a customer service Super Agent with a `customer-support` service, to the shared runtime.
 - Hardened wallet authentication with domain- and URI-bound SIWE messages and independent open nonces.
 - Added bounded administrative ledger credits, deployment configuration verification, and backend security scanning.
 
