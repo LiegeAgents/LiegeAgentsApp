@@ -44,7 +44,8 @@ export function Enrollment({
   useEffect(() => {
     if (!agent || !service) return;
     const supported = ["usdg", "liege"].filter(
-      (asset) => agent.settlement_assets?.includes(asset) && service.settlement_assets?.includes(asset),
+      (asset) =>
+        agent.settlement_assets?.includes(asset) && service.settlement_assets?.includes(asset),
     );
     setSettlementAssets((current) => {
       const next = current.filter((asset) => supported.includes(asset));
@@ -87,11 +88,12 @@ export function Enrollment({
     }
   }
   return (
-    <section className="panel enrollment-panel">
-      <div className="panel-heading">
+    <section className="panel enrollment-panel enrollment-editor">
+      <div className="panel-heading enrollment-heading">
         <h2>Your Super Agents</h2>
+        <span className="enrollment-kicker">OWNER CONTROL · DISCOVERY</span>
       </div>
-      <div className="settings-content">
+      <div className="settings-content enrollment-content">
         <p>
           Connect an existing Liege agent to chat and X. Its identity, owner, and payment
           destination stay the same.
@@ -102,7 +104,7 @@ export function Enrollment({
           <p>No owned agents found. Launch an agent in your Liege workspace first.</p>
         ) : (
           <>
-            <label>
+            <label className="enrollment-field">
               Choose your agent
               <select
                 value={agentId}
@@ -137,7 +139,9 @@ export function Enrollment({
                         ? "Connection test required"
                         : "Not enrolled"}
                 </span>
-                <label htmlFor="super-agent-service">Service</label>
+                <label className="enrollment-field-label" htmlFor="super-agent-service">
+                  Service
+                </label>
                 <select
                   id="super-agent-service"
                   disabled={busy}
@@ -162,7 +166,10 @@ export function Enrollment({
                     then it will appear in the selector.
                   </p>
                 )}
-                <details open={!data.services.some((s) => s.agent_id === agentId)}>
+                <details
+                  className="enrollment-disclosure"
+                  open={!data.services.some((s) => s.agent_id === agentId)}
+                >
                   <summary>Add a service</summary>
                   <form
                     onSubmit={(event) => {
@@ -214,23 +221,35 @@ export function Enrollment({
                         defaultValue="1"
                       />
                     </label>
-                    <fieldset>
+                    <fieldset className="asset-fieldset">
                       <legend>Accepted settlement assets</legend>
                       <p className="muted small">
-                        Select every token this service can accept. Each job still settles in one token.
+                        Select every token this service can accept. Each job still settles in one
+                        token.
                       </p>
-                      <label className="asset-choice">
-                        <input className="asset-choice-input" name="usdg" type="checkbox" defaultChecked />
-                        <span className="asset-choice-box" aria-hidden="true">✓</span>
-                        <img src="/brand/usdg-official.png" alt="" />
-                        <span>USDG</span>
-                      </label>
-                      <label className="asset-choice">
-                        <input className="asset-choice-input" name="liege" type="checkbox" />
-                        <span className="asset-choice-box" aria-hidden="true">✓</span>
-                        <img src="/brand/logo-transparent.png" alt="" />
-                        <span>LIEGE</span>
-                      </label>
+                      <div className="asset-options">
+                        <label className="asset-choice">
+                          <input
+                            className="asset-choice-input"
+                            name="usdg"
+                            type="checkbox"
+                            defaultChecked
+                          />
+                          <span className="asset-choice-box" aria-hidden="true">
+                            ✓
+                          </span>
+                          <img src="/brand/usdg-official.png" alt="" />
+                          <span>USDG</span>
+                        </label>
+                        <label className="asset-choice">
+                          <input className="asset-choice-input" name="liege" type="checkbox" />
+                          <span className="asset-choice-box" aria-hidden="true">
+                            ✓
+                          </span>
+                          <img src="/brand/logo-transparent.png" alt="" />
+                          <span>LIEGE</span>
+                        </label>
+                      </div>
                     </fieldset>
                     <label>
                       Delivery time (minutes)
@@ -241,39 +260,50 @@ export function Enrollment({
                     </button>
                   </form>
                 </details>
-                <fieldset>
+                <fieldset className="asset-fieldset enrollment-asset-fieldset">
                   <legend>Settlement assets for this enrollment</legend>
                   <p className="muted small">
-                    Select every token this enrollment can accept. Each job settles in one token;
-                    no conversion or oracle is used.
+                    Select every token this enrollment can accept. Each job settles in one token; no
+                    conversion or oracle is used.
                   </p>
-                  {["usdg", "liege"].map((asset) => {
-                    const supported = Boolean(
-                      agent.settlement_assets?.includes(asset) &&
-                      service?.settlement_assets?.includes(asset),
-                    );
-                    return (
-                      <label key={asset} className="asset-choice">
-                        <input
-                          className="asset-choice-input"
-                          type="checkbox"
-                          checked={settlementAssets.includes(asset)}
-                          disabled={busy || !supported}
-                          onChange={(event) =>
-                            setSettlementAssets((current) =>
-                              event.target.checked
-                                ? [...new Set([...current, asset])]
-                                : current.filter((item) => item !== asset),
-                            )
-                          }
-                        />
-                        <span className="asset-choice-box" aria-hidden="true">✓</span>
-                        <img src={`/brand/${asset === "usdg" ? "usdg-official.png" : "logo-transparent.png"}`} alt="" />
-                        <span>{asset.toUpperCase()}</span>
-                        {!supported ? " (not supported by agent/service)" : ""}
-                      </label>
-                    );
-                  })}
+                  <div className="asset-options">
+                    {["usdg", "liege"].map((asset) => {
+                      const supported = Boolean(
+                        agent.settlement_assets?.includes(asset) &&
+                        service?.settlement_assets?.includes(asset),
+                      );
+                      return (
+                        <label key={asset} className="asset-choice">
+                          <input
+                            className="asset-choice-input"
+                            type="checkbox"
+                            checked={settlementAssets.includes(asset)}
+                            disabled={busy || !supported}
+                            onChange={(event) =>
+                              setSettlementAssets((current) =>
+                                event.target.checked
+                                  ? [...new Set([...current, asset])]
+                                  : current.filter((item) => item !== asset),
+                              )
+                            }
+                          />
+                          <span className="asset-choice-box" aria-hidden="true">
+                            ✓
+                          </span>
+                          <img
+                            src={`/brand/${asset === "usdg" ? "usdg-official.png" : "logo-transparent.png"}`}
+                            alt=""
+                          />
+                          <span>{asset.toUpperCase()}</span>
+                          {!supported && (
+                            <small className="asset-unavailable">
+                              Not supported by agent or service
+                            </small>
+                          )}
+                        </label>
+                      );
+                    })}
+                  </div>
                 </fieldset>
                 <label htmlFor="super-agent-webhook">Execution webhook</label>
                 <select
@@ -297,7 +327,7 @@ export function Enrollment({
                     endpoint, then copy its one-time secret into the runtime environment.
                   </p>
                 )}
-                <details>
+                <details className="enrollment-disclosure">
                   <summary>Add an execution connection</summary>
                   <form
                     onSubmit={(event) => {
