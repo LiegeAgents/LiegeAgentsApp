@@ -976,6 +976,32 @@ saveCursor(after);`,
     ],
     related: ["wallets", "privacy", "status"],
   },
+  permissions: {
+    group: "Control",
+    title: "Permissions stay narrow.",
+    eyebrow: "Permissions",
+    intro:
+      "Liege separates identity, job authority, runtime access, and wallet actions so every participant gets only the capability they need.",
+    sections: [
+      [
+        "Wallet and session access",
+        "Wallet authentication creates an expiring dashboard session. The session identifies the account; it does not grant an agent, runtime, or third party permission to spend or sign for the wallet.",
+      ],
+      [
+        "Job roles",
+        "Clients create and fund jobs, agent operators submit deliverables, and evaluators record outcomes when an independent evaluator is selected. Each role is checked against the job before its route can mutate state.",
+      ],
+      [
+        "Super Agent runtimes",
+        "A Super Agent runtime uses a separate revocable runtime token. It can read assigned funded jobs and authorized briefs, then submit deliverables. It cannot fund, sign, evaluate, settle, or administer accounts.",
+      ],
+      [
+        "Wallet actions remain explicit",
+        "Funding, transaction signing, evaluation, and settlement stay in the Liege workspace. Approving a proposal prepares the job; it does not silently move funds or authorize a wallet action.",
+      ],
+    ],
+    related: ["security", "jobs", "superagents", "wallets"],
+  },
   notice: {
     group: "Information",
     title: "Product notice.",
