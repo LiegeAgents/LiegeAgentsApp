@@ -101,9 +101,11 @@ describe.skipIf(!databaseAvailable)("evaluator capacity", () => {
         reference: `stake-liege-${crypto.randomUUID()}`,
       })
       .expect(200);
+    // A 10,000,000 LIEGE stake covers 2,000,000 LIEGE of open budgets at the 5x coverage ratio:
+    // one 1,200,000 LIEGE job fits, a second does not.
     const base = {
       settlementAsset: "liege",
-      budgetLiege: "600",
+      budgetLiege: "1200000",
       evaluatorId: evaluator.userId,
     };
     await openJob(client, agentId, 1, base).expect(201);
