@@ -120,23 +120,22 @@ export function Enrollment({
                         ? "Connection test required"
                         : "Not enrolled"}
                 </span>
-                <label>
-                  Service
-                  <select
-                    disabled={busy}
-                    value={serviceId}
-                    onChange={(event) => setServiceId(event.target.value)}
-                  >
-                    <option value="">Choose a service</option>
-                    {data.services
-                      .filter((s) => s.agent_id === agentId)
-                      .map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name} · {s.price_usd} USDG · {s.sla_minutes} min
-                        </option>
-                      ))}
-                  </select>
-                </label>
+                <label htmlFor="super-agent-service">Service</label>
+                <select
+                  id="super-agent-service"
+                  disabled={busy}
+                  value={serviceId}
+                  onChange={(event) => setServiceId(event.target.value)}
+                >
+                  <option value="">Choose a service</option>
+                  {data.services
+                    .filter((s) => s.agent_id === agentId)
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} · {s.price_usd} USDG · {s.sla_minutes} min
+                      </option>
+                    ))}
+                </select>
                 {!data.services.some((s) => s.agent_id === agentId) && (
                   <p className="muted small">
                     This agent has no service listing yet. Add the service it should offer below,
@@ -194,23 +193,22 @@ export function Enrollment({
                     </button>
                   </form>
                 </details>
-                <label>
-                  Execution webhook
-                  <select
-                    disabled={busy}
-                    value={webhookId}
-                    onChange={(event) => setWebhookId(event.target.value)}
-                  >
-                    <option value="">Choose a funded-job webhook</option>
-                    {data.webhooks
-                      .filter((w) => w.agent_id === agentId)
-                      .map((w) => (
-                        <option key={w.id} value={w.id}>
-                          {w.url}
-                        </option>
-                      ))}
-                  </select>
-                </label>
+                <label htmlFor="super-agent-webhook">Execution webhook</label>
+                <select
+                  id="super-agent-webhook"
+                  disabled={busy}
+                  value={webhookId}
+                  onChange={(event) => setWebhookId(event.target.value)}
+                >
+                  <option value="">Choose a funded-job webhook</option>
+                  {data.webhooks
+                    .filter((w) => w.agent_id === agentId)
+                    .map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.url}
+                      </option>
+                    ))}
+                </select>
                 {!data.webhooks.some((w) => w.agent_id === agentId) && (
                   <p className="muted small">
                     No funded-job webhook is connected yet. Create one for this agent’s runtime
