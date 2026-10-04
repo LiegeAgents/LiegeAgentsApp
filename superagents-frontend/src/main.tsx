@@ -160,7 +160,11 @@ function AgentDetail({
       <p className="muted small">{agent.boundary}</p>
       <a
         className="button"
-        href={isSuperAgentsLaunched ? `/auth?agent=${agent.id}` : undefined}
+        href={
+          isSuperAgentsLaunched
+            ? `${getSessionToken() ? "/app" : "/auth"}?agent=${agent.id}`
+            : undefined
+        }
         onClick={(event) => {
           if (!isSuperAgentsLaunched) {
             event.preventDefault();
@@ -230,7 +234,7 @@ function Landing() {
         </nav>
         <a
           className="button secondary header-cta"
-          href={isSuperAgentsLaunched ? "/auth" : undefined}
+          href={isSuperAgentsLaunched ? (getSessionToken() ? "/app" : "/auth") : undefined}
           onClick={openAuth}
         >
           Get started <ArrowUpRight size={15} />
@@ -261,7 +265,7 @@ function Landing() {
             </p>
             <div className="hero-actions">
               <a
-                href={isSuperAgentsLaunched ? "/auth" : undefined}
+                href={isSuperAgentsLaunched ? (getSessionToken() ? "/app" : "/auth") : undefined}
                 className="button"
                 onClick={openAuth}
               >
@@ -419,7 +423,7 @@ function Landing() {
           </h2>
           <a
             className="button"
-            href={isSuperAgentsLaunched ? "/auth" : undefined}
+            href={isSuperAgentsLaunched ? (getSessionToken() ? "/app" : "/auth") : undefined}
             onClick={openAuth}
           >
             Get started <ArrowUpRight size={17} />
@@ -924,6 +928,8 @@ function Dashboard() {
     Array<{ id: string; name: string; description: string; category: string }>
   >([]);
   const [identity, setIdentity] = useState<{ x_username?: string } | null>(null);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [accountMenu, setAccountMenu] = useState(false);
   const initial = new URLSearchParams(location.search).get("view");
   const [tab, setTab] = useState(tabs.some((t) => t.id === initial) ? initial! : "chat");
   const [query, setQuery] = useState("");
@@ -946,16 +952,25 @@ function Dashboard() {
     async function refresh() {
       const token = getSessionToken();
       if (!token) return;
-      fetch(`${superAgentsApi}/v1/super-agents/dashboard`, {
-        headers: { authorization: `Bearer ${token}` },
-      })
-        .then(async (response) => {
-          if (!response.ok) return;
-          const payload = await response.json();
+      Promise.all([
+        fetch(`${superAgentsApi}/v1/super-agents/dashboard`, {
+          headers: { authorization: `Bearer ${token}` },
+        }),
+        fetch(`${superAgentsApi}/v1/me`, { headers: { authorization: `Bearer ${token}` } }).catch(
+          () => null,
+        ),
+      ])
+        .then(async ([dashboardResponse, accountResponse]) => {
+          if (!dashboardResponse.ok) return;
+          const payload = await dashboardResponse.json();
           if (cancelled) return;
           const data = payload.data ?? {};
           setCatalog(data.agents ?? []);
           setIdentity(data.identity ?? null);
+          if (accountResponse?.ok) {
+            const account = await accountResponse.json().catch(() => null);
+            setWalletAddress(account?.data?.wallet_address ?? null);
+          }
           const mapped: RequestItem[] = (data.proposals ?? [])
             .filter((proposal: any) => proposal.agent_id && Number(proposal.parsed?.budgetUsdg) > 0)
             .map((proposal: any): RequestItem => {
@@ -1043,6 +1058,20 @@ function Dashboard() {
         title: "X connection not revoked",
         body: error instanceof Error ? error.message : "Try again.",
       });
+    }
+  }
+  async function logout() {
+    const token = getSessionToken();
+    try {
+      if (token)
+        await fetch(`${superAgentsApi}/v1/auth/logout`, {
+          method: "POST",
+          headers: { authorization: `Bearer ${token}` },
+        });
+    } finally {
+      clearSessionToken();
+      setAccountMenu(false);
+      location.assign("/");
     }
   }
   function update(next: ReturnType<typeof readWorkspace>) {
@@ -1188,14 +1217,7 @@ function Dashboard() {
           <a href={`${LIEGE}/app`}>
             <ArrowUpRight size={16} /> Main Liege workspace
           </a>
-          <button
-            onClick={() => {
-              sessionStorage.removeItem("liege-superagents-workspace-v1");
-              sessionStorage.removeItem("liege-superagents-preview-v1");
-              clearSessionToken();
-              location.assign("/");
-            }}
-          >
+          <button onClick={() => void logout()}>
             <LogOut size={16} /> Sign out
           </button>
         </div>
@@ -1217,11 +1239,21 @@ function Dashboard() {
             <span className="preview-label">Connected workspace</span>
             <button
               className="user-avatar"
-              onClick={() => changeTab("settings")}
+              onClick={() => setAccountMenu((open) => !open)}
               aria-label="Account settings"
             >
-              D
+              {walletAddress ? `${walletAddress.slice(0, 5)}…${walletAddress.slice(-3)}` : "0x…"}
             </button>
+            {accountMenu && (
+              <div className="account-menu" role="menu">
+                <span className="preview-label">Connected wallet</span>
+                <strong>{walletAddress || "Wallet unavailable"}</strong>
+                <button onClick={() => changeTab("settings")}>Account settings</button>
+                <button onClick={() => void logout()}>
+                  <LogOut size={15} /> Log out
+                </button>
+              </div>
+            )}
           </div>
         </header>
         <main className={`dash-main ${tab === "chat" ? "chat-workspace" : ""}`}>
