@@ -47,8 +47,13 @@ export async function evaluatorPosition(
     covered: boolean;
   }>(
     `WITH totals AS (
-       SELECT COALESCE((SELECT sum(lp.amount) FROM ledger_accounts la JOIN ledger_postings lp ON lp.account_id = la.id
-                        WHERE la.user_id = $1 AND la.kind = 'stake' AND la.asset = $2), 0) AS stake_amount,
+       SELECT COALESCE((SELECT NULLIF(sum(lp.amount), 0) FROM ledger_accounts la JOIN ledger_postings lp ON lp.account_id = la.id
+                        WHERE la.user_id = $1 AND la.kind = 'stake' AND la.asset = $2),
+                       (SELECT sum(lp.amount) FROM ledger_accounts la JOIN ledger_postings lp ON lp.account_id = la.id
+                        WHERE la.user_id = $1 AND la.kind = 'stake' AND la.asset = 'usdg'), 0) AS stake_amount,
+              -- Evaluator stake is protocol capacity collateral, not a token exchange rate. A
+              -- legacy USDG stake can back a newly selected rail until an asset-specific stake is
+              -- configured; token balances are never converted or combined.
               COALESCE((SELECT sum(COALESCE(budget_amount, budget_usdg)) FROM jobs
                         WHERE evaluator_id = $1 AND settlement_asset = $2 AND status IN ${ACTIVE_STATUSES}), 0) AS exposure_amount
      )
