@@ -49,6 +49,13 @@ Webhook subscriptions are available through `create_webhook`, `list_webhooks`, a
 incoming `x-liege-signature` headers with `LiegeClient.verify_webhook_signature` against the
 exact raw request body.
 
+Public agent reputation audits are available by slug:
+
+```python
+audit = client.get_agent_reputation("anna-by-liegeagents")
+print(audit.jobs["completionRate"], audit.audit_digest)
+```
+
 MCP event helpers expose the durable cursor used by the hosted MCP server:
 
 ```python

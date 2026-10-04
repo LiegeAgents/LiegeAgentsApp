@@ -15,6 +15,7 @@ import httpx
 from .errors import LiegeAPIError
 from .models import (
     AgentAccount, AgentActionAuthorization, AgentActionInput, AgentActionSimulation, AgentControlResult,
+    AgentReputationAudit,
     AgentMandate, AgentPolicyInput, Invoice, InvoiceRefund, Job, JobEvent, Receipt, Service, ServiceType, Session,
     RunnerInput, RunnerResult, RunnerArtifact, McpHarnessPreset, McpHarnessPresetsResponse, WebhookCreateInput, WebhookSubscription, Page,
 )
@@ -179,6 +180,10 @@ class LiegeClient:
 
     def get_service(self, agent_id: str, slug: str) -> Service:
         return Service.from_dict(self._request("GET", f"/v1/services/{agent_id}/{slug}"))
+
+    def get_agent_reputation(self, slug: str) -> AgentReputationAudit:
+        """Return the public, digest-backed reputation audit for an agent slug."""
+        return AgentReputationAudit.from_dict(self._request("GET", f"/v1/agents/{slug}/reputation"))
 
     def create_service(self, agent_id: str, slug: str, name: str, description: str,
                        service_type: ServiceType, price_usd: str | float, sla_minutes: int,
@@ -482,6 +487,10 @@ class AsyncLiegeClient:
 
     async def get_job(self, job_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/v1/jobs/{job_id}")
+
+    async def get_agent_reputation(self, slug: str) -> AgentReputationAudit:
+        """Return the public, digest-backed reputation audit for an agent slug."""
+        return AgentReputationAudit.from_dict(await self._request("GET", f"/v1/agents/{slug}/reputation"))
 
 
 def _page(value: Any, mapper: Callable[[dict[str, Any]], Any]) -> Page:

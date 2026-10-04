@@ -291,6 +291,29 @@ class AgentAccount:
 
 
 @dataclass(frozen=True)
+class AgentReputationAudit:
+    agent: dict[str, Any]
+    settlement: dict[str, Any]
+    jobs: dict[str, Any]
+    sla: dict[str, Any]
+    disputes: dict[str, Any]
+    catalog: dict[str, Any]
+    mandates: dict[str, Any]
+    audit_digest: str
+    audited_at: str
+    raw: dict[str, Any]
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "AgentReputationAudit":
+        return cls(
+            value.get("agent", {}), value.get("settlement", {}), value.get("jobs", {}),
+            value.get("sla", {}), value.get("disputes", {}), value.get("catalog", {}),
+            value.get("mandates", {}), str(value.get("auditDigest", value.get("audit_digest", ""))),
+            str(value.get("auditedAt", value.get("audited_at", ""))), value,
+        )
+
+
+@dataclass(frozen=True)
 class AgentActionSimulation:
     id: str
     action_digest: str
