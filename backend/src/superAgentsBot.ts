@@ -3,13 +3,61 @@ import { env } from "./config.js";
 import { db } from "./db/index.js";
 import { audit } from "./audit.js";
 import { findEnrolledAgent } from "./superAgentEnrollment.js";
+import { decryptPayload, encryptPayload, payloadContext } from "./crypto.js";
 
 let timer: ReturnType<typeof setInterval> | undefined;
 let running = false;
 let accessToken = env.X_ACCESS_TOKEN;
+let refreshToken = env.X_REFRESH_TOKEN;
+let credentialsLoaded = false;
+
+async function ensureBotCredentials() {
+  if (credentialsLoaded) return;
+  try {
+    const stored = await db.query<{
+      access_token_ciphertext: string;
+      refresh_token_ciphertext: string | null;
+    }>(
+      "SELECT access_token_ciphertext,refresh_token_ciphertext FROM superagent_x_bot_credentials WHERE id=true",
+    );
+    if (stored.rowCount) {
+      accessToken = decryptPayload(
+        stored.rows[0].access_token_ciphertext,
+        payloadContext("superagent-x-bot", "access-token"),
+      );
+      refreshToken = stored.rows[0].refresh_token_ciphertext
+        ? decryptPayload(
+            stored.rows[0].refresh_token_ciphertext,
+            payloadContext("superagent-x-bot", "refresh-token"),
+          )
+        : undefined;
+    } else if (env.X_ACCESS_TOKEN) {
+      await db.query(
+        `INSERT INTO superagent_x_bot_credentials (id,access_token_ciphertext,refresh_token_ciphertext)
+         VALUES (true,$1,$2) ON CONFLICT (id) DO NOTHING`,
+        [
+          encryptPayload(env.X_ACCESS_TOKEN, payloadContext("superagent-x-bot", "access-token")),
+          env.X_REFRESH_TOKEN
+            ? encryptPayload(
+                env.X_REFRESH_TOKEN,
+                payloadContext("superagent-x-bot", "refresh-token"),
+              )
+            : null,
+        ],
+      );
+    }
+  } catch (error) {
+    // A migration can be applied after the process starts; env credentials still allow polling.
+    console.error(
+      "Super Agents X credential store unavailable:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+  credentialsLoaded = true;
+}
 
 async function refreshXAccessToken() {
-  if (!env.X_CLIENT_ID || !env.X_REFRESH_TOKEN) return false;
+  if (!env.X_CLIENT_ID || !refreshToken) return false;
   const response = await fetch("https://api.x.com/2/oauth2/token", {
     method: "POST",
     headers: {
@@ -21,23 +69,44 @@ async function refreshXAccessToken() {
         : {}),
     },
     body: new URLSearchParams({
-      refresh_token: env.X_REFRESH_TOKEN,
+      refresh_token: refreshToken,
       grant_type: "refresh_token",
       client_id: env.X_CLIENT_ID,
     }),
     signal: AbortSignal.timeout(10_000),
   });
   if (!response.ok) return false;
-  const payload = (await response.json()) as { access_token?: string };
+  const payload = (await response.json()) as { access_token?: string; refresh_token?: string };
   if (!payload.access_token) return false;
   accessToken = payload.access_token;
+  refreshToken = payload.refresh_token || refreshToken;
+  try {
+    await db.query(
+      `UPDATE superagent_x_bot_credentials SET access_token_ciphertext=$1,refresh_token_ciphertext=$2,updated_at=now() WHERE id=true`,
+      [
+        encryptPayload(accessToken, payloadContext("superagent-x-bot", "access-token")),
+        refreshToken
+          ? encryptPayload(refreshToken, payloadContext("superagent-x-bot", "refresh-token"))
+          : null,
+      ],
+    );
+  } catch (error) {
+    console.error(
+      "Super Agents X credential persistence failed:",
+      error instanceof Error ? error.message : error,
+    );
+  }
   return true;
 }
 
 async function xFetch(path: string, init: RequestInit = {}, retry = true) {
   const response = await fetch(`https://api.x.com${path}`, {
     ...init,
-    headers: { authorization: `Bearer ${accessToken}`, accept: "application/json" },
+    headers: {
+      accept: "application/json",
+      ...(init.headers ?? {}),
+      authorization: `Bearer ${accessToken}`,
+    },
     signal: AbortSignal.timeout(10_000),
   });
   if (response.status === 401 && retry && (await refreshXAccessToken()))
@@ -58,6 +127,7 @@ async function pollMentions() {
   if (running || env.X_BOT_ENABLED !== "true" || !env.X_ACCESS_TOKEN || !env.X_BOT_HANDLE) return;
   running = true;
   try {
+    await ensureBotCredentials();
     const profile = await xFetch(`/2/users/by/username/${encodeURIComponent(env.X_BOT_HANDLE)}`);
     const botId = profile?.data?.id;
     if (!botId) return;
