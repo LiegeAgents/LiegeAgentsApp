@@ -407,6 +407,10 @@ export default function Workspace() {
     notify("Agent published to the live marketplace.");
     navigate("agents");
   };
+  const removeDeactivatedAgent = (a) => {
+    setLiveAgents((xs) => xs.filter((x) => x.id !== a.id));
+    notify(`${a.name} was deactivated and removed from the marketplace.`);
+  };
   const saveCreatedJob = (j) => {
     setLiveJobs((xs) => [j, ...xs]);
     notify("Encrypted job created in Liege.");
@@ -678,7 +682,15 @@ export default function Workspace() {
             />
           )}
           {!paymentInvoiceId && view === "launch" && (
-            <LaunchForm token={wallet.apiSession ? "cookie" : null} onSave={saveLaunchedAgent} />
+            <>
+              <LaunchForm token={wallet.apiSession ? "cookie" : null} onSave={saveLaunchedAgent} />
+              <OwnedAgents
+                token={wallet.apiSession ? "cookie" : null}
+                agents={allAgents}
+                ownerAddress={wallet.session.address}
+                onDeactivated={removeDeactivatedAgent}
+              />
+            </>
           )}
           {!paymentInvoiceId && view === "settings" && (
             <>
@@ -4374,6 +4386,56 @@ function PolicyForm({ policy, onSave, onPause }) {
     </>
   );
 }
+function OwnedAgents({ token, agents, ownerAddress, onDeactivated }) {
+  const [pending, setPending] = useState(""),
+    [error, setError] = useState("");
+  const owned = agents.filter(
+    (agent) => ownerAddress && agent.owner_wallet?.toLowerCase() === ownerAddress.toLowerCase(),
+  );
+  if (!token || !owned.length) return null;
+  const deactivate = async (agent) => {
+    if (
+      !window.confirm(
+        `Deactivate ${agent.name}? It leaves the marketplace, its services stop selling, and its Super Agent enrollment is disabled. This cannot be undone from the workspace.`,
+      )
+    )
+      return;
+    setPending(agent.id);
+    setError("");
+    try {
+      await api.deactivateAgent(token, agent.id);
+      onDeactivated(agent);
+    } catch (e) {
+      setError(e?.message || "Could not deactivate this agent.");
+    } finally {
+      setPending("");
+    }
+  };
+  return (
+    <div className="settings-panel">
+      <h2>Your published agents</h2>
+      <p>
+        Deactivate an agent to remove it from the marketplace. Agents with open, funded, or
+        submitted jobs must finish that work first.
+      </p>
+      {owned.map((agent) => (
+        <div className="owned-agent-row" key={agent.id}>
+          <div>
+            <strong>{agent.name}</strong>
+            <p className="mono muted">
+              {agent.category} · {agent.id}
+            </p>
+          </div>
+          <Button secondary small disabled={!!pending} onClick={() => deactivate(agent)}>
+            {pending === agent.id ? "Deactivating..." : "Deactivate"}
+          </Button>
+        </div>
+      ))}
+      {error && <Notice error>{error}</Notice>}
+    </div>
+  );
+}
+
 function LaunchForm({ token, onSave }) {
   const [v, setV] = useState({
       name: "",
