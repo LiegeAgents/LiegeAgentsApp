@@ -804,6 +804,17 @@ function SuperAgentChat({ live = false }: { live?: boolean }) {
           })
         : null;
       const parsed = response?.ok ? (await response.json()).data : null;
+      if (!response?.ok) throw new Error("Could not read your message.");
+      if (!parsed?.agentName || !parsed?.budgetUsdg) {
+        setMessages((current) => [
+          ...current,
+          {
+            role: "assistant",
+            text: "Tell me who you’d like to hire, what you need, and your USDG budget. For example: Hire Anna to research agent marketplaces. Budget 5 USDG.",
+          },
+        ]);
+        return;
+      }
       const proposal = token
         ? await fetch(`${api}/v1/super-agents/intents`, {
             method: "POST",
@@ -819,6 +830,20 @@ function SuperAgentChat({ live = false }: { live?: boolean }) {
       const budget =
         parsed?.budgetUsdg ?? value.match(/(?:budget|for)\s*\$?([0-9]+(?:\.[0-9]+)?)/i)?.[1];
       const created = Boolean(proposal?.ok);
+      if (!created) {
+        const error = await proposal?.json();
+        setMessages((current) => [
+          ...current,
+          {
+            role: "assistant",
+            text:
+              error?.error?.message ||
+              "Your proposal could not be saved. Check the agent and budget and try again.",
+          },
+        ]);
+        return;
+      }
+      window.dispatchEvent(new Event("sa-requests-updated"));
       setMessages((current) => [
         ...current,
         {
@@ -841,16 +866,26 @@ function SuperAgentChat({ live = false }: { live?: boolean }) {
     }
   }
   return (
-    <section className="panel superagent-chat">
+    <section className={`superagent-chat ${messages.length === 1 ? "chat-empty" : ""}`}>
       <div className="chat-heading">
         <div>
           <span className="eyebrow">ASK LIEGE</span>
-          <h2>What should your agents do?</h2>
+          <h2>What would you like to get done?</h2>
         </div>
         <span className="chat-status">
           <MessageCircle size={13} /> {live ? "Connected" : "Connect wallet"}
         </span>
       </div>
+      {messages.length === 1 && (
+        <div className="chat-suggestions">
+          {agents.map((agent) => (
+            <button key={agent.id} onClick={() => setText(`Hire ${agent.name} by LiegeAgents to `)}>
+              {agent.name}
+              <span>{agent.category}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="chat-messages" aria-live="polite">
         {messages.map((message, index) => (
           <div className={`chat-message ${message.role}`} key={`${message.role}-${index}`}>
@@ -866,10 +901,11 @@ function SuperAgentChat({ live = false }: { live?: boolean }) {
         )}
       </div>
       <form className="chat-form" onSubmit={submit}>
-        <input
+        <textarea
+          rows={3}
           value={text}
           onChange={(event) => setText(event.target.value)}
-          placeholder="Hire an agent to…"
+          placeholder="Describe the work. Choose an agent. Set your budget…"
           aria-label="Ask Liege to hire an agent"
           maxLength={10000}
         />
@@ -893,6 +929,9 @@ function Dashboard() {
   const [workspace, setWorkspace] = useState(readWorkspace);
   const [liveRequests, setLiveRequests] = useState<RequestItem[]>([]);
   const [liveActivity, setLiveActivity] = useState<string[]>([]);
+  const [catalog, setCatalog] = useState<
+    Array<{ id: string; name: string; description: string; category: string }>
+  >([]);
   const [identity, setIdentity] = useState<{ x_username?: string } | null>(null);
   const initial = new URLSearchParams(location.search).get("view");
   const [tab, setTab] = useState(tabs.some((t) => t.id === initial) ? initial! : "chat");
@@ -912,53 +951,77 @@ function Dashboard() {
     }
   })();
   useEffect(() => {
-    const token = getSessionToken();
-    if (!token) return;
-    fetch(`${superAgentsApi}/v1/super-agents/dashboard`, {
-      headers: { authorization: `Bearer ${token}` },
-    })
-      .then(async (response) => {
-        if (!response.ok) return;
-        const payload = await response.json();
-        const data = payload.data ?? {};
-        setIdentity(data.identity ?? null);
-        const mapped: RequestItem[] = (data.proposals ?? []).map((proposal: any): RequestItem => {
-          const parsed = proposal.parsed ?? {};
-          const matched = agents.find(
-            (item) =>
-              item.name.toLowerCase() ===
-              String(proposal.agent_name ?? parsed.agentName ?? "").toLowerCase(),
-          );
-          const status =
-            proposal.status === "approved"
-              ? "Approved draft"
-              : proposal.status === "rejected"
-                ? "Dismissed"
-                : proposal.status === "pending"
-                  ? "Needs review"
-                  : "In progress";
-          return {
-            id: proposal.id,
-            title: parsed.request || proposal.raw_text || "Super Agent request",
-            agentId: matched?.id ?? "",
-            budget: parsed.budgetUsdg == null ? "—" : String(parsed.budgetUsdg),
-            asset: "USDG",
-            status,
-            source: proposal.raw_text || "Request from your workspace",
-            brief:
-              parsed.request || proposal.raw_text || "Review the request details before deciding.",
-            due: proposal.expires_at
-              ? new Date(proposal.expires_at).toLocaleDateString()
-              : "To be scheduled",
-          };
-        });
-        setLiveRequests(mapped);
-        setLiveActivity(mapped.map((item) => `${item.id} · ${item.status}`));
+    let cancelled = false;
+    async function refresh() {
+      const token = getSessionToken();
+      if (!token) return;
+      fetch(`${superAgentsApi}/v1/super-agents/dashboard`, {
+        headers: { authorization: `Bearer ${token}` },
       })
-      .catch(() => undefined);
+        .then(async (response) => {
+          if (!response.ok) return;
+          const payload = await response.json();
+          if (cancelled) return;
+          const data = payload.data ?? {};
+          setCatalog(data.agents ?? []);
+          setIdentity(data.identity ?? null);
+          const mapped: RequestItem[] = (data.proposals ?? [])
+            .filter((proposal: any) => proposal.agent_id && Number(proposal.parsed?.budgetUsdg) > 0)
+            .map((proposal: any): RequestItem => {
+              const parsed = proposal.parsed ?? {};
+              const matched = agents.find(
+                (item) =>
+                  item.name.toLowerCase() ===
+                  String(proposal.agent_name ?? parsed.agentName ?? "")
+                    .replace(/ by LiegeAgents$/i, "")
+                    .toLowerCase(),
+              );
+              const status =
+                proposal.status === "approved"
+                  ? "Approved draft"
+                  : proposal.status === "rejected"
+                    ? "Dismissed"
+                    : proposal.status === "pending"
+                      ? "Needs review"
+                      : "In progress";
+              return {
+                id: proposal.id,
+                agentName: proposal.agent_name || parsed.agentName || "Unmatched agent",
+                title: parsed.request || proposal.raw_text || "Super Agent request",
+                agentId: matched?.id ?? "",
+                budget: parsed.budgetUsdg == null ? "—" : String(parsed.budgetUsdg),
+                asset: "USDG",
+                status,
+                source: proposal.raw_text || "Request from your workspace",
+                brief:
+                  parsed.request ||
+                  proposal.raw_text ||
+                  "Review the request details before deciding.",
+                due: proposal.expires_at
+                  ? new Date(proposal.expires_at).toLocaleDateString()
+                  : "To be scheduled",
+              };
+            });
+          setLiveRequests(mapped);
+          setLiveActivity(
+            mapped
+              .filter((item) => item.status === "Approved draft" || item.status === "Dismissed")
+              .map((item) => `${item.title} · ${item.status}`),
+          );
+        })
+        .catch(() => undefined);
+    }
+    void refresh();
+    const timer = window.setInterval(refresh, 10000);
+    window.addEventListener("sa-requests-updated", refresh);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("sa-requests-updated", refresh);
+    };
   }, []);
-  const requests = liveRequests.length ? liveRequests : workspace.requests;
-  const activity = liveActivity.length ? liveActivity : workspace.activity;
+  const requests = getSessionToken() ? liveRequests : workspace.requests;
+  const activity = getSessionToken() ? liveActivity : workspace.activity;
   const pending = requests.filter((r) => r.status === "Needs review");
   function changeTab(id: string) {
     setTab(id);
@@ -1026,14 +1089,14 @@ function Dashboard() {
       <div className="request-list">
         {items.length ? (
           items.map((r) => {
-            const a = agents.find((a) => a.id === r.agentId) ?? agents[0];
+            const a = agents.find((a) => a.id === r.agentId);
             return (
               <button className="request-row" key={r.id} onClick={() => setSelected(r)}>
-                <Portrait agent={a} />
+                {a ? <Portrait agent={a} /> : <Users size={24} />}
                 <span className="request-title">
                   <strong>{r.title}</strong>
                   <small>
-                    {a.name} by LiegeAgents · {r.id}
+                    {r.agentName || (a ? `${a.name} by LiegeAgents` : "Unmatched agent")} · {r.id}
                   </small>
                 </span>
                 <span className={`status status-${r.status.toLowerCase().replaceAll(" ", "-")}`}>
@@ -1142,7 +1205,7 @@ function Dashboard() {
             </button>
           </div>
         </header>
-        <main className="dash-main">
+        <main className={`dash-main ${tab === "chat" ? "chat-workspace" : ""}`}>
           {previewMode && (
             <div className="demo-banner">
               <span>Preview workspace</span>
@@ -1179,7 +1242,7 @@ function Dashboard() {
                 }
               </p>
             </div>
-            {tab === "agents" ? (
+            {tab === "agents" && !getSessionToken() ? (
               <Button onClick={() => setPublish(true)}>
                 <Plus size={15} /> Create an agent draft
               </Button>
@@ -1333,35 +1396,78 @@ function Dashboard() {
           )}
           {tab === "agents" && (
             <>
-              <span className="preview-label catalog-label">Flagship lineup</span>
-              <AgentCards onSelect={setAgent} />
-              <section className="panel drafts-panel">
-                <div className="panel-heading">
-                  <h2>Your agent drafts</h2>
-                  <span className="muted small">Saved in this browser session only</span>
-                </div>
-                {workspace.drafts.length ? (
-                  workspace.drafts.map((d, i) => (
-                    <div className="draft-row" key={i}>
-                      <Users size={19} />
-                      <span>
-                        <strong>{d.name}</strong>
-                        <small>{d.service}</small>
-                      </span>
-                      <span className="status">Unpublished</span>
-                    </div>
-                  ))
-                ) : (
-                  <div className="empty">
-                    <Users size={26} />
-                    <h3>The next agent could be yours.</h3>
-                    <p>Shape your offering and publish it to the Liege marketplace.</p>
-                    <Button secondary onClick={() => setPublish(true)}>
-                      Create an agent draft <Plus size={15} />
-                    </Button>
+              {getSessionToken() ? (
+                <section className="panel">
+                  <div className="panel-heading">
+                    <h2>Liege marketplace agents</h2>
                   </div>
-                )}
-              </section>
+                  {catalog.map((item) => (
+                    <div className="draft-row" key={item.id}>
+                      <Users size={20} />
+                      <span>
+                        <strong>{item.name}</strong>
+                        <small>{item.description}</small>
+                      </span>
+                      <span className="status">{item.category}</span>
+                    </div>
+                  ))}
+                  {!catalog.length && <div className="empty">No agents loaded yet.</div>}
+                </section>
+              ) : (
+                <>
+                  <span className="preview-label catalog-label">Flagship lineup</span>
+                  <AgentCards onSelect={setAgent} />
+                </>
+              )}
+              {getSessionToken() ? (
+                <section className="panel drafts-panel">
+                  <div className="panel-heading">
+                    <h2>Bring your Liege agent</h2>
+                  </div>
+                  <div className="settings-content">
+                    <p>
+                      Your existing Liege agent keeps its identity and owner. Super Agent enrollment
+                      will connect its service offering and execution endpoint so people can hire it
+                      from chat and X.
+                    </p>
+                    <p>
+                      Enrollment is not available yet. Manage your existing agents in the Liege
+                      workspace.
+                    </p>
+                    <a className="button secondary" href={`${LIEGE}/app`}>
+                      Open Liege workspace <ArrowUpRight size={16} />
+                    </a>
+                  </div>
+                </section>
+              ) : (
+                <section className="panel drafts-panel">
+                  <div className="panel-heading">
+                    <h2>Your agent drafts</h2>
+                    <span className="muted small">Saved in this browser session only</span>
+                  </div>
+                  {workspace.drafts.length ? (
+                    workspace.drafts.map((d, i) => (
+                      <div className="draft-row" key={i}>
+                        <Users size={19} />
+                        <span>
+                          <strong>{d.name}</strong>
+                          <small>{d.service}</small>
+                        </span>
+                        <span className="status">Unpublished</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="empty">
+                      <Users size={26} />
+                      <h3>The next agent could be yours.</h3>
+                      <p>Shape your offering and publish it to the Liege marketplace.</p>
+                      <Button secondary onClick={() => setPublish(true)}>
+                        Create an agent draft <Plus size={15} />
+                      </Button>
+                    </div>
+                  )}
+                </section>
+              )}
             </>
           )}
           {tab === "activity" && (
@@ -1421,9 +1527,6 @@ function Dashboard() {
                       {getSessionToken() ? "Connected" : "Not connected"}
                     </span>
                   </div>
-                  <a className="text-link" href="/auth">
-                    Walk through onboarding <ArrowRight size={15} />
-                  </a>
                 </div>
               </section>
               <section className="panel">
@@ -1465,9 +1568,17 @@ function Dashboard() {
           <div className="preview-label">Request · {selected.id}</div>
           <h3 className="serif">{selected.title}</h3>
           <div className="review-agent">
-            <Portrait agent={agents.find((a) => a.id === selected.agentId)!} />
+            {agents.find((a) => a.id === selected.agentId) ? (
+              <Portrait agent={agents.find((a) => a.id === selected.agentId)!} />
+            ) : (
+              <Users size={24} />
+            )}
             <span>
-              <strong>{agents.find((a) => a.id === selected.agentId)!.name} by LiegeAgents</strong>
+              <strong>
+                {selected.agentName ||
+                  agents.find((a) => a.id === selected.agentId)?.name ||
+                  "Unmatched agent"}
+              </strong>
               <small>Suggested match based on the service category</small>
             </span>
           </div>

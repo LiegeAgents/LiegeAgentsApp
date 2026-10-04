@@ -1,5 +1,56 @@
 import { expect, test } from "@playwright/test";
 
+test("chat ignores greetings, refreshes proposals, and opens a real agent safely", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  let creations = 0;
+  const proposals: Record<string, unknown>[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.addInitScript(() => localStorage.setItem("liege-session-token", "test-session"));
+  await page.route("**/v1/super-agents/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/dashboard")) return route.fulfill({ json: { data: { proposals } } });
+    if (path.endsWith("/intents/parse")) {
+      const greeting = route.request().postDataJSON().text === "Hey";
+      return route.fulfill({
+        json: {
+          data: {
+            agentName: greeting ? null : "Anna by LiegeAgents",
+            budgetUsdg: greeting ? null : 5,
+          },
+        },
+      });
+    }
+    if (path.endsWith("/intents")) {
+      creations++;
+      proposals.push({
+        id: "420f45cf-bc07-43cc-837f-dd05755598fb",
+        agent_id: "real-anna-id",
+        agent_name: "Anna by LiegeAgents",
+        parsed: { request: "Research agent marketplaces", budgetUsdg: 5 },
+        status: "pending",
+      });
+      return route.fulfill({ status: 201, json: { data: proposals[0] } });
+    }
+    return route.fulfill({ status: 404, json: {} });
+  });
+  await page.goto("/app");
+  const input = page.getByRole("textbox", { name: "Ask Liege to hire an agent" });
+  await input.fill("Hey");
+  await page.getByRole("button", { name: "Send request" }).click();
+  await expect(page.getByText("Tell me who you’d like to hire", { exact: false })).toBeVisible();
+  expect(creations).toBe(0);
+  await input.fill("Hire Anna by LiegeAgents to research agent marketplaces. Budget 5 USDG");
+  await page.getByRole("button", { name: "Send request" }).click();
+  await expect(page.locator(".sidebar nav b")).toHaveText("1");
+  await page.goto("/app?view=requests");
+  await page.getByRole("button", { name: /Research agent marketplaces/ }).click();
+  await expect(page.getByRole("dialog")).toContainText("Anna by LiegeAgents");
+  expect(errors).toEqual([]);
+  expect(creations).toBe(1);
+});
+
 test("landing renders the flagship team and accessible details without overflow", async ({
   page,
 }) => {
