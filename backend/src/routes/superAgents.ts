@@ -407,10 +407,18 @@ superAgentsRouter.post(
       let job: Record<string, unknown> | null = null;
       if (decision === "approved") {
         if (!intent.rows[0].agent_id)
-          throw new ApiError(422, "agent_unmatched", "Match this request to an active agent before approving it.");
+          throw new ApiError(
+            422,
+            "agent_unmatched",
+            "Match this request to an active agent before approving it.",
+          );
         const parsed = intentShape.parse(intent.rows[0].parsed);
         if (!parsed.budgetUsdg || parsed.budgetUsdg <= 0)
-          throw new ApiError(422, "budget_required", "Add a positive USDG budget before approving this request.");
+          throw new ApiError(
+            422,
+            "budget_required",
+            "Add a positive USDG budget before approving this request.",
+          );
         if (parsed.budgetUsdg >= selfSettlementLimit("usdg"))
           throw new ApiError(
             422,
@@ -425,9 +433,15 @@ superAgentsRouter.post(
           throw new ApiError(404, "agent_not_found", "The matched Super Agent is unavailable.");
         if (agent.rows[0].owner_id === request.auth!.userId)
           throw new ApiError(422, "self_hire_not_allowed", "An owner cannot hire their own agent.");
-        const deadline = parsed.deadlineAt ? new Date(parsed.deadlineAt) : new Date(Date.now() + 7 * 86_400_000);
+        const deadline = parsed.deadlineAt
+          ? new Date(parsed.deadlineAt)
+          : new Date(Date.now() + 7 * 86_400_000);
         if (!Number.isFinite(deadline.getTime()) || deadline <= new Date())
-          throw new ApiError(422, "invalid_deadline", "The request deadline must be in the future.");
+          throw new ApiError(
+            422,
+            "invalid_deadline",
+            "The request deadline must be in the future.",
+          );
         const expires = new Date(deadline.getTime() + 7 * 86_400_000);
         const jobId = randomUUID();
         const title = `${agent.rows[0].name}: ${parsed.request}`.slice(0, 160);
@@ -454,11 +468,10 @@ superAgentsRouter.post(
           ],
         );
         job = created.rows[0];
-        await client.query("INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,$3)", [
-          jobId,
-          request.auth!.userId,
-          "job.opened",
-        ]);
+        await client.query(
+          "INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,$3)",
+          [jobId, request.auth!.userId, "job.opened"],
+        );
       }
       const result = await client.query(
         `UPDATE superagent_intents SET status=$3,decided_at=now() WHERE id=$1 AND user_id=$2 RETURNING id,status,decided_at`,
