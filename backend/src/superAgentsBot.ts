@@ -181,52 +181,59 @@ async function pollMentions() {
       created_at?: string;
     }>;
     for (const tweet of tweets) {
-      const identity = await db.query<{ user_id: string }>(
-        "SELECT user_id FROM superagent_x_identities WHERE x_user_id=$1",
-        [tweet.author_id ?? ""],
-      );
-      const userId = identity.rows[0]?.user_id ?? null;
-      const parsed = await parseSuperAgentIntent(tweet.text);
-      const matched = await findEnrolledAgent(parsed.agentName);
-      const agent = { rows: matched ? [matched] : [] };
-      const inserted = await db.query<{ id: string }>(
-        `INSERT INTO superagent_intents (user_id,x_post_id,x_author_id,raw_text,parsed,agent_id,status,source)
+      try {
+        const identity = await db.query<{ user_id: string }>(
+          "SELECT user_id FROM superagent_x_identities WHERE x_user_id=$1",
+          [tweet.author_id ?? ""],
+        );
+        const userId = identity.rows[0]?.user_id ?? null;
+        const parsed = await parseSuperAgentIntent(tweet.text);
+        const matched = await findEnrolledAgent(parsed.agentName);
+        const agent = { rows: matched ? [matched] : [] };
+        const inserted = await db.query<{ id: string }>(
+          `INSERT INTO superagent_intents (user_id,x_post_id,x_author_id,raw_text,parsed,agent_id,status,source)
          VALUES ($1,$2,$3,$4,$5,$6,$7,'x') ON CONFLICT (x_post_id) DO NOTHING RETURNING id`,
-        [
-          userId,
-          tweet.id,
-          tweet.author_id ?? null,
-          tweet.text,
-          parsed,
-          agent.rows[0]?.id ?? null,
-          agent.rows[0]?.id ? "pending" : "unmatched",
-        ],
-      );
-      if (inserted.rowCount) {
-        const link = `${env.SUPERAGENTS_URL.replace(/\/$/, "")}/auth`;
-        const reply = userId
-          ? matched
-            ? `Got it — ${matched.name} is matched. Review the proposal in your Super Agents workspace: ${link}`
-            : `I couldn't find an enabled Super Agent for that request. Browse available agents and get started: ${link}`
-          : `I couldn't create a proposal yet. Connect your Liege account to get started: ${link}`;
-        try {
-          await replyToMention(tweet.id, reply);
-        } catch (error) {
-          console.error(
-            "Super Agents X reply failed:",
-            error instanceof Error ? error.message : error,
-          );
+          [
+            userId,
+            tweet.id,
+            tweet.author_id ?? null,
+            tweet.text,
+            parsed,
+            agent.rows[0]?.id ?? null,
+            agent.rows[0]?.id ? "pending" : "unmatched",
+          ],
+        );
+        if (inserted.rowCount) {
+          const link = `${env.SUPERAGENTS_URL.replace(/\/$/, "")}/auth`;
+          const reply = userId
+            ? matched
+              ? `Got it — ${matched.name} is matched. Review the proposal in your Super Agents workspace: ${link}`
+              : `I couldn't find an enabled Super Agent for that request. Browse available agents and get started: ${link}`
+            : `I couldn't create a proposal yet. Connect your Liege account to get started: ${link}`;
+          try {
+            await replyToMention(tweet.id, reply);
+          } catch (error) {
+            console.error(
+              "Super Agents X reply failed:",
+              error instanceof Error ? error.message : error,
+            );
+          }
         }
+        if (userId)
+          await audit(db, {
+            actorId: userId,
+            action: "superagent.x_intent_received",
+            targetType: "x_post",
+            targetId: tweet.id,
+            requestId: tweet.id,
+            metadata: { matched: Boolean(agent.rows[0]?.id) },
+          });
+      } catch (error) {
+        console.error(
+          `Super Agents X tweet ${tweet.id} failed:`,
+          error instanceof Error ? error.message : error,
+        );
       }
-      if (userId)
-        await audit(db, {
-          actorId: userId,
-          action: "superagent.x_intent_received",
-          targetType: "x_post",
-          targetId: tweet.id,
-          requestId: tweet.id,
-          metadata: { matched: Boolean(agent.rows[0]?.id) },
-        });
     }
     const newestId = [payload?.meta?.newest_id, searchPayload?.meta?.newest_id]
       .filter(Boolean)
