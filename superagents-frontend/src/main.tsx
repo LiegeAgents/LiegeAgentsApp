@@ -1402,7 +1402,7 @@ function Dashboard() {
                     never authorize automatic spending or signing.
                   </p>
                   <Button secondary onClick={() => setRevoke(true)}>
-                    Disconnect Super Agents
+                    Reset preview connections
                   </Button>
                 </div>
               </section>
@@ -1544,7 +1544,7 @@ function Dashboard() {
                 location.assign("/auth");
               }}
             >
-              Disconnect
+              Reset preview
             </Button>
           </div>
         </Modal>
