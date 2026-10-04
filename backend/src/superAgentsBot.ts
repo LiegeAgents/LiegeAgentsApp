@@ -142,7 +142,39 @@ async function pollMentions() {
     });
     if (sinceId) params.set("since_id", sinceId);
     const payload = await xFetch(`/2/users/${botId}/mentions?${params}`);
-    const tweets = [...(payload?.data ?? [])].reverse() as Array<{
+    // X can lag on the user mentions timeline while exposing the same post through
+    // Recent Search. Merge both feeds so a valid mention is not stranded waiting
+    // for the timeline index to catch up.
+    let searchPayload: any = null;
+    try {
+      const searchParams = new URLSearchParams({
+        query: `@${env.X_BOT_HANDLE} -is:retweet`,
+        "tweet.fields": "author_id,created_at,conversation_id",
+        max_results: "100",
+      });
+      if (sinceId) searchParams.set("since_id", sinceId);
+      searchPayload = await xFetch(`/2/tweets/search/recent?${searchParams}`);
+    } catch (error) {
+      console.error(
+        "Super Agents X search fallback failed:",
+        error instanceof Error ? error.message : error,
+      );
+    }
+    const tweetById = new Map<
+      string,
+      {
+        id: string;
+        author_id?: string;
+        text: string;
+        created_at?: string;
+      }
+    >();
+    for (const tweet of [...(payload?.data ?? []), ...(searchPayload?.data ?? [])]) {
+      tweetById.set(tweet.id, tweet);
+    }
+    const tweets = [...tweetById.values()].sort((a, b) =>
+      (a.created_at ?? "").localeCompare(b.created_at ?? ""),
+    ) as Array<{
       id: string;
       author_id?: string;
       text: string;
@@ -196,10 +228,14 @@ async function pollMentions() {
           metadata: { matched: Boolean(agent.rows[0]?.id) },
         });
     }
-    if (payload?.meta?.newest_id)
+    const newestId = [payload?.meta?.newest_id, searchPayload?.meta?.newest_id]
+      .filter(Boolean)
+      .sort()
+      .at(-1);
+    if (newestId)
       await db.query(
         `INSERT INTO superagent_x_cursor (id,since_id) VALUES (true,$1) ON CONFLICT (id) DO UPDATE SET since_id=EXCLUDED.since_id,updated_at=now()`,
-        [payload.meta.newest_id],
+        [newestId],
       );
   } catch (error) {
     console.error("Super Agents X poll failed:", error instanceof Error ? error.message : error);
