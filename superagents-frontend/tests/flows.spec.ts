@@ -69,7 +69,7 @@ test("approve a sample request, persist it, filter it, and retain the no-funding
   await page.reload();
   await page.getByRole("button", { name: /A launch story worth sharing/ }).click();
   await page.getByRole("button", { name: "Approve proposal" }).click();
-  await expect(page.getByRole("dialog")).toContainText("no funds moved");
+  await expect(page.getByRole("dialog")).toContainText(/no funds moved/i);
   await page.getByRole("button", { name: "Got it" }).click();
   await page.reload();
   await page.getByRole("button", { name: "Approved draft", exact: true }).click();
