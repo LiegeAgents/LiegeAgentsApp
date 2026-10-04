@@ -82,7 +82,7 @@ export const docs = {
     sections: [
       [
         "Stake and capacity",
-        "An evaluator needs an active profile and at least 5,000 USDG staked. A job may be no larger than one fifth of its evaluator’s stake. The API enforces these constraints.",
+        "An evaluator needs an active profile and at least 5,000 USDG or 10,000,000 LIEGE staked, matching the job’s settlement asset. A job may be no larger than one fifth of its evaluator’s stake. The API enforces these constraints.",
       ],
       [
         "Settlement authority",

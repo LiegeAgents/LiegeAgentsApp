@@ -545,7 +545,7 @@ paths:
   /v1/evaluators:
     get:
       operationId: listEvaluators
-      summary: Active evaluators with at least 5,000 USDG staked, largest stake first.
+      summary: Active evaluators with the asset-specific minimum stake (5,000 USDG or 10,000,000 LIEGE), largest stake first.
       parameters:
         - $ref: "#/components/parameters/Limit"
       responses:
@@ -670,7 +670,8 @@ paths:
       description: |
         The deadline must be in the future and expiresAt no earlier than it. Without an
         independent evaluator the client settles the job, which is allowed only below 50 USDG.
-        An evaluator needs an active profile, at least 5,000 USDG staked, and stake of at least
+        An evaluator needs an active profile, at least 5,000 USDG or 10,000,000 LIEGE staked
+        in the job's settlement asset, and stake of at least
         five times the budgets of all their open jobs including this one.
       security: [{ bearerAuth: [] }]
       requestBody:

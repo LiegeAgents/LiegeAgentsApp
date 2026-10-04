@@ -78,11 +78,18 @@ adminRouter.post(
     const input = z
       .object({
         userId: z.string().uuid(),
-        stakeUsdg: z.coerce.number().min(0),
+        // stakeUsdg remains accepted for existing operators; stakeAmount is asset-neutral.
+        stakeUsdg: z.coerce.number().min(0).optional(),
+        stakeAmount: z.coerce.number().min(0).optional(),
         settlementAsset: z.enum(["usdg", "liege"]).default("usdg"),
         reference: z.string().min(8).max(200),
       })
+      .refine((value) => value.stakeAmount !== undefined || value.stakeUsdg !== undefined, {
+        path: ["stakeAmount"],
+        message: "stakeAmount is required.",
+      })
       .parse(request.body);
+    const stakeAmount = input.stakeAmount ?? input.stakeUsdg!;
     const client = await db.connect();
     try {
       await client.query("BEGIN");
@@ -93,7 +100,7 @@ adminRouter.post(
       await lockEvaluator(client, input.userId);
       const position = await evaluatorPosition(client, input.userId, {
         asset: input.settlementAsset as SettlementAsset,
-        stakeAmount: input.stakeUsdg,
+        stakeAmount,
       });
       if (!position.covered)
         throw new ApiError(
@@ -104,7 +111,7 @@ adminRouter.post(
       await setStake(
         client,
         input.userId,
-        input.stakeUsdg,
+        stakeAmount,
         request.auth!.userId,
         input.reference,
         input.settlementAsset,
@@ -112,7 +119,7 @@ adminRouter.post(
       if (input.settlementAsset === "usdg")
         await client.query(
           "UPDATE evaluator_profiles SET stake_usdg = $1, updated_at = now() WHERE user_id = $2",
-          [input.stakeUsdg, input.userId],
+          [stakeAmount, input.userId],
         );
       await audit(client, {
         actorId: request.auth!.userId,
@@ -121,7 +128,8 @@ adminRouter.post(
         targetId: input.userId,
         requestId: request.requestId,
         metadata: {
-          stakeUsdg: input.stakeUsdg,
+          stakeAmount,
+          stakeUsdg: stakeAmount,
           settlementAsset: input.settlementAsset,
           reference: input.reference,
         },
@@ -130,7 +138,8 @@ adminRouter.post(
       response.json({
         data: {
           userId: input.userId,
-          stakeUsdg: input.stakeUsdg,
+          stakeAmount,
+          stakeUsdg: stakeAmount,
           settlementAsset: input.settlementAsset,
         },
       });

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { ApiError } from "./http.js";
-import { ASSET_DECIMALS, type SettlementAsset } from "./assets.js";
+import { ASSET_DECIMALS, assetLabel, type SettlementAsset } from "./assets.js";
 
 type AccountKind = "available" | "escrow" | "stake" | "platform_clearing";
 
@@ -129,9 +129,10 @@ export async function creditUser(
   createdBy: string,
   reference: string,
   metadata: object = {},
+  asset: SettlementAsset = "usdg",
 ) {
-  const platform = await account(client, "platform_clearing", { asset: "usdg" });
-  const available = await account(client, "available", { userId, asset: "usdg" });
+  const platform = await account(client, "platform_clearing", { asset });
+  const available = await account(client, "available", { userId, asset });
   return transfer(client, {
     reference,
     type: "admin_credit",
@@ -140,6 +141,7 @@ export async function creditUser(
     amount,
     createdBy,
     metadata,
+    asset,
   });
 }
 
@@ -168,7 +170,7 @@ export async function setStake(
       insufficientFunds: new ApiError(
         422,
         "insufficient_available_balance",
-        "The evaluator does not have enough available USDG to stake that amount.",
+        `The evaluator does not have enough available ${assetLabel(asset)} to stake that amount.`,
       ),
     });
   } else if (difference < 0)

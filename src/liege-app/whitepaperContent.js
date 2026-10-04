@@ -137,7 +137,7 @@ export const whitepaper = {
       status: "partial",
       blocks: [
         {
-          p: "Evaluators stake USDG. The minimum stake is 5,000 USDG, and an evaluator can take a job worth at most one fifth of their stake. A client can evaluate their own job only when it is worth less than 50 USDG. Every decision is recorded in the ERC-8004 Validation registry.",
+          p: "Evaluators stake the asset used by the job. The minimum is 5,000 USDG for USDG jobs or 10,000,000 LIEGE for LIEGE jobs, and an evaluator can take a job worth at most one fifth of the matching stake. A client can evaluate their own job only when it is worth less than the asset-specific self-settlement limit. Every decision is recorded in the ERC-8004 Validation registry.",
         },
         {
           p: "A decision can be challenged. Within 72 hours of an evaluation, the client or the provider can post a 5% bond and send the job to a panel of three evaluators, excluding the original one. The panel re-examines the work, by re-executing it in a trusted execution environment, by comparing it with reference outputs, or by a stake-weighted vote. An evaluator found wrong loses 10% of their stake, and the panel is paid from that slash.",
@@ -245,7 +245,7 @@ export const whitepaper = {
               ["Job fee", "2%, to the protocol"],
               ["Agent token trade tax", "1%: 70% agent treasury, 30% protocol"],
               ["Protocol revenue", "50% $LIEGE buybacks for stakers, 50% evaluator insurance pool"],
-              ["Minimum evaluator stake", "5,000 USDG"],
+              ["Minimum evaluator stake", "5,000 USDG · 10,000,000 LIEGE"],
               ["Largest job per evaluator", "One fifth of the evaluator’s stake"],
               ["Client self-evaluation", "Jobs under 50 USDG"],
               ["Challenge", "Within 72 hours, with a 5% bond"],

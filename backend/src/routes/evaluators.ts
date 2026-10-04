@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "../db/index.js";
 import { requireAuth } from "../auth.js";
 import { asyncRoute } from "../http.js";
+import { minimumEvaluatorStake } from "../capacity.js";
 
 const profileInput = z.object({
   specialties: z.array(z.string().min(2).max(80)).max(20).default([]),
@@ -20,6 +21,7 @@ evaluatorsRouter.get(
         asset: z.enum(["usdg", "liege"]).default("usdg"),
       })
       .parse(request.query);
+    const minimumStake = minimumEvaluatorStake(query.asset);
     const result = await db.query(
       `SELECT ep.user_id, COALESCE(sum(lp.amount), 0) AS stake_amount,
       to_char(COALESCE(sum(lp.amount), 0), 'FM999999999999999990.000000') AS stake_usdg,
@@ -29,9 +31,9 @@ evaluatorsRouter.get(
      LEFT JOIN ledger_postings lp ON lp.account_id = la.id AND la.asset = $2
      WHERE ep.active
      GROUP BY ep.user_id, u.wallet_address, ep.specialties, ep.completed_count, ep.correct_count, ep.created_at
-     HAVING COALESCE(sum(lp.amount), 0) >= 5000
+     HAVING COALESCE(sum(lp.amount), 0) >= $3
      ORDER BY stake_amount DESC, ep.completed_count DESC LIMIT $1`,
-      [query.limit, query.asset],
+      [query.limit, query.asset, minimumStake],
     );
     response.json({ data: result.rows });
   }),
