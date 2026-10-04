@@ -506,6 +506,11 @@ function Onboarding() {
   const requested = agents.find((a) => a.id === new URLSearchParams(location.search).get("agent"));
   const names = ["Connect X", "Connect Liege", "Permissions", "All set"];
   function finish() {
+    try {
+      if (previewMode) sessionStorage.setItem("liege-superagents-preview-v1", "1");
+    } catch {
+      /* Navigation still works when storage is unavailable. */
+    }
     location.assign("/app");
   }
   return (
@@ -899,6 +904,13 @@ function Dashboard() {
   const [notice, setNotice] = useState<{ title: string; body: string } | null>(null);
   const [revoke, setRevoke] = useState(false);
   const [menu, setMenu] = useState(false);
+  const previewMode = (() => {
+    try {
+      return sessionStorage.getItem("liege-superagents-preview-v1") === "1";
+    } catch {
+      return false;
+    }
+  })();
   useEffect(() => {
     const token = getSessionToken();
     if (!token) return;
@@ -1097,6 +1109,7 @@ function Dashboard() {
           <button
             onClick={() => {
               sessionStorage.removeItem("liege-superagents-workspace-v1");
+              sessionStorage.removeItem("liege-superagents-preview-v1");
               clearSessionToken();
               location.assign("/");
             }}
@@ -1130,6 +1143,12 @@ function Dashboard() {
           </div>
         </header>
         <main className="dash-main">
+          {previewMode && (
+            <div className="demo-banner">
+              <span>Preview workspace</span>
+              <span>sample data · no funds moved</span>
+            </div>
+          )}
           <div className="dash-heading">
             <div>
               <span className="eyebrow">SUPER AGENTS / {tab.toUpperCase()}</span>
@@ -1564,6 +1583,7 @@ function Dashboard() {
               onClick={() => {
                 try {
                   sessionStorage.removeItem("liege-superagents-workspace-v1");
+                  sessionStorage.removeItem("liege-superagents-preview-v1");
                   clearSessionToken();
                 } catch {
                   /* Navigation still works. */

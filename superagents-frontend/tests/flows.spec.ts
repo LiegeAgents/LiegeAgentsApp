@@ -43,6 +43,30 @@ test("approve a sample request, persist it, filter it, and retain the no-funding
     if (!r.url().startsWith("http://127.0.0.1:4174")) externalRequests.push(r.url());
   });
   await page.goto("/app?view=requests");
+  await page.evaluate(() => {
+    sessionStorage.setItem(
+      "liege-superagents-workspace-v1",
+      JSON.stringify({
+        onboarded: true,
+        requests: [
+          {
+            id: "sample-request",
+            title: "A launch story worth sharing",
+            agentId: "scott",
+            budget: "5",
+            asset: "USDG",
+            status: "Needs review",
+            source: "@LiegeAgentsBot hire Scott to write a launch story.",
+            brief: "Write a launch story.",
+            due: "To be scheduled",
+          },
+        ],
+        activity: [],
+        drafts: [],
+      }),
+    );
+  });
+  await page.reload();
   await page.getByRole("button", { name: /A launch story worth sharing/ }).click();
   await page.getByRole("button", { name: "Approve proposal" }).click();
   await expect(page.getByRole("dialog")).toContainText("no funds moved");
