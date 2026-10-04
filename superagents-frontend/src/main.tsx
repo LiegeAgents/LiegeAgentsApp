@@ -1045,8 +1045,13 @@ function Dashboard() {
             body: JSON.stringify({ decision }),
           },
         );
-        if (!response.ok) throw new Error("The proposal could not be updated.");
-        const body = await response.json();
+        const body = await response.json().catch(() => null);
+        if (!response.ok)
+          throw new Error(
+            body?.error?.message ||
+              body?.message ||
+              "The proposal could not be updated. Try again from Requests.",
+          );
         createdJobId = body?.data?.job?.id || "";
       } catch (error) {
         setNotice({
