@@ -8,7 +8,7 @@ The runtime has no wallet private key and never calls funding, signing, evaluati
 endpoints. Human approval and wallet operations remain in Liege. Duplicate events are ignored
 in-process, and every job is checked for agent ownership, funded status, expiry, and delivery
 deadline before Groq is called. Until a dedicated scoped worker token is enabled in the API, treat
-`LIEGE_SESSION_TOKEN` as a broad owner credential: use a dedicated service owner account and
+`LIEGE_RUNTIME_TOKEN` as a scoped runtime credential:
 rotate it if the runtime is compromised.
 
 ## Local run

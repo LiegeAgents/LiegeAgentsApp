@@ -94,12 +94,60 @@ declare global {
   namespace Express {
     interface Request {
       auth?: { userId: string; walletAddress: string };
+      runtimeAuth?: { tokenId: string; userId: string; agentIds: string[]; scopes: string[] };
       mobileAuth?: { userId: string; deviceId: string; scopes: string[] };
     }
   }
 }
 
+export const hashRuntimeToken = (value: string) =>
+  createHash("sha256")
+    .update(`${env.AUTH_TOKEN_PEPPER ?? ""}:runtime:${value}`)
+    .digest("hex");
+
+/** Accepts a scoped runtime token only on routes that explicitly opt in. */
+export async function requireRuntimeAuth(
+  request: Request,
+  _response: Response,
+  next: NextFunction,
+) {
+  try {
+    const bearer = request.header("authorization")?.match(/^Bearer (.+)$/i)?.[1];
+    if (!bearer) throw new ApiError(401, "runtime_unauthenticated", "A runtime token is required.");
+    const result = await db.query<{
+      id: string;
+      owner_id: string;
+      agent_ids: string[];
+      scopes: string[];
+      wallet_address: string;
+    }>(
+      `SELECT t.id,t.owner_id,t.agent_ids,t.scopes,u.wallet_address
+       FROM runtime_tokens t JOIN users u ON u.id=t.owner_id
+       WHERE t.token_hash=$1 AND t.revoked_at IS NULL`,
+      [hashRuntimeToken(bearer)],
+    );
+    if (!result.rowCount)
+      throw new ApiError(401, "invalid_runtime_token", "This runtime token is invalid or revoked.");
+    await db.query("UPDATE runtime_tokens SET last_used_at=now() WHERE id=$1", [result.rows[0].id]);
+    request.runtimeAuth = {
+      tokenId: result.rows[0].id,
+      userId: result.rows[0].owner_id,
+      agentIds: result.rows[0].agent_ids ?? [],
+      scopes: result.rows[0].scopes ?? [],
+    };
+    request.auth = {
+      userId: result.rows[0].owner_id,
+      walletAddress: result.rows[0].wallet_address,
+    };
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function requireAuth(request: Request, _response: Response, next: NextFunction) {
+  if (request.header("x-liege-runtime-token") === "1")
+    return requireRuntimeAuth(request, _response, next);
   try {
     const bearer = request.header("authorization")?.match(/^Bearer (.+)$/i)?.[1];
     if (!bearer) throw new ApiError(401, "unauthenticated", "A bearer session token is required.");

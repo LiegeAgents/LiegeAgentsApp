@@ -4,7 +4,12 @@ import type { LiegeJob } from "./types.js";
 const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
   const response = await fetch(`${config.apiUrl}${path}`, {
     ...init,
-    headers: { authorization: `Bearer ${config.sessionToken}`, accept: "application/json", ...init.headers },
+    headers: {
+      authorization: `Bearer ${config.runtimeToken}`,
+      "x-liege-runtime-token": "1",
+      accept: "application/json",
+      ...init.headers,
+    },
     signal: init.signal ?? AbortSignal.timeout(20_000),
   });
   const body = await response.json().catch(() => ({})) as { data?: T; error?: { message?: string } };

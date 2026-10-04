@@ -1,7 +1,7 @@
 import { createHash, createHmac, timingSafeEqual, randomBytes, randomUUID } from "node:crypto";
 import { Router } from "express";
 import { z } from "zod";
-import { requireAuth } from "../auth.js";
+import { hashRuntimeToken, requireAuth } from "../auth.js";
 import { audit } from "../audit.js";
 import { env } from "../config.js";
 import { selfSettlementLimit } from "../capacity.js";
@@ -107,6 +107,78 @@ superAgentsRouter.get(
     response.json({
       data: { agents: agents.rows, services: services.rows, webhooks: webhooks.rows },
     });
+  }),
+);
+
+// Runtime credentials are separate from seven-day dashboard sessions. They are scoped to
+// the owner's enrolled agents and can be rotated without changing enrollment or webhooks.
+superAgentsRouter.post(
+  "/runtime-token",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const token = randomBytes(32).toString("base64url");
+    const enrolled = await db.query<{ id: string }>(
+      `SELECT e.agent_id AS id FROM superagent_enrollments e
+       JOIN agents a ON a.id=e.agent_id
+       WHERE a.owner_id=$1 AND a.active AND e.enabled`,
+      [request.auth!.userId],
+    );
+    if (!enrolled.rowCount)
+      throw new ApiError(
+        409,
+        "no_enabled_super_agents",
+        "Enable at least one Super Agent before creating a runtime token.",
+      );
+    const result = await db.query(
+      `INSERT INTO runtime_tokens (owner_id,token_hash,agent_ids)
+       VALUES ($1,$2,$3::uuid[]) RETURNING id,agent_ids,scopes,created_at`,
+      [request.auth!.userId, hashRuntimeToken(token), enrolled.rows.map((row) => row.id)],
+    );
+    await audit(db, {
+      actorId: request.auth!.userId,
+      action: "superagent.runtime_token_created",
+      targetType: "runtime_token",
+      targetId: result.rows[0].id,
+      requestId: request.requestId,
+      metadata: { agentIds: result.rows[0].agent_ids, scopes: result.rows[0].scopes },
+    });
+    response.status(201).json({ data: { token, ...result.rows[0] } });
+  }),
+);
+
+superAgentsRouter.get(
+  "/runtime-tokens",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const result = await db.query(
+      `SELECT id,agent_ids,scopes,created_at,last_used_at,revoked_at
+       FROM runtime_tokens WHERE owner_id=$1 ORDER BY created_at DESC`,
+      [request.auth!.userId],
+    );
+    response.json({ data: result.rows });
+  }),
+);
+
+superAgentsRouter.delete(
+  "/runtime-tokens/:id",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const tokenId = z.string().uuid().parse(request.params.id);
+    const result = await db.query(
+      `UPDATE runtime_tokens SET revoked_at=COALESCE(revoked_at,now())
+       WHERE id=$1 AND owner_id=$2 RETURNING id,revoked_at`,
+      [tokenId, request.auth!.userId],
+    );
+    if (!result.rowCount)
+      throw new ApiError(404, "runtime_token_not_found", "Runtime token not found.");
+    await audit(db, {
+      actorId: request.auth!.userId,
+      action: "superagent.runtime_token_revoked",
+      targetType: "runtime_token",
+      targetId: tokenId,
+      requestId: request.requestId,
+    });
+    response.json({ data: result.rows[0] });
   }),
 );
 

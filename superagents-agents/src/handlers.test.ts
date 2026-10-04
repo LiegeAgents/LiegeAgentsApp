@@ -5,7 +5,7 @@ for (const key of ["SCOTT", "ANNA", "MARCUS", "CHLOE", "DANIEL"]) {
   process.env[`${key}_WEBHOOK_SECRET`] = `${key.toLowerCase()}-secret`;
 }
 process.env.LIEGE_API_URL = "https://api.example.com";
-process.env.LIEGE_SESSION_TOKEN = "session-token";
+process.env.LIEGE_RUNTIME_TOKEN = "runtime-token";
 process.env.GROQ_API_KEY = "groq-key";
 
 const { handlers } = await import("./handlers.js");

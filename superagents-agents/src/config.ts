@@ -8,7 +8,7 @@ const required = (name: string) => {
 
 export const config = {
   apiUrl: required("LIEGE_API_URL").replace(/\/$/, ""),
-  sessionToken: required("LIEGE_SESSION_TOKEN"),
+  runtimeToken: required("LIEGE_RUNTIME_TOKEN"),
   serverUrl: process.env.AGENT_SERVER_URL?.trim()?.replace(/\/$/, "") ?? "",
   port: Number(process.env.PORT ?? 3210),
   groqKey: required("GROQ_API_KEY"),
