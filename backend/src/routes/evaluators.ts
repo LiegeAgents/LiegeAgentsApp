@@ -21,7 +21,9 @@ evaluatorsRouter.get(
       })
       .parse(request.query);
     const result = await db.query(
-      `SELECT ep.user_id, COALESCE(sum(lp.amount), 0) AS stake_amount, COALESCE(sum(lp.amount), 0) AS stake_usdg, $2::text AS settlement_asset, ep.specialties, ep.completed_count, ep.correct_count, ep.created_at,
+      `SELECT ep.user_id, COALESCE(sum(lp.amount), 0) AS stake_amount,
+      to_char(COALESCE(sum(lp.amount), 0), 'FM999999999999999990.000000') AS stake_usdg,
+      $2::text AS settlement_asset, ep.specialties, ep.completed_count, ep.correct_count, ep.created_at,
       u.wallet_address, CASE WHEN ep.completed_count = 0 THEN NULL ELSE round((ep.correct_count::numeric / ep.completed_count) * 100, 2) END AS accuracy
      FROM evaluator_profiles ep JOIN users u ON u.id = ep.user_id LEFT JOIN ledger_accounts la ON la.user_id = ep.user_id AND la.kind = 'stake'
      LEFT JOIN ledger_postings lp ON lp.account_id = la.id AND la.asset = $2
