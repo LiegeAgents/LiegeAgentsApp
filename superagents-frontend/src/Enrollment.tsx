@@ -40,6 +40,17 @@ export function Enrollment({
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const agent = data.agents.find((a) => a.id === agentId);
+  const service = data.services.find((item) => item.id === serviceId);
+  useEffect(() => {
+    if (!agent || !service) return;
+    const supported = ["usdg", "liege"].filter(
+      (asset) => agent.settlement_assets?.includes(asset) && service.settlement_assets?.includes(asset),
+    );
+    setSettlementAssets((current) => {
+      const next = current.filter((asset) => supported.includes(asset));
+      return next.length ? next : supported.slice(0, 1);
+    });
+  }, [agent?.id, service?.id]);
   async function call(path: string, body?: unknown) {
     const response = await fetch(`${api}/v1/${path}`, {
       method: body === undefined ? "GET" : "POST",
@@ -228,7 +239,6 @@ export function Enrollment({
                     selected token.
                   </p>
                   {["usdg", "liege"].map((asset) => {
-                    const service = data.services.find((item) => item.id === serviceId);
                     const supported = Boolean(
                       agent.settlement_assets?.includes(asset) &&
                       service?.settlement_assets?.includes(asset),

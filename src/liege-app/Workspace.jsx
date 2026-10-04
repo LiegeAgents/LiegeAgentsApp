@@ -3018,7 +3018,7 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
   useEffect(() => {
     let active = true;
     api
-      .evaluators()
+      .evaluators(v.settlementAsset)
       .then((result) => {
         if (active) setEvaluators(result.data || []);
       })
@@ -3026,7 +3026,7 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [v.settlementAsset]);
   const change = (k, val) => {
       setV({ ...v, [k]: val });
       setError("");
@@ -3183,7 +3183,7 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
                 return (
                   <option key={e.user_id} value={e.user_id}>
                     {e.wallet_address.slice(0, 8)}…{e.wallet_address.slice(-6)} · {money(stake)}{" "}
-                    USDG staked
+                    {v.settlementAsset.toUpperCase()} capacity
                   </option>
                 );
               })}
