@@ -111,7 +111,39 @@ function Modal({
     </dialog>
   );
 }
-function AgentDetail({ agent, onClose }: { agent: Agent; onClose: () => void }) {
+const isSuperAgentsLaunched = String(import.meta.env.VITE_IS_LAUNCHED).toLowerCase() === "true";
+
+function AvailabilityModal({ onClose }: { onClose: () => void }) {
+  return (
+    <Modal title="Super Agents is on the way" onClose={onClose}>
+      <div className="availability-mark" aria-hidden="true">
+        <span>✦</span>
+      </div>
+      <h3 className="serif">Your next team is getting ready.</h3>
+      <p>
+        Super Agents is rolling out region by region. We’re preparing the connection for your
+        location now—check back soon and we’ll be ready when you are.
+      </p>
+      <div className="dialog-actions">
+        <Button onClick={onClose}>
+          Stay in the loop <Check size={15} />
+        </Button>
+        <a className="button secondary" href="#agents" onClick={onClose}>
+          Meet the agents
+        </a>
+      </div>
+    </Modal>
+  );
+}
+function AgentDetail({
+  agent,
+  onClose,
+  onUnavailable,
+}: {
+  agent: Agent;
+  onClose: () => void;
+  onUnavailable?: () => void;
+}) {
   return (
     <Modal title={`${agent.name} by LiegeAgents`} onClose={onClose}>
       <Portrait agent={agent} className="detail-art" />
@@ -125,7 +157,16 @@ function AgentDetail({ agent, onClose }: { agent: Agent; onClose: () => void }) 
         {BOT} {agent.brief}
       </blockquote>
       <p className="muted small">{agent.boundary}</p>
-      <a className="button" href={`/auth?agent=${agent.id}`}>
+      <a
+        className="button"
+        href={isSuperAgentsLaunched ? `/auth?agent=${agent.id}` : undefined}
+        onClick={(event) => {
+          if (!isSuperAgentsLaunched) {
+            event.preventDefault();
+            onUnavailable?.();
+          }
+        }}
+      >
         Get started <ArrowRight size={16} />
       </a>
     </Modal>
@@ -163,7 +204,14 @@ function AgentCards({ onSelect }: { onSelect: (a: Agent) => void }) {
 }
 function Landing() {
   const [selected, setSelected] = useState<Agent | null>(null);
+  const [availabilityOpen, setAvailabilityOpen] = useState(false);
   const [menu, setMenu] = useState(false);
+  const openAuth = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (!isSuperAgentsLaunched) {
+      event.preventDefault();
+      setAvailabilityOpen(true);
+    }
+  };
   return (
     <div className="superagents-landing">
       <header className="site-header">
@@ -179,7 +227,11 @@ function Landing() {
             For builders
           </a>
         </nav>
-        <a className="button secondary header-cta" href="/auth">
+        <a
+          className="button secondary header-cta"
+          href={isSuperAgentsLaunched ? "/auth" : undefined}
+          onClick={openAuth}
+        >
           Get started <ArrowUpRight size={15} />
         </a>
         <button
@@ -207,7 +259,11 @@ function Landing() {
               next move happen.
             </p>
             <div className="hero-actions">
-              <a href="/auth" className="button">
+              <a
+                href={isSuperAgentsLaunched ? "/auth" : undefined}
+                className="button"
+                onClick={openAuth}
+              >
                 Meet your next team <ArrowUpRight size={17} />
               </a>
               <a className="text-link" href="#agents">
@@ -360,14 +416,25 @@ function Landing() {
             <br />
             <em>Find your people. And agents.</em>
           </h2>
-          <a className="button" href="/auth">
+          <a
+            className="button"
+            href={isSuperAgentsLaunched ? "/auth" : undefined}
+            onClick={openAuth}
+          >
             Get started <ArrowUpRight size={17} />
           </a>
           <p className="small muted">Connect your workspace to start proposing work.</p>
         </section>
       </main>
       <NormalFooter />
-      {selected && <AgentDetail agent={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <AgentDetail
+          agent={selected}
+          onClose={() => setSelected(null)}
+          onUnavailable={() => setAvailabilityOpen(true)}
+        />
+      )}
+      {availabilityOpen && <AvailabilityModal onClose={() => setAvailabilityOpen(false)} />}
     </div>
   );
 }
