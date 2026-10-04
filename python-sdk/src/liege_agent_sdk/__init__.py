@@ -18,6 +18,7 @@ from .models import (
     McpEvent,
     McpEventPage,
     McpEventWait,
+    McpExecutionGrant,
     McpProposal,
     Receipt,
     RunnerArtifact,
@@ -47,6 +48,7 @@ __all__ = [
     "McpEvent",
     "McpEventPage",
     "McpEventWait",
+    "McpExecutionGrant",
     "McpHarnessPreset",
     "McpHarnessPresetsResponse",
     "Page",
@@ -68,4 +70,4 @@ __all__ = [
     "WebhookCreateInput",
     "WebhookSubscription",
 ]
-__version__ = "0.1.8"
+__version__ = "0.1.9"

@@ -61,3 +61,26 @@ def test_cursor_events_and_bounded_wait():
         waited = client.wait_for_job_event("42", timeout_ms=500)
         assert waited.timed_out is True
         assert calls == ["initialize", "notifications/initialized", "tools/call", "tools/call"]
+
+
+def test_execution_grant_helpers():
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        import json
+        payload = json.loads(request.content)
+        calls.append(payload["params"]["name"] if payload["method"] == "tools/call" else payload["method"])
+        name = payload.get("params", {}).get("name")
+        value = (
+            {"grantToken": "lxe_token", "jobId": "job-1", "expiresAt": "2030-01-01T00:00:00Z"}
+            if name == "get_execution_grant"
+            else {"id": "job-1", "status": "submitted", "title": "Research"}
+        )
+        return httpx.Response(200, json={"result": {"content": [{"type": "text", "text": json.dumps(value)}]}})
+
+    with McpClient("lmp_test", "https://mcp.test", httpx.Client(transport=httpx.MockTransport(handler))) as client:
+        grant = client.get_execution_grant("proposal-1")
+        job = client.submit_granted_deliverable(grant.grant_token, grant.job_id, "Report")
+        assert grant.job_id == "job-1"
+        assert job.status == "submitted"
+        assert calls == ["initialize", "notifications/initialized", "get_execution_grant", "submit_granted_deliverable"]
