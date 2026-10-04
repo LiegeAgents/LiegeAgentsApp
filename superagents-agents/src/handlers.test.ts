@@ -13,7 +13,7 @@ const { handlers } = await import("./handlers.js");
 describe("Super Agent handler registry", () => {
   test("registers all five handlers with distinct service slugs", () => {
     expect(Object.keys(handlers).sort()).toEqual(["anna", "chloe", "daniel", "marcus", "scott"]);
-    expect(new Set(Object.values(handlers).flatMap((handler) => handler.serviceSlugs)).size).toBe(15);
+    expect(new Set(Object.values(handlers).flatMap((handler) => handler.serviceSlugs)).size).toBe(16);
   });
 
   test("keeps service routing scoped to the handler", () => {

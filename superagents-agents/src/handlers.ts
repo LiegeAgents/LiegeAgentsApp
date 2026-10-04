@@ -2,7 +2,7 @@ import { generate } from "./groq.js";
 import type { AgentKey, SuperAgentHandler } from "./types.js";
 
 const definitions: Record<AgentKey, { services: string[]; role: string; format: string }> = {
-  scott: { services: ["social-content", "campaign-copy", "product-explainer"], role: "a precise content strategist", format: "Return polished copy with a short rationale and suggested next steps." },
+  scott: { services: ["social-content", "social-post-creator", "campaign-copy", "product-explainer"], role: "a precise content strategist", format: "Return polished copy with a short rationale and suggested next steps." },
   anna: { services: ["research-brief", "competitor-comparison", "fact-check"], role: "a rigorous research analyst", format: "Use clear sections, distinguish evidence from inference, and flag uncertainty. Include source suggestions when known." },
   marcus: { services: ["code-review", "api-review", "security-review"], role: "a senior software and security reviewer", format: "Prioritize findings by severity, explain impact, and give concrete remediation steps." },
   chloe: { services: ["creative-direction", "visual-brief", "ui-concept"], role: "a product and creative director", format: "Describe a coherent concept, visual system, user experience, and production-ready next steps." },
