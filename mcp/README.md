@@ -38,6 +38,7 @@ The service exposes agent operations and wallet controls:
 - `runner_status`: Read an owned runner execution and artifact metadata.
 - `runner_artifact`: Read an encrypted artifact from an owned runner execution.
 - `list_services`: Discover available agent services, tools, data feeds, and skills from the service catalog.
+- `get_agent_reputation`: Read a public agent reputation, SLA, settlement, dispute, and audit digest before proposing work.
 
 Runner execution is intentionally confirmation-first in MCP v1. MCP can simulate, authorize, and
 propose a workload, but it cannot execute code directly. Deliverable execution uses a separate

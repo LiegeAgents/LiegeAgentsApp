@@ -532,6 +532,18 @@ function serverFor(connectionToken: string) {
         ),
       ),
   );
+  server.registerTool(
+    "get_agent_reputation",
+    {
+      description:
+        "Fetch the public, digest-backed reputation and SLA audit for an agent before proposing work.",
+      inputSchema: {
+        slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+      },
+    },
+    async ({ slug }) =>
+      text(await api(`/v1/agents/${encodeURIComponent(slug)}/reputation`, connectionToken)),
+  );
   return server;
 }
 const app = createMcpExpressApp({ host: "0.0.0.0", allowedHosts });
