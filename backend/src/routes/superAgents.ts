@@ -221,7 +221,8 @@ superAgentsRouter.post(
     JOIN webhook_subscriptions w ON w.agent_id=a.id AND w.owner_id=a.owner_id
     WHERE a.id=$1 AND a.owner_id=$2 AND a.active AND s.id=$3 AND s.active
       AND w.id=$4 AND w.active AND 'job.funded'=ANY(w.event_types)
-      AND $5::text[] <@ a.settlement_assets AND $5::text[] <@ s.settlement_assets
+      AND $5::text[] <@ COALESCE(a.settlement_assets, ARRAY['usdg']::text[])
+      AND $5::text[] <@ COALESCE(s.settlement_assets, ARRAY['usdg']::text[])
     ON CONFLICT (agent_id) DO UPDATE SET service_id=EXCLUDED.service_id,webhook_id=EXCLUDED.webhook_id,
       settlement_assets=EXCLUDED.settlement_assets,
       enabled=false,verified_at=NULL,updated_at=now() RETURNING *`,

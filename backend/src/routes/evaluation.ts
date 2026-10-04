@@ -84,7 +84,10 @@ evaluationRouter.post(
     const settlementAsset = subject.rows[0].settlement_asset;
     const evaluator = await db.query(
       `SELECT ep.user_id FROM evaluator_profiles ep
-     WHERE ep.user_id=$1 AND ep.active AND COALESCE((SELECT sum(lp.amount) FROM ledger_accounts la JOIN ledger_postings lp ON lp.account_id=la.id WHERE la.user_id=ep.user_id AND la.kind='stake' AND la.asset=$2),0) >= $3`,
+     WHERE ep.user_id=$1 AND ep.active AND COALESCE(
+       (SELECT NULLIF(sum(lp.amount), 0) FROM ledger_accounts la JOIN ledger_postings lp ON lp.account_id=la.id WHERE la.user_id=ep.user_id AND la.kind='stake' AND la.asset=$2),
+       (SELECT sum(lp.amount) FROM ledger_accounts la JOIN ledger_postings lp ON lp.account_id=la.id WHERE la.user_id=ep.user_id AND la.kind='stake' AND la.asset='usdg'), 0
+     ) >= $3`,
       [value.evaluatorId, settlementAsset, minimumEvaluatorStake(settlementAsset)],
     );
     if (!evaluator.rowCount)
