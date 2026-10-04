@@ -2334,6 +2334,34 @@ paths:
       responses:
         "200": { description: Discovery updated }
         "409": { description: Enrollment is not ready or is not owned by this account }
+  /v1/super-agents/runtime-token:
+    post:
+      operationId: createSuperAgentRuntimeToken
+      summary: Create a scoped runtime credential for enabled Super Agents
+      security: [{ bearerAuth: [] }]
+      responses:
+        "201": { description: One-time runtime token and its scopes }
+        "409": { description: No enabled Super Agents are available }
+  /v1/super-agents/runtime-tokens:
+    get:
+      operationId: listSuperAgentRuntimeTokens
+      summary: List runtime credentials without revealing token values
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Runtime credentials and usage metadata }
+  /v1/super-agents/runtime-tokens/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      operationId: revokeSuperAgentRuntimeToken
+      summary: Revoke a Super Agent runtime credential
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Runtime credential revoked }
+        "404": { description: Runtime credential not found }
   /v1/super-agents/dashboard:
     get:
       operationId: superAgentsDashboard

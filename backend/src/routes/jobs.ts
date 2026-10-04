@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Router } from "express";
+import { Router, type Request } from "express";
 import type { PoolClient } from "pg";
 import { z } from "zod";
 import { formatUnits, parseUnits } from "viem";
@@ -95,6 +95,19 @@ const jobInput = z
   });
 
 export const jobsRouter = Router();
+
+async function assertRuntimeAgentScope(request: Request, jobId: string) {
+  if (!request.runtimeAuth) return;
+  const result = await db.query<{ agent_id: string }>("SELECT agent_id FROM jobs WHERE id=$1", [
+    jobId,
+  ]);
+  if (!result.rowCount || !request.runtimeAuth.agentIds.includes(result.rows[0].agent_id))
+    throw new ApiError(
+      403,
+      "runtime_agent_scope",
+      "This runtime token is not scoped to this agent.",
+    );
+}
 
 // Ciphertext never leaves the API. Private fields are retrieved through the audited payload route.
 const publicJob = ({ brief_ciphertext: _ciphertext, ...job }: Record<string, unknown>) => ({
@@ -245,6 +258,12 @@ jobsRouter.get(
         "This job does not exist or is not available to this account.",
       );
     const job = result.rows[0];
+    if (request.runtimeAuth && !request.runtimeAuth.agentIds.includes(String(job.agent_id)))
+      throw new ApiError(
+        403,
+        "runtime_agent_scope",
+        "This runtime token is not scoped to this agent.",
+      );
     response.json({
       data: {
         ...job,
@@ -283,6 +302,13 @@ jobsRouter.get(
   asyncRoute(async (request, response) => {
     const id = z.string().uuid().parse(request.params.id);
     const payload = z.enum(["brief", "deliverable"]).parse(request.params.payload);
+    await assertRuntimeAgentScope(request, id);
+    if (request.runtimeAuth && !request.runtimeAuth.scopes.includes("briefs:read"))
+      throw new ApiError(
+        403,
+        "runtime_scope_denied",
+        "This runtime token cannot read private payloads.",
+      );
     response.json({ data: await privatePayload(request, id, payload) });
   }),
 );
@@ -948,6 +974,14 @@ jobsRouter.post(
         "deliverable is required.",
       )
       .parse(request.body);
+    const jobId = z.string().uuid().parse(request.params.id);
+    await assertRuntimeAgentScope(request, jobId);
+    if (request.runtimeAuth && !request.runtimeAuth.scopes.includes("deliverables:write"))
+      throw new ApiError(
+        403,
+        "runtime_scope_denied",
+        "This runtime token cannot submit deliverables.",
+      );
     const payload = input.deliverable ?? input.deliverableCiphertext!;
     const client = await db.connect();
     try {

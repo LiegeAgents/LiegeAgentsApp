@@ -1,10 +1,10 @@
 import { readFile, writeFile } from "node:fs/promises";
 
 const apiUrl = (Bun.env.LIEGE_API_URL || "https://api.liegeagents.com").replace(/\/$/, "");
-const sessionToken = Bun.env.LIEGE_SESSION_TOKEN?.trim();
+const sessionToken = Bun.env.LIEGE_RUNTIME_TOKEN?.trim() ?? Bun.env.LIEGE_SESSION_TOKEN?.trim();
 const serverUrl = Bun.env.AGENT_SERVER_URL?.trim()?.replace(/\/$/, "");
 
-if (!sessionToken) throw new Error("LIEGE_SESSION_TOKEN is required in superagents-agents/.env");
+if (!sessionToken) throw new Error("LIEGE_RUNTIME_TOKEN is required in superagents-agents/.env");
 if (!serverUrl) throw new Error("AGENT_SERVER_URL is required in superagents-agents/.env");
 
 const agents = [
