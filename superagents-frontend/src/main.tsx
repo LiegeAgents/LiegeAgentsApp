@@ -771,16 +771,6 @@ function SuperAgentChat({ live = false }: { live?: boolean }) {
   ]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
-  const [active, setActive] = useState(
-    new URLSearchParams(location.search).get("view") === "chat" ||
-      !new URLSearchParams(location.search).get("view"),
-  );
-  useEffect(() => {
-    const onTab = (event: Event) => setActive((event as CustomEvent<string>).detail === "chat");
-    window.addEventListener("sa-tab-change", onTab);
-    return () => window.removeEventListener("sa-tab-change", onTab);
-  }, []);
-  if (!active) return null;
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     const value = text.trim();
@@ -790,24 +780,22 @@ function SuperAgentChat({ live = false }: { live?: boolean }) {
     setBusy(true);
     try {
       const token = getSessionToken();
-      const api = import.meta.env.VITE_API_URL as string | undefined;
-      const response =
-        token && api
-          ? await fetch(`${api.replace(/\/$/, "")}/v1/super-agents/intents/parse`, {
-              method: "POST",
-              headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-              body: JSON.stringify({ text: value }),
-            })
-          : null;
+      const api = superAgentsApi;
+      const response = token
+        ? await fetch(`${api}/v1/super-agents/intents/parse`, {
+            method: "POST",
+            headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+            body: JSON.stringify({ text: value }),
+          })
+        : null;
       const parsed = response?.ok ? (await response.json()).data : null;
-      const proposal =
-        token && api
-          ? await fetch(`${api.replace(/\/$/, "")}/v1/super-agents/intents`, {
-              method: "POST",
-              headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-              body: JSON.stringify({ text: value }),
-            })
-          : null;
+      const proposal = token
+        ? await fetch(`${api}/v1/super-agents/intents`, {
+            method: "POST",
+            headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+            body: JSON.stringify({ text: value }),
+          })
+        : null;
       const match =
         parsed?.agentName ||
         value.match(
@@ -845,7 +833,7 @@ function SuperAgentChat({ live = false }: { live?: boolean }) {
           <h2>What should your agents do?</h2>
         </div>
         <span className="chat-status">
-          <MessageCircle size={13} /> {live ? "Live workspace" : "Connect wallet"}
+          <MessageCircle size={13} /> {live ? "Connected" : "Connect wallet"}
         </span>
       </div>
       <div className="chat-messages" aria-live="polite">
@@ -1155,6 +1143,7 @@ function Dashboard() {
               </Button>
             )}
           </div>
+          {tab === "chat" && <SuperAgentChat live={Boolean(getSessionToken())} />}
           {tab === "overview" && (
             <>
               <div className="metric-grid">
@@ -1578,12 +1567,7 @@ function App() {
   ) : path === "/auth" ? (
     <Onboarding />
   ) : path === "/app" ? (
-    <>
-      <Dashboard />
-      <div className="dashboard-chat-overlay">
-        <SuperAgentChat live={Boolean(getSessionToken())} />
-      </div>
-    </>
+    <Dashboard />
   ) : (
     <div className="not-found">
       <Logo />
