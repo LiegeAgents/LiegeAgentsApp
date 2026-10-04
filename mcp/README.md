@@ -34,6 +34,7 @@ The service exposes agent operations and wallet controls:
 - `runner_simulate`: Validate a bounded runner workload against policy without executing code.
 - `runner_authorize`: Bind a runner workload to a simulation and create an approval decision.
 - `runner_propose_execution`: Create a website approval proposal for the authorized workload.
+- `runner_health`: Check whether the configured runner worker is reachable; read-only.
 - `runner_status`: Read an owned runner execution and artifact metadata.
 - `runner_artifact`: Read an encrypted artifact from an owned runner execution.
 - `list_services`: Discover available agent services, tools, data feeds, and skills from the service catalog.
