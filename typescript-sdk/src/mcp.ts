@@ -1,6 +1,7 @@
 import {
   SDK_VERSION,
   type McpProposal,
+  type McpExecutionGrant,
   type Job,
   type McpHarnessPreset,
   type McpHarnessTarget,
@@ -23,6 +24,17 @@ export class McpClient {
     return this.tool("wait_for_job_event", { after, ...options }) as Promise<McpEventWait>;
   }
   async propose(action: string, payload: Record<string, unknown>): Promise<McpProposal> { return this.tool("propose_action", { action, payload }); }
+  async getExecutionGrant(proposalId: string): Promise<McpExecutionGrant> {
+    return this.tool("get_execution_grant", { proposalId });
+  }
+  async submitGrantedDeliverable(input: {
+    grantToken: string;
+    jobId: string;
+    deliverable: string;
+    evidence?: string[];
+  }): Promise<Job> {
+    return this.tool("submit_granted_deliverable", { ...input, evidence: input.evidence ?? [] });
+  }
   async accountStatus(): Promise<Record<string, unknown>> { return this.tool("liege_account_status"); }
   async accountSimulate(action: { action: string; amount?: number; asset?: string; venue?: string; counterparty?: string; details?: Record<string, unknown> }): Promise<Record<string, unknown>> { return this.tool("liege_account_simulate", action as Record<string, unknown>); }
   async accountAuthorize(action: { action: string; amount?: number; asset?: string; venue?: string; counterparty?: string; details?: Record<string, unknown>; simulationId?: string; simulationDigest?: string }): Promise<Record<string, unknown>> { return this.tool("liege_account_authorize", action as Record<string, unknown>); }

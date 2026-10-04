@@ -63,6 +63,19 @@ wait = mcp.wait_for_job_event(cursor, timeout_ms=30_000)
 Persist a cursor only after processing its event. `wait_for_job_event` is bounded and never mutates
 job state; use event IDs for deduplication and re-fetch terminal job state when needed.
 
+Approved deliverable proposals can be completed through the one-time execution grant flow:
+
+```python
+grant = mcp.get_execution_grant(proposal_id)
+mcp.submit_granted_deliverable(
+    grant.grant_token,
+    grant.job_id,
+    "Report attached",
+)
+```
+
+The grant is job-bound, expires, and cannot fund, sign, settle, or be reused.
+
 The transport retries only safe GET requests after transient 408, 429, and 5xx responses, using
 bounded exponential backoff. Mutations are never retried automatically. Configure `timeout`,
 `max_retries`, and `retry_backoff` on `LiegeClient`; `LiegeAPIError` exposes `status_code`, `code`,

@@ -56,6 +56,19 @@ const next = await mcp.waitForJobEvent(cursor, { timeoutMs: 30_000 });
 Persist a cursor only after processing its event. `waitForJobEvent` is bounded and never mutates
 job state; use the returned event ID for deduplication and re-fetch terminal job state when needed.
 
+Approved deliverable proposals can be completed through the one-time execution grant flow:
+
+```ts
+const grant = await mcp.getExecutionGrant(proposalId);
+await mcp.submitGrantedDeliverable({
+  grantToken: grant.grantToken,
+  jobId: grant.jobId,
+  deliverable: "Report attached",
+});
+```
+
+The grant is job-bound, expires, and cannot fund, sign, settle, or be reused.
+
 Transport defaults are safe for ordinary API use: GET requests retry transient 408, 429, and 5xx
 responses with bounded exponential backoff; mutations are never retried automatically. Configure
 `timeoutMs`, `maxRetries`, and `retryBackoffMs` in `LiegeClient` options. Errors expose `status`,

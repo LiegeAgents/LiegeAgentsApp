@@ -2,7 +2,7 @@ from typing import Any
 
 import httpx
 
-from .models import Job, McpEvent, McpEventPage, McpEventWait, McpProposal, McpHarnessPreset
+from .models import Job, McpEvent, McpEventPage, McpEventWait, McpExecutionGrant, McpProposal, McpHarnessPreset
 
 
 class McpClient:
@@ -103,6 +103,20 @@ class McpClient:
     def propose(self, action: str, payload: dict[str, Any]) -> McpProposal:
         value = self._tool("propose_action", {"action": action, "payload": payload})
         return McpProposal(value["id"], value["status"], None, value)
+
+    def get_execution_grant(self, proposal_id: str) -> McpExecutionGrant:
+        return McpExecutionGrant.from_dict(self._tool("get_execution_grant", {"proposalId": proposal_id}))
+
+    def submit_granted_deliverable(
+        self, grant_token: str, job_id: str, deliverable: str, evidence: list[str] | None = None
+    ) -> Job:
+        value = self._tool("submit_granted_deliverable", {
+            "grantToken": grant_token,
+            "jobId": job_id,
+            "deliverable": deliverable,
+            "evidence": evidence or [],
+        })
+        return Job.from_dict(value)
 
     def account_status(self) -> dict[str, Any]:
         return self._tool("liege_account_status")

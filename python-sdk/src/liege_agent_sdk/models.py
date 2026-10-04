@@ -2,6 +2,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal, TypedDict
 
+
+def _date(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
 ServiceType = Literal["tool", "data", "skill"]
 ServiceExecutionMode = Literal["manual", "sandboxed_runner"]
 ApprovalMode = Literal["always", "within_policy"]
@@ -89,6 +95,21 @@ class McpProposal:
     status: str
     expires_at: datetime | None
     raw: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class McpExecutionGrant:
+    grant_token: str
+    job_id: str
+    expires_at: datetime | None
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "McpExecutionGrant":
+        return cls(
+            str(value.get("grantToken", value.get("grant_token", ""))),
+            str(value.get("jobId", value.get("job_id", ""))),
+            _date(value.get("expiresAt", value.get("expires_at"))),
+        )
 
 
 @dataclass(frozen=True)

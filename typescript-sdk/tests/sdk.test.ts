@@ -521,4 +521,20 @@ describe("McpClient", () => {
     expect(res.connectionId).toBe("conn-1");
     expect(res.presets.cursor).toBeDefined();
   });
+
+  test("retrieves and submits a one-time execution grant", async () => {
+    const calls: string[] = [];
+    const mcp = new McpClient("lmp_grant", "https://mcp.test", async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as { params?: { name?: string } };
+      calls.push(body.params?.name ?? "");
+      if (body.params?.name === "get_execution_grant")
+        return new Response(JSON.stringify({ result: { content: [{ type: "text", text: JSON.stringify({ grantToken: "lxe_token", jobId: "job-1", expiresAt: "2030-01-01T00:00:00Z" }) }] } }));
+      return new Response(JSON.stringify({ result: { content: [{ type: "text", text: JSON.stringify({ id: "job-1", status: "submitted" }) }] } }));
+    });
+    const grant = await mcp.getExecutionGrant("proposal-1");
+    const job = await mcp.submitGrantedDeliverable({ grantToken: grant.grantToken, jobId: grant.jobId, deliverable: "Report" });
+    expect(grant.jobId).toBe("job-1");
+    expect(job.status).toBe("submitted");
+    expect(calls).toEqual(["", "", "get_execution_grant", "submit_granted_deliverable"]);
+  });
 });
