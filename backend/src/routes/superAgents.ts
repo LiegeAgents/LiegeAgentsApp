@@ -498,6 +498,14 @@ superAgentsRouter.post(
     const input = textInput.parse(request.body);
     const parsed = await parseSuperAgentIntent(input.text);
     const agent = await findAgent(parsed.agentName);
+    if (!agent)
+      throw new ApiError(
+        422,
+        "agent_unavailable",
+        parsed.agentName
+          ? `${parsed.agentName} is not currently enrolled and discoverable as a Super Agent.`
+          : "Include the name of an enrolled Super Agent.",
+      );
     if (!agent || !parsed.budgetUsdg) {
       throw new ApiError(
         422,

@@ -34,14 +34,24 @@ async function refreshXAccessToken() {
   return true;
 }
 
-async function xFetch(path: string, retry = true) {
+async function xFetch(path: string, init: RequestInit = {}, retry = true) {
   const response = await fetch(`https://api.x.com${path}`, {
+    ...init,
     headers: { authorization: `Bearer ${accessToken}`, accept: "application/json" },
     signal: AbortSignal.timeout(10_000),
   });
-  if (response.status === 401 && retry && (await refreshXAccessToken())) return xFetch(path, false);
+  if (response.status === 401 && retry && (await refreshXAccessToken()))
+    return xFetch(path, init, false);
   if (!response.ok) throw new Error(`X API returned ${response.status}.`);
   return response.json() as Promise<any>;
+}
+
+async function replyToMention(tweetId: string, text: string) {
+  await xFetch("/2/tweets", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ text: text.slice(0, 280), reply: { in_reply_to_tweet_id: tweetId } }),
+  });
 }
 
 async function pollMentions() {
@@ -77,9 +87,9 @@ async function pollMentions() {
       const parsed = await parseSuperAgentIntent(tweet.text);
       const matched = await findEnrolledAgent(parsed.agentName);
       const agent = { rows: matched ? [matched] : [] };
-      await db.query(
+      const inserted = await db.query<{ id: string }>(
         `INSERT INTO superagent_intents (user_id,x_post_id,x_author_id,raw_text,parsed,agent_id,status,source)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,'x') ON CONFLICT (x_post_id) DO NOTHING`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'x') ON CONFLICT (x_post_id) DO NOTHING RETURNING id`,
         [
           userId,
           tweet.id,
@@ -90,6 +100,22 @@ async function pollMentions() {
           agent.rows[0]?.id ? "pending" : "unmatched",
         ],
       );
+      if (inserted.rowCount) {
+        const link = `${env.SUPERAGENTS_URL.replace(/\/$/, "")}/auth`;
+        const reply = userId
+          ? matched
+            ? `Got it — ${matched.name} is matched. Review the proposal in your Super Agents workspace: ${link}`
+            : `I couldn't find an enabled Super Agent for that request. Browse available agents and get started: ${link}`
+          : `I couldn't create a proposal yet. Connect your Liege account to get started: ${link}`;
+        try {
+          await replyToMention(tweet.id, reply);
+        } catch (error) {
+          console.error(
+            "Super Agents X reply failed:",
+            error instanceof Error ? error.message : error,
+          );
+        }
+      }
       if (userId)
         await audit(db, {
           actorId: userId,
