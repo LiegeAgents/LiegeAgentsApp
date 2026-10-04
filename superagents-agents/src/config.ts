@@ -12,7 +12,7 @@ export const config = {
   serverUrl: process.env.AGENT_SERVER_URL?.trim()?.replace(/\/$/, "") ?? "",
   port: Number(process.env.PORT ?? 3210),
   groqKey: required("GROQ_API_KEY"),
-  groqModel: process.env.GROQ_MODEL?.trim() || "qwen/qwen3-32b",
+  groqModel: process.env.GROQ_MODEL?.trim() || "qwen/qwen3.8-27b",
   groqTimeoutMs: Number(process.env.GROQ_TIMEOUT_MS ?? 30_000),
   groqMaxTokens: Number(process.env.GROQ_MAX_TOKENS ?? 4_000),
   agents: Object.fromEntries(
