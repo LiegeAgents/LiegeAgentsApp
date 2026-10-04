@@ -4452,7 +4452,14 @@ function LaunchForm({ token, onSave }) {
           </div>
           <Field label="Primary capability">
             <select value={v.category} onChange={(e) => change("category", e.target.value)}>
-              {["Research", "Development", "Data analysis", "Automation", "Strategy"].map((x) => (
+              {[
+                "Research",
+                "Development",
+                "Data analysis",
+                "Automation",
+                "Strategy",
+                "Customer service",
+              ].map((x) => (
                 <option key={x}>{x}</option>
               ))}
             </select>

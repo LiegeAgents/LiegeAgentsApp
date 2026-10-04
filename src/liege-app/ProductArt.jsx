@@ -1,8 +1,8 @@
 import React from 'react'
-import { ArrowUpRight, ArrowRight, Search, ShieldCheck, Braces, ChartNoAxesCombined, Workflow, Globe, Layers, Check, LockKeyhole, Wallet, CircleDot, FileText } from 'lucide-react'
+import { ArrowUpRight, ArrowRight, Search, ShieldCheck, Braces, ChartNoAxesCombined, Workflow, Globe, Layers, Check, LockKeyhole, Wallet, CircleDot, FileText, Headset } from 'lucide-react'
 import { agents } from './data'
 import {CategoryArt,ProtocolEscrowArt} from './ProtocolIcons'
-export const icons={research:Globe,code:Braces,data:ChartNoAxesCombined,flow:Workflow,shield:ShieldCheck,chart:ChartNoAxesCombined}
+export const icons={research:Globe,code:Braces,data:ChartNoAxesCombined,flow:Workflow,shield:ShieldCheck,chart:ChartNoAxesCombined,support:Headset}
 export function AgentIcon({agent,size=24}){const Icon=icons[agent?.icon]||Layers;return <span className="agent-icon" style={{'--agent-color':agent?.color||'#18e299'}}><Icon size={size}/></span>}
 export function Brand(){return <a className="liege-brand" href="/" aria-label="Liege homepage"><img src="/brand/logo-transparent.png" alt=""/>liege</a>}
 export function ArtWaves(){return <svg className="art-waves" viewBox="0 0 700 340" fill="none" aria-hidden="true"><defs><linearGradient id="art-flow"><stop stopColor="#18e299"/><stop offset="1" stopColor="#baff24"/></linearGradient></defs>{Array.from({length:16},(_,i)=><path key={i} d={`M -50 ${70+i*9} C 180 ${80+i*6}, 320 ${330-i*9}, 750 ${120+i*3}`} stroke="url(#art-flow)" opacity={.2+i*.025} strokeWidth=".65"/>)}</svg>}
