@@ -446,6 +446,29 @@ const superAgentsApi = ((import.meta.env.VITE_API_URL as string | undefined) || 
   /\/$/,
   "",
 );
+const sessionTokenKey = "liege-session-token";
+function getSessionToken() {
+  try {
+    return localStorage.getItem(sessionTokenKey) || sessionStorage.getItem(sessionTokenKey);
+  } catch {
+    return sessionStorage.getItem(sessionTokenKey);
+  }
+}
+function storeSessionToken(token: string) {
+  try {
+    localStorage.setItem(sessionTokenKey, token);
+  } catch {
+    sessionStorage.setItem(sessionTokenKey, token);
+  }
+}
+function clearSessionToken() {
+  try {
+    localStorage.removeItem(sessionTokenKey);
+  } catch {
+    // Continue clearing the session-scoped fallback below.
+  }
+  sessionStorage.removeItem(sessionTokenKey);
+}
 async function connectLiegeWallet() {
   const provider = (window as Window & { ethereum?: EthereumProvider }).ethereum;
   if (!provider) throw new Error("Install a wallet extension to connect your Liege account.");
@@ -470,7 +493,7 @@ async function connectLiegeWallet() {
   });
   if (!verifyResponse.ok) throw new Error("The wallet signature could not be verified.");
   const session = (await verifyResponse.json()).data as { token: string; walletAddress: string };
-  sessionStorage.setItem("liege-session-token", session.token);
+  storeSessionToken(session.token);
   return session.walletAddress;
 }
 function Onboarding() {
@@ -612,7 +635,7 @@ function Onboarding() {
                           {
                             method: "POST",
                             headers: {
-                              authorization: `Bearer ${sessionStorage.getItem("liege-session-token")}`,
+                              authorization: `Bearer ${getSessionToken()}`,
                               "content-type": "application/json",
                             },
                             body: JSON.stringify({ claimToken: claim }),
@@ -766,7 +789,7 @@ function SuperAgentChat({ live = false }: { live?: boolean }) {
     setMessages((current) => [...current, { role: "user", text: value }]);
     setBusy(true);
     try {
-      const token = sessionStorage.getItem("liege-session-token");
+      const token = getSessionToken();
       const api = import.meta.env.VITE_API_URL as string | undefined;
       const response =
         token && api
@@ -879,7 +902,7 @@ function Dashboard() {
   const [revoke, setRevoke] = useState(false);
   const [menu, setMenu] = useState(false);
   useEffect(() => {
-    const token = sessionStorage.getItem("liege-session-token");
+    const token = getSessionToken();
     if (!token) return;
     fetch(`${superAgentsApi}/v1/super-agents/dashboard`, {
       headers: { authorization: `Bearer ${token}` },
@@ -946,7 +969,7 @@ function Dashboard() {
   function decide(status: "Approved draft" | "Dismissed") {
     if (!selected) return;
     const decision = status === "Approved draft" ? "approved" : "rejected";
-    const token = sessionStorage.getItem("liege-session-token");
+    const token = getSessionToken();
     if (token && /^[0-9a-f-]{36}$/i.test(selected.id)) {
       fetch(`${superAgentsApi}/v1/super-agents/intents/${selected.id}/decision`, {
         method: "POST",
@@ -1059,7 +1082,7 @@ function Dashboard() {
           <button
             onClick={() => {
               sessionStorage.removeItem("liege-superagents-workspace-v1");
-              sessionStorage.removeItem("liege-session-token");
+              clearSessionToken();
               location.assign("/");
             }}
           >
@@ -1354,15 +1377,13 @@ function Dashboard() {
                     <span>
                       Liege wallet
                       <small>
-                        {sessionStorage.getItem("liege-session-token")
+                        {getSessionToken()
                           ? "Authenticated session"
                           : "Connect your wallet to continue"}
                       </small>
                     </span>
                     <span className="status">
-                      {sessionStorage.getItem("liege-session-token")
-                        ? "Connected"
-                        : "Not connected"}
+                      {getSessionToken() ? "Connected" : "Not connected"}
                     </span>
                   </div>
                   <a className="text-link" href="/auth">
@@ -1527,7 +1548,7 @@ function Dashboard() {
               onClick={() => {
                 try {
                   sessionStorage.removeItem("liege-superagents-workspace-v1");
-                  sessionStorage.removeItem("liege-session-token");
+                  clearSessionToken();
                 } catch {
                   /* Navigation still works. */
                 }
@@ -1560,7 +1581,7 @@ function App() {
     <>
       <Dashboard />
       <div className="dashboard-chat-overlay">
-        <SuperAgentChat live={Boolean(sessionStorage.getItem("liege-session-token"))} />
+        <SuperAgentChat live={Boolean(getSessionToken())} />
       </div>
     </>
   ) : (
