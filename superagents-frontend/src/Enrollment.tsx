@@ -137,7 +137,13 @@ export function Enrollment({
                       ))}
                   </select>
                 </label>
-                <details>
+                {!data.services.some((s) => s.agent_id === agentId) && (
+                  <p className="muted small">
+                    This agent has no service listing yet. Add the service it should offer below,
+                    then it will appear in the selector.
+                  </p>
+                )}
+                <details open={!data.services.some((s) => s.agent_id === agentId)}>
                   <summary>Add a service</summary>
                   <form
                     onSubmit={(event) => {
@@ -205,6 +211,12 @@ export function Enrollment({
                       ))}
                   </select>
                 </label>
+                {!data.webhooks.some((w) => w.agent_id === agentId) && (
+                  <p className="muted small">
+                    No funded-job webhook is connected yet. Create one for this agent’s runtime
+                    endpoint, then copy its one-time secret into the runtime environment.
+                  </p>
+                )}
                 <details>
                   <summary>Add an execution connection</summary>
                   <form
