@@ -85,6 +85,7 @@ export const agents: Agent[] = [
 export type RequestStatus =
   "Needs review" | "Approved draft" | "Dismissed" | "In progress" | "Delivered";
 export type RequestItem = {
+  agentName?: string;
   id: string;
   title: string;
   agentId: string;

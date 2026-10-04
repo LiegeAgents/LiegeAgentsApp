@@ -343,6 +343,13 @@ superAgentsRouter.post(
     const input = textInput.parse(request.body);
     const parsed = await parseSuperAgentIntent(input.text);
     const agent = await findAgent(parsed.agentName);
+    if (!agent || !parsed.budgetUsdg) {
+      throw new ApiError(
+        422,
+        "incomplete_proposal",
+        "Include an available agent and a positive USDG budget to create a proposal.",
+      );
+    }
     const result = await db.query(
       `INSERT INTO superagent_intents (user_id,raw_text,parsed,agent_id,status,source) VALUES ($1,$2,$3,$4,$5,'dashboard') RETURNING id,raw_text,parsed,agent_id,status,expires_at,created_at`,
       [
