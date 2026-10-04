@@ -4,21 +4,34 @@ import { requireAuth } from "../auth.js";
 import { db } from "../db/index.js";
 import { ApiError, asyncRoute } from "../http.js";
 
-const serviceInput = z.object({
-  agentId: z.string().uuid(),
-  slug: z
-    .string()
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
-    .max(80),
-  name: z.string().min(2).max(120),
-  description: z.string().min(20).max(4000),
-  serviceType: z.enum(["tool", "data", "skill"]),
-  executionMode: z.enum(["manual", "sandboxed_runner"]).default("manual"),
-  priceUsd: z.coerce.number().positive().finite(),
-  slaMinutes: z.coerce.number().int().min(1).max(10080),
-  requirementsSchema: z.record(z.unknown()).default({}),
-  deliverableSchema: z.record(z.unknown()).default({}),
-});
+const serviceInput = z
+  .object({
+    agentId: z.string().uuid(),
+    slug: z
+      .string()
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+      .max(80),
+    name: z.string().min(2).max(120),
+    description: z.string().min(20).max(4000),
+    serviceType: z.enum(["tool", "data", "skill"]),
+    executionMode: z.enum(["manual", "sandboxed_runner"]).default("manual"),
+    priceUsd: z.coerce.number().positive().finite(),
+    slaMinutes: z.coerce.number().int().min(1).max(10080),
+    requirementsSchema: z.record(z.unknown()).default({}),
+    deliverableSchema: z.record(z.unknown()).default({}),
+    settlementAssets: z.array(z.string()).min(1).default(["usdg"]),
+  })
+  .transform((value, ctx) => {
+    const assets = [...new Set(value.settlementAssets.map((asset) => asset.trim().toLowerCase()))];
+    if (assets.some((asset) => asset !== "usdg" && asset !== "liege")) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["settlementAssets"],
+        message: "Settlement assets must be usdg or liege.",
+      });
+    }
+    return { ...value, settlementAssets: assets };
+  });
 
 export const servicesRouter = Router();
 
@@ -34,6 +47,7 @@ servicesRouter.get(
       .parse(request.query);
     const result = await db.query(
       `SELECT s.id, s.agent_id, s.slug, s.name, s.description, s.service_type, s.execution_mode,
+        s.settlement_assets,
         s.price_usd, s.sla_minutes, s.requirements_schema, s.deliverable_schema,
         s.created_at, s.updated_at, a.slug AS agent_slug, a.name AS agent_name
        FROM commerce_services s JOIN agents a ON a.id = s.agent_id
@@ -56,6 +70,7 @@ servicesRouter.get(
       .parse(request.params.slug);
     const result = await db.query(
       `SELECT s.id, s.agent_id, s.slug, s.name, s.description, s.service_type, s.execution_mode,
+        s.settlement_assets,
         s.price_usd, s.sla_minutes, s.requirements_schema, s.deliverable_schema,
         s.created_at, s.updated_at, a.slug AS agent_slug, a.name AS agent_name
        FROM commerce_services s JOIN agents a ON a.id = s.agent_id
@@ -73,16 +88,22 @@ servicesRouter.post(
   requireAuth,
   asyncRoute(async (request, response) => {
     const input = serviceInput.parse(request.body);
-    const owner = await db.query("SELECT id FROM agents WHERE id = $1 AND owner_id = $2", [
-      input.agentId,
-      request.auth!.userId,
-    ]);
+    const owner = await db.query<{ id: string; settlement_assets: string[] }>(
+      "SELECT id, settlement_assets FROM agents WHERE id = $1 AND owner_id = $2",
+      [input.agentId, request.auth!.userId],
+    );
     if (!owner.rowCount)
       throw new ApiError(404, "agent_not_found", "This agent is not owned by your account.");
+    if (!input.settlementAssets.every((asset) => owner.rows[0].settlement_assets.includes(asset)))
+      throw new ApiError(
+        422,
+        "settlement_asset_not_supported",
+        "The service can only accept assets enabled on its agent profile.",
+      );
     const result = await db.query(
       `INSERT INTO commerce_services
-       (agent_id, slug, name, description, service_type, execution_mode, price_usd, sla_minutes, requirements_schema, deliverable_schema)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+       (agent_id, slug, name, description, service_type, execution_mode, price_usd, sla_minutes, requirements_schema, deliverable_schema, settlement_assets)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
       [
         input.agentId,
         input.slug,
@@ -94,6 +115,7 @@ servicesRouter.post(
         input.slaMinutes,
         JSON.stringify(input.requirementsSchema),
         JSON.stringify(input.deliverableSchema),
+        input.settlementAssets,
       ],
     );
     response.status(201).json({ data: result.rows[0] });

@@ -8,6 +8,7 @@ import { db } from "../db/index.js";
 import { ApiError, asyncRoute } from "../http.js";
 import { evidenceUrl } from "../evidence.js";
 import { decisionMessage, type EvaluationCriterion } from "../evaluation.js";
+import { minimumEvaluatorStake } from "../capacity.js";
 
 const criterion = z.object({
   id: z.string().regex(/^[a-z][a-z0-9_-]{1,39}$/),
@@ -47,12 +48,22 @@ evaluationRouter.post(
     if (value.dueAt <= new Date())
       throw new ApiError(400, "invalid_due_date", "The evaluation dueAt must be in the future.");
     const subject = value.jobId
-      ? await db.query<{ agent_id: string; client_id?: string; agent_owner_id?: string }>(
-          "SELECT j.agent_id, j.client_id, a.owner_id AS agent_owner_id FROM jobs j JOIN agents a ON a.id=j.agent_id WHERE j.id=$1",
+      ? await db.query<{
+          agent_id: string;
+          client_id?: string;
+          agent_owner_id?: string;
+          settlement_asset: "usdg" | "liege";
+        }>(
+          "SELECT j.agent_id, j.client_id, a.owner_id AS agent_owner_id, j.settlement_asset FROM jobs j JOIN agents a ON a.id=j.agent_id WHERE j.id=$1",
           [value.jobId],
         )
-      : await db.query<{ agent_id: string; client_id?: string; agent_owner_id?: string }>(
-          "SELECT id AS agent_id FROM agents WHERE id=$1 AND owner_id=$2",
+      : await db.query<{
+          agent_id: string;
+          client_id?: string;
+          agent_owner_id?: string;
+          settlement_asset: "usdg" | "liege";
+        }>(
+          "SELECT id AS agent_id, 'usdg'::text AS settlement_asset FROM agents WHERE id=$1 AND owner_id=$2",
           [value.agentId, request.auth!.userId],
         );
     if (!subject.rowCount)
@@ -70,10 +81,11 @@ evaluationRouter.post(
     if (value.jobId && value.agentId && subject.rows[0].agent_id !== value.agentId)
       throw new ApiError(400, "subject_mismatch", "The job does not belong to this agent.");
     const agentId = subject.rows[0].agent_id;
+    const settlementAsset = subject.rows[0].settlement_asset;
     const evaluator = await db.query(
       `SELECT ep.user_id FROM evaluator_profiles ep
-     WHERE ep.user_id=$1 AND ep.active AND COALESCE((SELECT sum(lp.amount_usdg) FROM ledger_accounts la JOIN ledger_postings lp ON lp.account_id=la.id WHERE la.user_id=ep.user_id AND la.kind='stake'),0) >= 5000`,
-      [value.evaluatorId],
+     WHERE ep.user_id=$1 AND ep.active AND COALESCE((SELECT sum(lp.amount) FROM ledger_accounts la JOIN ledger_postings lp ON lp.account_id=la.id WHERE la.user_id=ep.user_id AND la.kind='stake' AND la.asset=$2),0) >= $3`,
+      [value.evaluatorId, settlementAsset, minimumEvaluatorStake(settlementAsset)],
     );
     if (!evaluator.rowCount)
       throw new ApiError(

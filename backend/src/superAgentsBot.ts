@@ -188,7 +188,8 @@ async function pollMentions() {
         );
         const userId = identity.rows[0]?.user_id ?? null;
         const parsed = await parseSuperAgentIntent(tweet.text);
-        const matched = await findEnrolledAgent(parsed.agentName);
+        const settlementAsset = parsed.settlementAsset ?? "usdg";
+        const matched = await findEnrolledAgent(parsed.agentName, settlementAsset);
         const agent = { rows: matched ? [matched] : [] };
         const inserted = await db.query<{ id: string }>(
           `INSERT INTO superagent_intents (user_id,x_post_id,x_author_id,raw_text,parsed,agent_id,status,source)
@@ -226,7 +227,7 @@ async function pollMentions() {
             targetType: "x_post",
             targetId: tweet.id,
             requestId: tweet.id,
-            metadata: { matched: Boolean(agent.rows[0]?.id) },
+            metadata: { matched: Boolean(agent.rows[0]?.id), settlementAsset },
           });
       } catch (error) {
         console.error(

@@ -6,17 +6,33 @@ import { db } from "../db/index.js";
 import { requireAuth } from "../auth.js";
 import { ApiError, asyncRoute } from "../http.js";
 
-const createAgent = z.object({
-  slug: z
-    .string()
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
-    .max(80),
-  name: z.string().min(2).max(80),
-  description: z.string().min(20).max(2000),
-  category: z.string().min(2).max(80),
-  capabilities: z.array(z.string().min(1).max(80)).max(20).default([]),
-  metadata: z.record(z.unknown()).default({}),
-});
+const createAgent = z
+  .object({
+    slug: z
+      .string()
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+      .max(80),
+    name: z.string().min(2).max(80),
+    description: z.string().min(20).max(2000),
+    category: z.string().min(2).max(80),
+    capabilities: z.array(z.string().min(1).max(80)).max(20).default([]),
+    settlementAssets: z
+      .array(z.enum(["usdg", "liege"]).or(z.string()))
+      .min(1)
+      .default(["usdg"]),
+    metadata: z.record(z.unknown()).default({}),
+  })
+  .transform((value, ctx) => {
+    const assets = [...new Set(value.settlementAssets.map((asset) => asset.toLowerCase()))];
+    if (assets.some((asset) => asset !== "usdg" && asset !== "liege")) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["settlementAssets"],
+        message: "Settlement assets must be usdg or liege.",
+      });
+    }
+    return { ...value, settlementAssets: assets };
+  });
 
 export const agentsRouter = Router();
 
@@ -31,7 +47,7 @@ agentsRouter.get(
       })
       .parse(request.query);
     const result = await db.query(
-      `SELECT a.id, a.slug, a.name, a.description, a.category, a.capabilities, a.reputation_score, a.created_at, u.wallet_address AS owner_wallet
+      `SELECT a.id, a.slug, a.name, a.description, a.category, a.capabilities, a.settlement_assets, a.reputation_score, a.created_at, u.wallet_address AS owner_wallet
      FROM agents a JOIN users u ON u.id = a.owner_id WHERE a.active AND ($1::text IS NULL OR a.category = $1)
        AND ($2::uuid IS NULL OR a.id < $2) ORDER BY a.id DESC LIMIT $3`,
       [query.category ?? null, query.cursor ?? null, query.limit + 1],
@@ -220,8 +236,8 @@ agentsRouter.post(
   asyncRoute(async (request, response) => {
     const input = createAgent.parse(request.body);
     const result = await db.query(
-      `INSERT INTO agents (owner_id, slug, name, description, category, capabilities, metadata)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      `INSERT INTO agents (owner_id, slug, name, description, category, capabilities, settlement_assets, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
       [
         request.auth!.userId,
         input.slug,
@@ -229,6 +245,7 @@ agentsRouter.post(
         input.description,
         input.category,
         JSON.stringify(input.capabilities),
+        input.settlementAssets,
         JSON.stringify(input.metadata),
       ],
     );
