@@ -217,7 +217,7 @@ superAgentsRouter.post(
       .parse(request.body);
     const result = await db.query(
       `INSERT INTO superagent_enrollments (agent_id,service_id,webhook_id,settlement_assets)
-    SELECT a.id,s.id,w.id FROM agents a JOIN commerce_services s ON s.agent_id=a.id
+    SELECT a.id,s.id,w.id,$5::text[] FROM agents a JOIN commerce_services s ON s.agent_id=a.id
     JOIN webhook_subscriptions w ON w.agent_id=a.id AND w.owner_id=a.owner_id
     WHERE a.id=$1 AND a.owner_id=$2 AND a.active AND s.id=$3 AND s.active
       AND w.id=$4 AND w.active AND 'job.funded'=ANY(w.event_types)
