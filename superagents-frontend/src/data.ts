@@ -136,7 +136,7 @@ export function readWorkspace(): {
       )
     )
       return empty;
-    return { ...parsed, requests: [] };
+    return { ...parsed, requests: parsed.requests as RequestItem[] };
   } catch {
     return empty;
   }
