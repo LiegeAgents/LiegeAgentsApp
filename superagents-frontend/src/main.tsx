@@ -497,9 +497,9 @@ async function connectLiegeWallet() {
   return session.walletAddress;
 }
 function Onboarding() {
-  const [step, setStep] = useState(
-    new URLSearchParams(location.search).get("x") === "connected" ? 1 : 0,
-  );
+  const search = new URLSearchParams(location.search);
+  const previewMode = search.get("preview") === "1";
+  const [step, setStep] = useState(search.get("x") === "connected" ? 1 : 0);
   const [accepted, setAccepted] = useState(false);
   const [notice, setNotice] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -576,6 +576,10 @@ function Onboarding() {
                 </div>
                 <Button
                   onClick={async () => {
+                    if (previewMode) {
+                      setStep(1);
+                      return;
+                    }
                     setAuthError(null);
                     try {
                       const result = await fetch(`${superAgentsApi}/v1/super-agents/auth/x/start`);
@@ -586,7 +590,7 @@ function Onboarding() {
                     }
                   }}
                 >
-                  Connect X <ArrowRight size={16} />
+                  {previewMode ? "Preview X connection" : "Connect X"} <ArrowRight size={16} />
                 </Button>
                 {authError && (
                   <p className="auth-error" role="alert">
@@ -625,6 +629,10 @@ function Onboarding() {
                 </div>
                 <Button
                   onClick={async () => {
+                    if (previewMode) {
+                      setStep(2);
+                      return;
+                    }
                     setAuthError(null);
                     try {
                       await connectLiegeWallet();
@@ -654,7 +662,8 @@ function Onboarding() {
                     }
                   }}
                 >
-                  Connect wallet <ArrowRight size={16} />
+                  {previewMode ? "Preview wallet connection" : "Connect wallet"}{" "}
+                  <ArrowRight size={16} />
                 </Button>
                 {authError && (
                   <p className="auth-error" role="alert">
@@ -722,7 +731,8 @@ function Onboarding() {
                   </small>
                 </div>
                 <Button onClick={finish}>
-                  Open dashboard <ArrowUpRight size={16} />
+                  {previewMode ? "Open preview dashboard" : "Open dashboard"}{" "}
+                  <ArrowUpRight size={16} />
                 </Button>
               </>
             )}
@@ -990,7 +1000,7 @@ function Dashboard() {
         status === "Approved draft"
           ? createdJobId
             ? `Open job ${createdJobId} created. Review it and fund it when you are ready.`
-            : "The proposal has been marked approved. Funding and signing remain separate steps."
+            : "Proposal approved. No funds moved; funding and signing remain separate steps."
           : "The request has been removed from your review queue.",
     });
   }
