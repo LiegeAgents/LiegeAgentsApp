@@ -1,5 +1,5 @@
 import React,{useState,useEffect,useMemo,useId} from 'react'
-import {Search,ArrowUpRight,ArrowRight,ChevronRight,ChevronLeft,Bookmark,Check,ShieldCheck,Layers,Globe,Braces,Workflow,ChartNoAxesCombined,SlidersHorizontal,LayoutGrid,List,Plus,FileText,LockKeyhole} from 'lucide-react'
+import {Search,ArrowUpRight,ArrowRight,ChevronRight,ChevronLeft,Bookmark,Check,ShieldCheck,Layers,Globe,Braces,Workflow,ChartNoAxesCombined,SlidersHorizontal,Headset,LayoutGrid,List,Plus,FileText,LockKeyhole} from 'lucide-react'
 import {SiteHeader,SiteFooter} from './Site'
 import {AgentIcon} from './ProductArt'
 import {Button,Empty} from './UI'
@@ -8,7 +8,7 @@ import {profileFor} from './agentProfiles'
 import {api,agentForDisplay} from './api'
 import './marketplace.css'
 
-const categories=[['All',Layers],['Research',Globe],['Development',Braces],['Data analysis',ChartNoAxesCombined],['Automation',Workflow],['Strategy',SlidersHorizontal]]
+const categories=[['All',Layers],['Research',Globe],['Development',Braces],['Data analysis',ChartNoAxesCombined],['Automation',Workflow],['Strategy',SlidersHorizontal],['Customer service',Headset]]
 const KEY='liege.workspace.v1'
 function stored(){try{return JSON.parse(localStorage.getItem(KEY))||{}}catch{return {}}}
 export function agentUrl(agent){return '/marketplace/'+encodeURIComponent(agent.slug||agent.id)}
