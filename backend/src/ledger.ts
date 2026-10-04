@@ -149,9 +149,10 @@ export async function setStake(
   targetStake: number,
   createdBy: string,
   reference: string,
+  asset: SettlementAsset = "usdg",
 ) {
-  const available = await account(client, "available", { userId, asset: "usdg" });
-  const stake = await account(client, "stake", { userId, asset: "usdg" });
+  const available = await account(client, "available", { userId, asset });
+  const stake = await account(client, "stake", { userId, asset });
   await lockAccount(client, stake);
   const current = await balance(client, stake);
   const difference = targetStake - current;
@@ -163,7 +164,7 @@ export async function setStake(
       to: stake,
       amount: difference,
       createdBy,
-      metadata: { userId, targetStake },
+      metadata: { userId, targetStake, asset },
       insufficientFunds: new ApiError(
         422,
         "insufficient_available_balance",
@@ -178,7 +179,7 @@ export async function setStake(
       to: available,
       amount: -difference,
       createdBy,
-      metadata: { userId, targetStake },
+      metadata: { userId, targetStake, asset },
     });
   return targetStake;
 }

@@ -72,7 +72,15 @@ const notificationDateLabel = (value) =>
     ? new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric" })
     : "Recently";
 
-function buildWorkspaceNotifications({ jobs, invoices, evaluations, proposals, runs, activity, navigate }) {
+function buildWorkspaceNotifications({
+  jobs,
+  invoices,
+  evaluations,
+  proposals,
+  runs,
+  activity,
+  navigate,
+}) {
   const now = Date.now();
   const items = [
     ...proposals
@@ -160,27 +168,53 @@ function buildWorkspaceNotifications({ jobs, invoices, evaluations, proposals, r
 
 function WorkspaceNotifications({ items, onClose }) {
   return (
-    <section className="workspace-notification-panel" role="dialog" aria-label="Workspace notifications">
+    <section
+      className="workspace-notification-panel"
+      role="dialog"
+      aria-label="Workspace notifications"
+    >
       <div className="workspace-notification-heading">
         <div>
           <span className="eyebrow">WORKSPACE SIGNALS</span>
           <h2>Notifications</h2>
         </div>
-        <button className="subtle-link" type="button" onClick={onClose}>Close</button>
+        <button className="subtle-link" type="button" onClick={onClose}>
+          Close
+        </button>
       </div>
       {items.length ? (
         <div className="workspace-notification-list">
           {items.map((item) => {
-            const Icon = item.tone === "danger" ? AlertCircle : item.tone === "positive" ? Check : item.tone === "active" ? Activity : Bell;
-            return <button className="workspace-notification-item" key={item.id} onClick={item.action}>
-              <span className={`workspace-notification-icon ${item.tone}`}><Icon size={14} /></span>
-              <span><strong>{item.title}</strong><small>{item.label} · {item.detail}</small></span>
-              <ArrowRight size={13} />
-            </button>;
+            const Icon =
+              item.tone === "danger"
+                ? AlertCircle
+                : item.tone === "positive"
+                  ? Check
+                  : item.tone === "active"
+                    ? Activity
+                    : Bell;
+            return (
+              <button className="workspace-notification-item" key={item.id} onClick={item.action}>
+                <span className={`workspace-notification-icon ${item.tone}`}>
+                  <Icon size={14} />
+                </span>
+                <span>
+                  <strong>{item.title}</strong>
+                  <small>
+                    {item.label} · {item.detail}
+                  </small>
+                </span>
+                <ArrowRight size={13} />
+              </button>
+            );
           })}
         </div>
       ) : (
-        <div className="workspace-notification-empty"><Bell size={18} /><strong>All clear.</strong><span>Nothing needs your attention right now.</span></div>
+        <div className="workspace-notification-empty">
+          <Bell size={18} />
+          <strong>All clear.</strong>
+          <span>Nothing needs your attention right now.</span>
+        </div>
       )}
     </section>
   );
@@ -331,18 +365,22 @@ export default function Workspace() {
   const draftFor = (a) => setModal({ type: "create-job", agent: a?.id });
   const active = allJobs.filter((j) => ["Funded", "Submitted"].includes(j.status)),
     escrow = active.reduce((n, j) => n + j.budget, 0);
-  const notifications = useMemo(() => buildWorkspaceNotifications({
-    jobs: allJobs,
-    invoices: attention.invoices,
-    evaluations: attention.evaluations,
-    proposals: mcpProposals,
-    runs: runnerRuns,
-    activity,
-    navigate: (target) => {
-      setNotificationsOpen(false);
-      navigate(target);
-    },
-  }), [allJobs, attention.invoices, attention.evaluations, mcpProposals, runnerRuns, activity]);
+  const notifications = useMemo(
+    () =>
+      buildWorkspaceNotifications({
+        jobs: allJobs,
+        invoices: attention.invoices,
+        evaluations: attention.evaluations,
+        proposals: mcpProposals,
+        runs: runnerRuns,
+        activity,
+        navigate: (target) => {
+          setNotificationsOpen(false);
+          navigate(target);
+        },
+      }),
+    [allJobs, attention.invoices, attention.evaluations, mcpProposals, runnerRuns, activity],
+  );
   const visibleAgents = allAgents.filter(
     (a) =>
       (filter === "All" ||
@@ -461,7 +499,9 @@ export default function Workspace() {
                 onClick={() => setNotificationsOpen((open) => !open)}
               >
                 <Bell size={15} />
-                {notifications.length > 0 && <span className="notification-count">{Math.min(notifications.length, 99)}</span>}
+                {notifications.length > 0 && (
+                  <span className="notification-count">{Math.min(notifications.length, 99)}</span>
+                )}
               </button>
               {notificationsOpen && (
                 <WorkspaceNotifications
@@ -1089,6 +1129,7 @@ function ServiceCatalog({ token, agents, ownerAddress, onNotice }) {
     slaMinutes: "60",
     requirementsSchema: "{}",
     deliverableSchema: "{}",
+    settlementAssets: ["usdg"],
   });
   const load = async () => {
     setLoading(true);
@@ -1123,6 +1164,11 @@ function ServiceCatalog({ token, agents, ownerAddress, onNotice }) {
     }
     setSaving(true);
     try {
+      if (!form.settlementAssets.length) {
+        onNotice("Select at least one settlement asset.");
+        setSaving(false);
+        return;
+      }
       await api.createService(token, {
         agentId: form.agentId,
         slug: form.slug.trim(),
@@ -1134,6 +1180,7 @@ function ServiceCatalog({ token, agents, ownerAddress, onNotice }) {
         slaMinutes: Number(form.slaMinutes),
         requirementsSchema,
         deliverableSchema,
+        settlementAssets: form.settlementAssets,
       });
       setShowCreate(false);
       setForm((current) => ({ ...current, name: "", slug: "", description: "", priceUsd: "" }));
@@ -1229,7 +1276,7 @@ function ServiceCatalog({ token, agents, ownerAddress, onNotice }) {
             />
           </Field>
           <div className="form-grid">
-            <Field label="Price (USD)">
+            <Field label="Reference amount (display only)">
               <input
                 required
                 type="number"
@@ -1257,6 +1304,41 @@ function ServiceCatalog({ token, agents, ownerAddress, onNotice }) {
               </select>
             </Field>
           </div>
+          <Field
+            label="Accepted settlement assets"
+            help="No exchange rate is applied. The client chooses the exact amount in the selected token."
+          >
+            <label>
+              <input
+                type="checkbox"
+                checked={form.settlementAssets.includes("usdg")}
+                onChange={(e) =>
+                  setForm((current) => ({
+                    ...current,
+                    settlementAssets: e.target.checked
+                      ? [...new Set([...current.settlementAssets, "usdg"])]
+                      : current.settlementAssets.filter((asset) => asset !== "usdg"),
+                  }))
+                }
+              />{" "}
+              USDG
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={form.settlementAssets.includes("liege")}
+                onChange={(e) =>
+                  setForm((current) => ({
+                    ...current,
+                    settlementAssets: e.target.checked
+                      ? [...new Set([...current.settlementAssets, "liege"])]
+                      : current.settlementAssets.filter((asset) => asset !== "liege"),
+                  }))
+                }
+              />{" "}
+              LIEGE
+            </label>
+          </Field>
           <div className="form-grid">
             <Field label="Requirements schema (JSON)">
               <textarea
@@ -2688,7 +2770,9 @@ function MobileCompanion({ token, onNotice }) {
       onNotice(error.message);
     }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
   const generate = async () => {
     setLoading(true);
     try {
@@ -2710,15 +2794,59 @@ function MobileCompanion({ token, onNotice }) {
       onNotice(error.message);
     }
   };
-  return <section className="settings-panel mobile-companion-panel">
-    <div className="mcp-settings-heading"><div><span className="eyebrow">ANDROID COMPANION</span><h2>Pair a mobile workspace.</h2></div><span className="status active">SCOPED ACCESS</span></div>
-    <p>Generate a one-time code in your browser, enter it in the Liege Android app, and monitor jobs or approve proposals on the go. Mobile sessions cannot fund, settle, or sign wallet transactions.</p>
-    <div className="mobile-pairing-actions">
-      <Button onClick={generate} disabled={loading}>{loading ? "Generating…" : "Generate pairing code"}</Button>
-      {code && <div className="mobile-pairing-code"><span className="eyebrow">ONE-TIME CODE</span><strong>{code.code}</strong><small>Expires {new Date(code.expiresAt).toLocaleTimeString()}</small></div>}
-    </div>
-    <div className="mobile-device-list"><span className="eyebrow">PAIRED DEVICES</span>{devices.length ? devices.map((device) => <div className="mobile-device-row" key={device.id}><span><strong>{device.name}</strong><small>{device.platform} · last seen {device.last_seen_at ? new Date(device.last_seen_at).toLocaleString() : "never"}</small></span><button className="subtle-link" onClick={() => revoke(device.id)} disabled={Boolean(device.revoked_at)}>{device.revoked_at ? "Revoked" : "Revoke"}</button></div>) : <p className="muted">No Android devices paired yet.</p>}</div>
-  </section>;
+  return (
+    <section className="settings-panel mobile-companion-panel">
+      <div className="mcp-settings-heading">
+        <div>
+          <span className="eyebrow">ANDROID COMPANION</span>
+          <h2>Pair a mobile workspace.</h2>
+        </div>
+        <span className="status active">SCOPED ACCESS</span>
+      </div>
+      <p>
+        Generate a one-time code in your browser, enter it in the Liege Android app, and monitor
+        jobs or approve proposals on the go. Mobile sessions cannot fund, settle, or sign wallet
+        transactions.
+      </p>
+      <div className="mobile-pairing-actions">
+        <Button onClick={generate} disabled={loading}>
+          {loading ? "Generating…" : "Generate pairing code"}
+        </Button>
+        {code && (
+          <div className="mobile-pairing-code">
+            <span className="eyebrow">ONE-TIME CODE</span>
+            <strong>{code.code}</strong>
+            <small>Expires {new Date(code.expiresAt).toLocaleTimeString()}</small>
+          </div>
+        )}
+      </div>
+      <div className="mobile-device-list">
+        <span className="eyebrow">PAIRED DEVICES</span>
+        {devices.length ? (
+          devices.map((device) => (
+            <div className="mobile-device-row" key={device.id}>
+              <span>
+                <strong>{device.name}</strong>
+                <small>
+                  {device.platform} · last seen{" "}
+                  {device.last_seen_at ? new Date(device.last_seen_at).toLocaleString() : "never"}
+                </small>
+              </span>
+              <button
+                className="subtle-link"
+                onClick={() => revoke(device.id)}
+                disabled={Boolean(device.revoked_at)}
+              >
+                {device.revoked_at ? "Revoked" : "Revoke"}
+              </button>
+            </div>
+          ))
+        ) : (
+          <p className="muted">No Android devices paired yet.</p>
+        )}
+      </div>
+    </section>
+  );
 }
 
 function SearchField({ value, onChange, label }) {
@@ -2905,6 +3033,16 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
       setSimulation(null);
     },
     agent = agents.find((a) => a.id === v.agent);
+  useEffect(() => {
+    const supported = agent?.settlement_assets;
+    if (supported?.length && !supported.includes(v.settlementAsset)) {
+      setV((current) => ({
+        ...current,
+        settlementAsset: supported[0],
+        budget: agents.find((a) => a.id === current.agent)?.price || current.budget,
+      }));
+    }
+  }, [agent?.id, v.settlementAsset]);
   const submit = async (e) => {
     e.preventDefault();
     if (!token) {
@@ -3056,8 +3194,12 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
               value={v.settlementAsset}
               onChange={(e) => change("settlementAsset", e.target.value)}
             >
-              <option value="usdg">USDG</option>
-              <option value="liege">LIEGE</option>
+              <option value="usdg" disabled={agent?.settlement_assets && !agent.settlement_assets.includes("usdg")}>
+                USDG
+              </option>
+              <option value="liege" disabled={agent?.settlement_assets && !agent.settlement_assets.includes("liege")}>
+                LIEGE
+              </option>
             </select>
           </Field>
           <Field label={`Job budget (${v.settlementAsset.toUpperCase()})`}>
@@ -3123,7 +3265,12 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
     [rationale, setRationale] = useState(""),
     [legion, setLegion] = useState(null),
     [agents, setAgents] = useState([]),
-    [assignment, setAssignment] = useState({ agentId: "", title: "", brief: "", allocationBps: "" });
+    [assignment, setAssignment] = useState({
+      agentId: "",
+      title: "",
+      brief: "",
+      allocationBps: "",
+    });
   const wallet = useWallet();
   const load = async () => {
     setError("");
@@ -3202,7 +3349,8 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
       : null,
     current.status === "expired"
       ? { label: "Job expired", at: current.settled_at || current.updated_at }
-      : current.settled_at && ["completed", "rejected"].includes(String(current.status).toLowerCase())
+      : current.settled_at &&
+          ["completed", "rejected"].includes(String(current.status).toLowerCase())
         ? { label: "Escrow settled", at: current.settled_at }
         : null,
   ]
@@ -3273,32 +3421,125 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
         {detail && (isProvider || legion) && (
           <section className="settings-panel">
             <h3>Liege-ion</h3>
-            <p>Delegate parts of this job to other agents. Submitted members are paid their agreed share only when this parent job is accepted.</p>
+            <p>
+              Delegate parts of this job to other agents. Submitted members are paid their agreed
+              share only when this parent job is accepted.
+            </p>
             {legion?.assignments?.map((item) => (
               <div className="key-values grid-2" key={item.id}>
-                <div><span>{item.agent_name}</span><b>{item.title}</b></div>
-                <div><span>Share</span><b>{Number(item.allocation_bps) / 100}% · {item.status}</b></div>
+                <div>
+                  <span>{item.agent_name}</span>
+                  <b>{item.title}</b>
+                </div>
+                <div>
+                  <span>Share</span>
+                  <b>
+                    {Number(item.allocation_bps) / 100}% · {item.status}
+                  </b>
+                </div>
                 {item.member_owner_id === account?.id && item.status === "proposed" && (
-                  <Button small onClick={() => act("legion-accept", () => api.respondToLegionAssignment(token, job.id, item.id, "accept"), "Liege-ion assignment accepted.")}>Accept assignment</Button>
+                  <Button
+                    small
+                    onClick={() =>
+                      act(
+                        "legion-accept",
+                        () => api.respondToLegionAssignment(token, job.id, item.id, "accept"),
+                        "Liege-ion assignment accepted.",
+                      )
+                    }
+                  >
+                    Accept assignment
+                  </Button>
                 )}
                 {item.member_owner_id === account?.id && item.status === "accepted" && (
-                  <Button small onClick={() => {
-                    const work = window.prompt("Submit your delegated deliverable");
-                    if (work) act("legion-submit", () => api.respondToLegionAssignment(token, job.id, item.id, "submit", { deliverable: work }), "Delegated work submitted.");
-                  }}>Submit delegated work</Button>
+                  <Button
+                    small
+                    onClick={() => {
+                      const work = window.prompt("Submit your delegated deliverable");
+                      if (work)
+                        act(
+                          "legion-submit",
+                          () =>
+                            api.respondToLegionAssignment(token, job.id, item.id, "submit", {
+                              deliverable: work,
+                            }),
+                          "Delegated work submitted.",
+                        );
+                    }}
+                  >
+                    Submit delegated work
+                  </Button>
                 )}
               </div>
             ))}
             {isProvider && ["Open", "Funded"].includes(status) && (
-              <form onSubmit={(e) => {
-                e.preventDefault();
-                act("legion-propose", () => api.createLegionAssignment(token, job.id, { ...assignment, allocationBps: Number(assignment.allocationBps) }), "Liege-ion assignment sent.");
-              }}>
-                <Field label="Agent"><select required value={assignment.agentId} onChange={(e) => setAssignment({ ...assignment, agentId: e.target.value })}><option value="">Choose an agent</option>{agents.filter((item) => item.id !== detail.agent_id).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
-                <Field label="Sub-task"><input required minLength={3} value={assignment.title} onChange={(e) => setAssignment({ ...assignment, title: e.target.value })} placeholder="Research the source material" /></Field>
-                <Field label="Private instructions"><textarea required minLength={1} rows={3} value={assignment.brief} onChange={(e) => setAssignment({ ...assignment, brief: e.target.value })} /></Field>
-                <Field label="Member share (%)"><input required type="number" min="0.01" max="100" step="0.01" value={assignment.allocationBps ? Number(assignment.allocationBps) / 100 : ""} onChange={(e) => setAssignment({ ...assignment, allocationBps: String(Math.round(Number(e.target.value) * 100)) })} /></Field>
-                <Button type="submit" disabled={busy === "legion-propose"}>{busy === "legion-propose" ? "Sending…" : "Ask agent to join"}</Button>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  act(
+                    "legion-propose",
+                    () =>
+                      api.createLegionAssignment(token, job.id, {
+                        ...assignment,
+                        allocationBps: Number(assignment.allocationBps),
+                      }),
+                    "Liege-ion assignment sent.",
+                  );
+                }}
+              >
+                <Field label="Agent">
+                  <select
+                    required
+                    value={assignment.agentId}
+                    onChange={(e) => setAssignment({ ...assignment, agentId: e.target.value })}
+                  >
+                    <option value="">Choose an agent</option>
+                    {agents
+                      .filter((item) => item.id !== detail.agent_id)
+                      .map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.name}
+                        </option>
+                      ))}
+                  </select>
+                </Field>
+                <Field label="Sub-task">
+                  <input
+                    required
+                    minLength={3}
+                    value={assignment.title}
+                    onChange={(e) => setAssignment({ ...assignment, title: e.target.value })}
+                    placeholder="Research the source material"
+                  />
+                </Field>
+                <Field label="Private instructions">
+                  <textarea
+                    required
+                    minLength={1}
+                    rows={3}
+                    value={assignment.brief}
+                    onChange={(e) => setAssignment({ ...assignment, brief: e.target.value })}
+                  />
+                </Field>
+                <Field label="Member share (%)">
+                  <input
+                    required
+                    type="number"
+                    min="0.01"
+                    max="100"
+                    step="0.01"
+                    value={assignment.allocationBps ? Number(assignment.allocationBps) / 100 : ""}
+                    onChange={(e) =>
+                      setAssignment({
+                        ...assignment,
+                        allocationBps: String(Math.round(Number(e.target.value) * 100)),
+                      })
+                    }
+                  />
+                </Field>
+                <Button type="submit" disabled={busy === "legion-propose"}>
+                  {busy === "legion-propose" ? "Sending…" : "Ask agent to join"}
+                </Button>
               </form>
             )}
           </section>
@@ -4118,6 +4359,7 @@ function LaunchForm({ token, onSave }) {
       category: "Research",
       description: "",
       price: 100,
+      settlementAssets: ["usdg"],
     }),
     [error, setError] = useState(""),
     [saving, setSaving] = useState(false);
@@ -4139,6 +4381,10 @@ function LaunchForm({ token, onSave }) {
       setError("Enter a positive starting job fee.");
       return;
     }
+    if (!v.settlementAssets.length) {
+      setError("Select at least one settlement asset.");
+      return;
+    }
     setSaving(true);
     try {
       const slug = `${v.name
@@ -4152,6 +4398,7 @@ function LaunchForm({ token, onSave }) {
         description: v.description.trim(),
         category: v.category,
         capabilities: [v.category],
+        settlementAssets: v.settlementAssets,
         metadata: { startingJobFeeUsdg: +v.price, symbol: v.symbol },
       });
       await onSave(agentForDisplay(result.data));
@@ -4218,7 +4465,10 @@ function LaunchForm({ token, onSave }) {
               placeholder="What useful work does your agent deliver?"
             />
           </Field>
-          <Field label="Starting job fee (USDG)">
+          <Field
+            label="Reference amount (display only)"
+            help="This is descriptive metadata only. Clients choose the exact USDG or LIEGE amount for each job."
+          >
             <input
               type="number"
               required
@@ -4227,6 +4477,41 @@ function LaunchForm({ token, onSave }) {
               value={v.price}
               onChange={(e) => change("price", e.target.value)}
             />
+          </Field>
+          <Field
+            label="Accepted settlement assets"
+            help="USDG and LIEGE are independent. No conversion or oracle is used; clients choose the exact amount."
+          >
+            <label>
+              <input
+                type="checkbox"
+                checked={v.settlementAssets.includes("usdg")}
+                onChange={(e) =>
+                  change(
+                    "settlementAssets",
+                    e.target.checked
+                      ? [...new Set([...v.settlementAssets, "usdg"])]
+                      : v.settlementAssets.filter((asset) => asset !== "usdg"),
+                  )
+                }
+              />{" "}
+              USDG
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={v.settlementAssets.includes("liege")}
+                onChange={(e) =>
+                  change(
+                    "settlementAssets",
+                    e.target.checked
+                      ? [...new Set([...v.settlementAssets, "liege"])]
+                      : v.settlementAssets.filter((asset) => asset !== "liege"),
+                  )
+                }
+              />{" "}
+              LIEGE
+            </label>
           </Field>
           {error && <Notice error>{error}</Notice>}
           <Button type="submit" disabled={saving || !token}>

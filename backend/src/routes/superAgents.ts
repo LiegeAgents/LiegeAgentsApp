@@ -20,9 +20,23 @@ const claimInput = z.object({ claimToken: z.string().min(24).max(200) });
 const intentShape = z.object({
   agentName: z.string().trim().max(80).nullable().default(null),
   request: z.string().trim().min(1).max(10_000),
+  settlementAsset: z.enum(["usdg", "liege"]).default("usdg"),
+  budgetAmount: z.number().finite().positive().nullable().default(null),
+  // Kept for compatibility with existing dashboard clients and stored intents.
   budgetUsdg: z.number().finite().positive().nullable().default(null),
   deadlineAt: z.string().trim().max(80).nullable().default(null),
   confidence: z.number().min(0).max(1).default(0.5),
+});
+
+const intentAmount = (parsed: z.infer<typeof intentShape>) =>
+  parsed.budgetAmount ?? parsed.budgetUsdg;
+
+const normalizeIntent = (parsed: z.infer<typeof intentShape>) => ({
+  ...parsed,
+  budgetUsdg:
+    parsed.settlementAsset === "usdg"
+      ? (parsed.budgetUsdg ?? parsed.budgetAmount)
+      : parsed.budgetUsdg,
 });
 
 const stateHash = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -37,16 +51,20 @@ const xTokenHeaders = () => ({
 });
 
 export function fallbackSuperAgentIntent(text: string) {
-  const budget = text.match(/(?:budget|for)\s*[$]?([0-9]+(?:\.[0-9]+)?)\s*(?:USDG|USD)?/i);
+  const budget = text.match(/(?:budget|for)\s*[$]?([0-9]+(?:\.[0-9]+)?)\s*(USDG|LIEGE|USD)?/i);
   const hire = text.match(
     /(?:hire|assign|ask)\s+([A-Za-z][A-Za-z0-9 -]{1,60}?)(?:\s+to\b|\s+for\b|[,.:]|$)/i,
   );
-  return intentShape.parse({
-    agentName: hire?.[1]?.trim() ?? null,
-    request: text.replace(/^\s*@\S+\s*/u, "").trim(),
-    budgetUsdg: budget ? Number(budget[1]) : null,
-    confidence: budget || hire ? 0.65 : 0.35,
-  });
+  return normalizeIntent(
+    intentShape.parse({
+      agentName: hire?.[1]?.trim() ?? null,
+      request: text.replace(/^\s*@\S+\s*/u, "").trim(),
+      settlementAsset: budget?.[2]?.toLowerCase() === "liege" ? "liege" : "usdg",
+      budgetAmount: budget ? Number(budget[1]) : null,
+      budgetUsdg: budget?.[2]?.toLowerCase() === "liege" ? null : budget ? Number(budget[1]) : null,
+      confidence: budget || hire ? 0.65 : 0.35,
+    }),
+  );
 }
 
 export async function parseSuperAgentIntent(text: string) {
@@ -62,7 +80,7 @@ export async function parseSuperAgentIntent(text: string) {
         {
           role: "system",
           content:
-            "Extract a Liege Super Agent request. Return JSON only with agentName (string or null), request (string), budgetUsdg (number or null), deadlineAt (string or null), confidence (0..1). Never invent a budget, deadline, or agent.",
+            "Extract a Liege Super Agent request. Return JSON only with agentName (string or null), request (string), settlementAsset (usdg or liege, default usdg), budgetAmount (number or null), budgetUsdg (number or null for compatibility), deadlineAt (string or null), confidence (0..1). Never invent a budget, deadline, or agent. USDG and LIEGE are independent tokens; never convert between them.",
         },
         { role: "user", content: text },
       ],
@@ -74,7 +92,7 @@ export async function parseSuperAgentIntent(text: string) {
   const content = body.choices?.[0]?.message?.content;
   if (!content) return fallbackSuperAgentIntent(text);
   try {
-    return intentShape.parse(JSON.parse(content));
+    return normalizeIntent(intentShape.parse(JSON.parse(content)));
   } catch {
     return fallbackSuperAgentIntent(text);
   }
@@ -91,12 +109,12 @@ superAgentsRouter.get(
     const owner = request.auth!.userId;
     const [agents, services, webhooks] = await Promise.all([
       db.query(
-        `SELECT a.id,a.name,a.active,e.service_id,e.webhook_id,e.enabled,e.verified_at
+        `SELECT a.id,a.name,a.active,a.settlement_assets,e.service_id,e.webhook_id,e.settlement_assets,e.enabled,e.verified_at
       FROM agents a LEFT JOIN superagent_enrollments e ON e.agent_id=a.id WHERE a.owner_id=$1 ORDER BY a.created_at`,
         [owner],
       ),
       db.query(
-        `SELECT s.id,s.agent_id,s.name,s.price_usd,s.sla_minutes FROM commerce_services s JOIN agents a ON a.id=s.agent_id WHERE a.owner_id=$1 AND s.active`,
+        `SELECT s.id,s.agent_id,s.name,s.price_usd,s.sla_minutes,s.settlement_assets FROM commerce_services s JOIN agents a ON a.id=s.agent_id WHERE a.owner_id=$1 AND s.active`,
         [owner],
       ),
       db.query(
@@ -191,23 +209,35 @@ superAgentsRouter.post(
         agentId: z.string().uuid(),
         serviceId: z.string().uuid(),
         webhookId: z.string().uuid(),
+        settlementAssets: z
+          .array(z.enum(["usdg", "liege"]))
+          .min(1)
+          .default(["usdg"]),
       })
       .parse(request.body);
     const result = await db.query(
-      `INSERT INTO superagent_enrollments (agent_id,service_id,webhook_id)
+      `INSERT INTO superagent_enrollments (agent_id,service_id,webhook_id,settlement_assets)
     SELECT a.id,s.id,w.id FROM agents a JOIN commerce_services s ON s.agent_id=a.id
     JOIN webhook_subscriptions w ON w.agent_id=a.id AND w.owner_id=a.owner_id
     WHERE a.id=$1 AND a.owner_id=$2 AND a.active AND s.id=$3 AND s.active
       AND w.id=$4 AND w.active AND 'job.funded'=ANY(w.event_types)
+      AND $5::text[] <@ a.settlement_assets AND $5::text[] <@ s.settlement_assets
     ON CONFLICT (agent_id) DO UPDATE SET service_id=EXCLUDED.service_id,webhook_id=EXCLUDED.webhook_id,
+      settlement_assets=EXCLUDED.settlement_assets,
       enabled=false,verified_at=NULL,updated_at=now() RETURNING *`,
-      [input.agentId, request.auth!.userId, input.serviceId, input.webhookId],
+      [
+        input.agentId,
+        request.auth!.userId,
+        input.serviceId,
+        input.webhookId,
+        input.settlementAssets,
+      ],
     );
     if (!result.rowCount)
       throw new ApiError(
         422,
         "invalid_enrollment",
-        "Select an active agent you own, its service, and its funded-job webhook.",
+        "Select supported settlement assets, an active agent you own, its service, and its funded-job webhook.",
       );
     await audit(db, {
       actorId: request.auth!.userId,
@@ -537,11 +567,11 @@ superAgentsRouter.get(
         [userId],
       ),
       db.query(
-        `SELECT j.id,j.public_id,j.title,j.status,j.budget_usdg,j.deadline_at,j.created_at,a.name AS agent_name FROM jobs j JOIN agents a ON a.id=j.agent_id WHERE j.client_id=$1 OR a.owner_id=$1 ORDER BY j.created_at DESC LIMIT 50`,
+        `SELECT j.id,j.public_id,j.title,j.status,j.settlement_asset,j.budget_amount,j.budget_usdg,j.deadline_at,j.created_at,a.name AS agent_name FROM jobs j JOIN agents a ON a.id=j.agent_id WHERE j.client_id=$1 OR a.owner_id=$1 ORDER BY j.created_at DESC LIMIT 50`,
         [userId],
       ),
       db.query(
-        `SELECT a.id,a.slug,a.name,s.description,a.category,a.capabilities,a.reputation_score,s.price_usd,s.sla_minutes FROM agents a ${readyEnrollment} WHERE a.active AND e.enabled AND e.verified_at IS NOT NULL ORDER BY a.created_at ASC LIMIT 50`,
+        `SELECT a.id,a.slug,a.name,s.description,a.category,a.capabilities,a.settlement_assets,s.settlement_assets AS service_settlement_assets,a.reputation_score,s.price_usd,s.sla_minutes FROM agents a ${readyEnrollment} WHERE a.active AND e.enabled AND e.verified_at IS NOT NULL ORDER BY a.created_at ASC LIMIT 50`,
       ),
     ]);
     response.json({
@@ -570,7 +600,9 @@ superAgentsRouter.post(
   asyncRoute(async (request, response) => {
     const input = textInput.parse(request.body);
     const parsed = await parseSuperAgentIntent(input.text);
-    const agent = await findAgent(parsed.agentName);
+    const asset = parsed.settlementAsset;
+    const budget = intentAmount(parsed);
+    const agent = await findEnrolledAgent(parsed.agentName, asset);
     if (!agent)
       throw new ApiError(
         422,
@@ -579,19 +611,13 @@ superAgentsRouter.post(
           ? `${parsed.agentName} is not currently enrolled and discoverable as a Super Agent.`
           : "Include the name of an enrolled Super Agent.",
       );
-    if (!agent || !parsed.budgetUsdg) {
+    if (!agent || !budget) {
       throw new ApiError(
         422,
         "incomplete_proposal",
-        "Include an available agent and a positive USDG budget to create a proposal.",
+        `Include an available agent and a positive ${asset.toUpperCase()} budget to create a proposal.`,
       );
     }
-    if (parsed.budgetUsdg < Number(agent.price_usd))
-      throw new ApiError(
-        422,
-        "budget_below_service_price",
-        `This service starts at ${agent.price_usd} USDG.`,
-      );
     const result = await db.query(
       `INSERT INTO superagent_intents (user_id,raw_text,parsed,agent_id,status,source) VALUES ($1,$2,$3,$4,$5,'dashboard') RETURNING id,raw_text,parsed,agent_id,status,expires_at,created_at`,
       [
@@ -662,17 +688,19 @@ superAgentsRouter.post(
             "Match this request to an active agent before approving it.",
           );
         const parsed = intentShape.parse(intent.rows[0].parsed);
-        if (!parsed.budgetUsdg || parsed.budgetUsdg <= 0)
+        const budget = intentAmount(parsed);
+        const asset = parsed.settlementAsset;
+        if (!budget || budget <= 0)
           throw new ApiError(
             422,
             "budget_required",
-            "Add a positive USDG budget before approving this request.",
+            `Add a positive ${asset.toUpperCase()} budget before approving this request.`,
           );
-        if (parsed.budgetUsdg >= selfSettlementLimit("usdg"))
+        if (budget >= selfSettlementLimit(asset))
           throw new ApiError(
             422,
             "self_evaluation_limit",
-            `Super Agent jobs of ${selfSettlementLimit("usdg")} USDG or more need an independent evaluator.`,
+            `Super Agent jobs of ${selfSettlementLimit(asset)} ${asset.toUpperCase()} or more need an independent evaluator.`,
           );
         const agent = await client.query<{
           id: string;
@@ -680,20 +708,15 @@ superAgentsRouter.post(
           owner_id: string;
           price_usd: string;
           service_slug: string;
+          settlement_assets: string[];
           sla_minutes: number;
           description: string;
         }>(
-          `SELECT a.id,a.name,a.owner_id,s.price_usd,s.slug AS service_slug,s.sla_minutes,s.description FROM agents a ${readyEnrollment} WHERE a.id=$1 AND a.active AND e.enabled AND e.verified_at IS NOT NULL FOR SHARE OF a,e,s,w`,
-          [intent.rows[0].agent_id],
+          `SELECT a.id,a.name,a.owner_id,s.price_usd,s.slug AS service_slug,s.sla_minutes,s.description,e.settlement_assets FROM agents a ${readyEnrollment} WHERE a.id=$1 AND a.active AND e.enabled AND e.verified_at IS NOT NULL AND $2 = ANY(e.settlement_assets) FOR SHARE OF a,e,s,w`,
+          [intent.rows[0].agent_id, asset],
         );
         if (!agent.rowCount)
           throw new ApiError(404, "agent_not_found", "The matched Super Agent is unavailable.");
-        if (parsed.budgetUsdg < Number(agent.rows[0].price_usd))
-          throw new ApiError(
-            422,
-            "budget_below_service_price",
-            "The budget is below the current service price.",
-          );
         if (agent.rows[0].owner_id === request.auth!.userId)
           throw new ApiError(422, "self_hire_not_allowed", "An owner cannot hire their own agent.");
         const deadline = parsed.deadlineAt
@@ -713,8 +736,8 @@ superAgentsRouter.post(
           `INSERT INTO jobs (id, client_id, agent_id, evaluator_id, kind, title, brief_ciphertext, brief_hash,
              acceptance_criteria, settlement_asset, budget_amount, evaluator_fee_amount, budget_usdg,
              evaluator_fee_usdg, deadline_at, expires_at, strategy_policy, escrow_mode)
-           VALUES ($1,$2,$3,NULL,'standard',$4,$5,$6,$7,'usdg',$8,0,$8,0,$9,$10,$11,$12)
-           RETURNING id, public_id, title, status, budget_usdg, deadline_at, expires_at`,
+           VALUES ($1,$2,$3,NULL,'standard',$4,$5,$6,$7,$8,$9,0,$10,0,$11,$12,$13,$14)
+           RETURNING id, public_id, title, status, settlement_asset, budget_amount, budget_usdg, deadline_at, expires_at`,
           [
             jobId,
             request.auth!.userId,
@@ -723,7 +746,9 @@ superAgentsRouter.post(
             encryptPayload(brief, payloadContext(jobId, "brief")),
             payloadDigest(brief),
             JSON.stringify(["Deliver the requested work", agent.rows[0].description]),
-            String(parsed.budgetUsdg),
+            asset,
+            String(budget),
+            asset === "usdg" ? String(budget) : null,
             deadline,
             expires,
             JSON.stringify({

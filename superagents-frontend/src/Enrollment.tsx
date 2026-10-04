@@ -6,6 +6,7 @@ type Agent = {
   active: boolean;
   service_id: string | null;
   webhook_id: string | null;
+  settlement_assets: string[];
   enabled: boolean;
   verified_at: string | null;
 };
@@ -15,6 +16,7 @@ type Service = {
   name: string;
   price_usd: string;
   sla_minutes: number;
+  settlement_assets: string[];
 };
 type Hook = { id: string; agent_id: string; url: string };
 export function Enrollment({
@@ -34,6 +36,7 @@ export function Enrollment({
   const [agentId, setAgentId] = useState("");
   const [serviceId, setServiceId] = useState("");
   const [webhookId, setWebhookId] = useState("");
+  const [settlementAssets, setSettlementAssets] = useState<string[]>(["usdg"]);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const agent = data.agents.find((a) => a.id === agentId);
@@ -98,6 +101,9 @@ export function Enrollment({
                   setAgentId(event.target.value);
                   setServiceId(a?.service_id || "");
                   setWebhookId(a?.webhook_id || "");
+                  setSettlementAssets(
+                    a?.settlement_assets?.length ? a.settlement_assets : ["usdg"],
+                  );
                 }}
               >
                 <option value="">Select an agent you own</option>
@@ -132,7 +138,10 @@ export function Enrollment({
                     .filter((s) => s.agent_id === agentId)
                     .map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.name} · {s.price_usd} USDG · {s.sla_minutes} min
+                        {s.name} · {s.sla_minutes} min ·{" "}
+                        {(s.settlement_assets || ["usdg"])
+                          .map((asset) => asset.toUpperCase())
+                          .join(" / ")}
                       </option>
                     ))}
                 </select>
@@ -157,6 +166,9 @@ export function Enrollment({
                           serviceType: "skill",
                           priceUsd: Number(values.get("price")),
                           slaMinutes: Number(values.get("sla")),
+                          settlementAssets: ["usdg", "liege"].filter(
+                            (asset) => values.get(asset) === "on",
+                          ),
                         });
                         setServiceId(service.id);
                       });
@@ -181,9 +193,25 @@ export function Enrollment({
                       <textarea name="description" required minLength={20} maxLength={4000} />
                     </label>
                     <label>
-                      Starting price (USDG)
-                      <input name="price" type="number" required min="0.000001" step="0.000001" />
+                      Reference amount (display only)
+                      <input
+                        name="price"
+                        type="number"
+                        required
+                        min="0.000001"
+                        step="0.000001"
+                        defaultValue="1"
+                      />
                     </label>
+                    <fieldset>
+                      <legend>Accepted settlement assets</legend>
+                      <label>
+                        <input name="usdg" type="checkbox" defaultChecked /> USDG
+                      </label>
+                      <label>
+                        <input name="liege" type="checkbox" /> LIEGE
+                      </label>
+                    </fieldset>
                     <label>
                       Delivery time (minutes)
                       <input name="sla" type="number" required min="1" max="10080" />
@@ -193,6 +221,38 @@ export function Enrollment({
                     </button>
                   </form>
                 </details>
+                <fieldset>
+                  <legend>Settlement assets for this enrollment</legend>
+                  <p className="muted small">
+                    No conversion or oracle is used. The client chooses the exact amount in the
+                    selected token.
+                  </p>
+                  {["usdg", "liege"].map((asset) => {
+                    const service = data.services.find((item) => item.id === serviceId);
+                    const supported = Boolean(
+                      agent.settlement_assets?.includes(asset) &&
+                      service?.settlement_assets?.includes(asset),
+                    );
+                    return (
+                      <label key={asset}>
+                        <input
+                          type="checkbox"
+                          checked={settlementAssets.includes(asset)}
+                          disabled={busy || !supported}
+                          onChange={(event) =>
+                            setSettlementAssets((current) =>
+                              event.target.checked
+                                ? [...new Set([...current, asset])]
+                                : current.filter((item) => item !== asset),
+                            )
+                          }
+                        />
+                        {asset.toUpperCase()}
+                        {!supported ? " (not supported by agent/service)" : ""}
+                      </label>
+                    );
+                  })}
+                </fieldset>
                 <label htmlFor="super-agent-webhook">Execution webhook</label>
                 <select
                   id="super-agent-webhook"
@@ -255,7 +315,12 @@ export function Enrollment({
                     disabled={busy || !agent.active || !serviceId || !webhookId}
                     onClick={() =>
                       void act(async () => {
-                        await call("super-agents/enrollments", { agentId, serviceId, webhookId });
+                        await call("super-agents/enrollments", {
+                          agentId,
+                          serviceId,
+                          webhookId,
+                          settlementAssets,
+                        });
                         notify({
                           title: "Enrollment saved",
                           body: "Configure your runtime, then test the connection. Saving changes turns discovery off until you verify again.",

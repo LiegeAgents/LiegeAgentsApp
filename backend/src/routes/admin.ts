@@ -4,6 +4,7 @@ import { requireAuth } from "../auth.js";
 import { requireAdmin } from "../admin.js";
 import { db } from "../db/index.js";
 import { creditUser, setStake, userBalance } from "../ledger.js";
+import type { SettlementAsset } from "../assets.js";
 import { ApiError, asyncRoute } from "../http.js";
 import { audit } from "../audit.js";
 import { env } from "../config.js";
@@ -78,6 +79,7 @@ adminRouter.post(
       .object({
         userId: z.string().uuid(),
         stakeUsdg: z.coerce.number().min(0),
+        settlementAsset: z.enum(["usdg", "liege"]).default("usdg"),
         reference: z.string().min(8).max(200),
       })
       .parse(request.body);
@@ -90,29 +92,48 @@ adminRouter.post(
       );
       await lockEvaluator(client, input.userId);
       const position = await evaluatorPosition(client, input.userId, {
-        stakeUsdg: input.stakeUsdg,
+        asset: input.settlementAsset as SettlementAsset,
+        stakeAmount: input.stakeUsdg,
       });
       if (!position.covered)
         throw new ApiError(
           409,
           "stake_backs_open_jobs",
-          `This evaluator's open jobs need at least ${position.exposureUsdg * STAKE_COVERAGE} USDG staked.`,
+          `This evaluator's open ${input.settlementAsset.toUpperCase()} jobs need at least ${position.exposureAmount * STAKE_COVERAGE} ${input.settlementAsset.toUpperCase()} staked.`,
         );
-      await setStake(client, input.userId, input.stakeUsdg, request.auth!.userId, input.reference);
-      await client.query(
-        "UPDATE evaluator_profiles SET stake_usdg = $1, updated_at = now() WHERE user_id = $2",
-        [input.stakeUsdg, input.userId],
+      await setStake(
+        client,
+        input.userId,
+        input.stakeUsdg,
+        request.auth!.userId,
+        input.reference,
+        input.settlementAsset,
       );
+      if (input.settlementAsset === "usdg")
+        await client.query(
+          "UPDATE evaluator_profiles SET stake_usdg = $1, updated_at = now() WHERE user_id = $2",
+          [input.stakeUsdg, input.userId],
+        );
       await audit(client, {
         actorId: request.auth!.userId,
         action: "evaluator.stake_set",
         targetType: "user",
         targetId: input.userId,
         requestId: request.requestId,
-        metadata: { stakeUsdg: input.stakeUsdg, reference: input.reference },
+        metadata: {
+          stakeUsdg: input.stakeUsdg,
+          settlementAsset: input.settlementAsset,
+          reference: input.reference,
+        },
       });
       await client.query("COMMIT");
-      response.json({ data: { userId: input.userId, stakeUsdg: input.stakeUsdg } });
+      response.json({
+        data: {
+          userId: input.userId,
+          stakeUsdg: input.stakeUsdg,
+          settlementAsset: input.settlementAsset,
+        },
+      });
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;

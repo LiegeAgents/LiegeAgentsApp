@@ -810,12 +810,14 @@ function SuperAgentChat({ live = false }: { live?: boolean }) {
         : null;
       const parsed = response?.ok ? (await response.json()).data : null;
       if (!response?.ok) throw new Error("Could not read your message.");
-      if (!parsed?.agentName || !parsed?.budgetUsdg) {
+      const parsedBudget = parsed?.budgetAmount ?? parsed?.budgetUsdg;
+      const parsedAsset = String(parsed?.settlementAsset || "usdg").toUpperCase();
+      if (!parsed?.agentName || !parsedBudget) {
         setMessages((current) => [
           ...current,
           {
             role: "assistant",
-            text: "Tell me who you’d like to hire, what you need, and your USDG budget. For example: Hire Anna to research agent marketplaces. Budget 5 USDG.",
+            text: "Tell me who you’d like to hire, what you need, and the token plus amount. For example: Hire Anna to research agent marketplaces. Budget 5 USDG or 500 LIEGE.",
           },
         ]);
         return;
@@ -832,8 +834,7 @@ function SuperAgentChat({ live = false }: { live?: boolean }) {
         value.match(
           /(?:hire|ask|assign)\s+([A-Za-z][A-Za-z0-9 -]{1,50}?)(?:\s+to|\s+for|,|$)/i,
         )?.[1];
-      const budget =
-        parsed?.budgetUsdg ?? value.match(/(?:budget|for)\s*\$?([0-9]+(?:\.[0-9]+)?)/i)?.[1];
+      const budget = parsedBudget ?? value.match(/(?:budget|for)\s*\$?([0-9]+(?:\.[0-9]+)?)/i)?.[1];
       const created = Boolean(proposal?.ok);
       if (!created) {
         const error = await proposal?.json();
@@ -854,7 +855,7 @@ function SuperAgentChat({ live = false }: { live?: boolean }) {
         {
           role: "assistant",
           text: match
-            ? `I’d route this to ${match}${budget ? ` with a ${budget} USDG budget` : ""}. ${created ? "A proposal is waiting in Requests for your review." : "I’ve prepared a proposal for your review."} No job was funded and no wallet action was taken.`
+            ? `I’d route this to ${match}${budget ? ` with a ${budget} ${parsedAsset} budget` : ""}. ${created ? "A proposal is waiting in Requests for your review." : "I’ve prepared a proposal for your review."} No job was funded and no wallet action was taken.`
             : "I understand the request. Add an agent name or service and an optional budget, then I’ll prepare a reviewable proposal.",
         },
       ]);
@@ -972,7 +973,11 @@ function Dashboard() {
             setWalletAddress(account?.data?.wallet_address ?? null);
           }
           const mapped: RequestItem[] = (data.proposals ?? [])
-            .filter((proposal: any) => proposal.agent_id && Number(proposal.parsed?.budgetUsdg) > 0)
+            .filter(
+              (proposal: any) =>
+                proposal.agent_id &&
+                Number(proposal.parsed?.budgetAmount ?? proposal.parsed?.budgetUsdg) > 0,
+            )
             .map((proposal: any): RequestItem => {
               const parsed = proposal.parsed ?? {};
               const matched = agents.find(
@@ -995,8 +1000,11 @@ function Dashboard() {
                 agentName: proposal.agent_name || parsed.agentName || "Unmatched agent",
                 title: parsed.request || proposal.raw_text || "Super Agent request",
                 agentId: matched?.id ?? "",
-                budget: parsed.budgetUsdg == null ? "—" : String(parsed.budgetUsdg),
-                asset: "USDG",
+                budget:
+                  parsed.budgetAmount == null && parsed.budgetUsdg == null
+                    ? "—"
+                    : String(parsed.budgetAmount ?? parsed.budgetUsdg),
+                asset: String(parsed.settlementAsset || "usdg").toUpperCase(),
                 status,
                 source: proposal.raw_text || "Request from your workspace",
                 brief:

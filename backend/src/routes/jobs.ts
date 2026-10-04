@@ -18,7 +18,7 @@ import type { SettlementAsset } from "../assets.js";
 import {
   evaluatorPosition,
   lockEvaluator,
-  MINIMUM_EVALUATOR_STAKE_USDG,
+  minimumEvaluatorStake,
   selfSettlementLimit,
   STAKE_COVERAGE,
 } from "../capacity.js";
@@ -386,16 +386,25 @@ jobsRouter.post(
     const budget = settlementAsset === "liege" ? input.budgetLiege! : input.budgetUsdg!;
     const evaluatorFee =
       settlementAsset === "liege" ? input.evaluatorFeeLiege : input.evaluatorFeeUsdg;
-    const agent = await db.query<{ owner_id: string }>(
-      "SELECT owner_id FROM agents WHERE id = $1 AND active",
+    const agent = await db.query<{ owner_id: string; settlement_assets: string[] }>(
+      "SELECT owner_id, settlement_assets FROM agents WHERE id = $1 AND active",
       [input.agentId],
     );
     if (!agent.rowCount)
       throw new ApiError(404, "agent_not_found", "The selected agent is unavailable.");
-
     const checks: Array<{ name: string; status: "pass" | "fail"; message: string }> = [];
     const fail = (name: string, message: string) => checks.push({ name, status: "fail", message });
     const pass = (name: string, message: string) => checks.push({ name, status: "pass", message });
+    if (!agent.rows[0].settlement_assets.includes(settlementAsset))
+      fail(
+        "settlement_asset_support",
+        `The selected agent does not accept ${settlementAsset.toUpperCase()} settlement.`,
+      );
+    else
+      pass(
+        "settlement_asset_support",
+        `The selected agent accepts ${settlementAsset.toUpperCase()} settlement.`,
+      );
     if (agent.rows[0].owner_id === request.auth!.userId)
       fail("agent_ownership", "An owner cannot open a job for their own agent.");
     else pass("agent_ownership", "The selected agent is owned by another account.");
@@ -422,13 +431,15 @@ jobsRouter.post(
         const evaluator = await lockEvaluator(client, input.evaluatorId);
         const position = evaluator
           ? await evaluatorPosition(client, input.evaluatorId, {
-              addedExposureUsdg: Number(budget),
+              asset: settlementAsset,
+              addedExposure: Number(budget),
             })
           : null;
-        if (!evaluator?.active || position!.stakeUsdg < MINIMUM_EVALUATOR_STAKE_USDG)
+        const minimumStake = minimumEvaluatorStake(settlementAsset);
+        if (!evaluator?.active || position!.stakeAmount < minimumStake)
           fail(
             "evaluator_eligibility",
-            `The selected evaluator must have an active profile with at least ${MINIMUM_EVALUATOR_STAKE_USDG.toLocaleString("en-US")} USDG staked.`,
+            `The selected evaluator must have an active profile with at least ${minimumStake.toLocaleString("en-US")} ${settlementAsset.toUpperCase()} staked.`,
           );
         else if (!position!.covered)
           fail(
@@ -518,12 +529,18 @@ jobsRouter.post(
     const budget = settlementAsset === "liege" ? input.budgetLiege! : input.budgetUsdg!;
     const evaluatorFee =
       settlementAsset === "liege" ? input.evaluatorFeeLiege : input.evaluatorFeeUsdg;
-    const agent = await db.query<{ owner_id: string }>(
-      "SELECT owner_id FROM agents WHERE id = $1 AND active",
+    const agent = await db.query<{ owner_id: string; settlement_assets: string[] }>(
+      "SELECT owner_id, settlement_assets FROM agents WHERE id = $1 AND active",
       [input.agentId],
     );
     if (!agent.rowCount)
       throw new ApiError(404, "agent_not_found", "The selected agent is unavailable.");
+    if (!agent.rows[0].settlement_assets.includes(settlementAsset))
+      throw new ApiError(
+        422,
+        "settlement_asset_not_supported",
+        `The selected agent does not accept ${settlementAsset.toUpperCase()} settlement.`,
+      );
     if (agent.rows[0].owner_id === request.auth!.userId)
       throw new ApiError(
         422,
@@ -554,16 +571,16 @@ jobsRouter.post(
         const evaluator = await lockEvaluator(client, input.evaluatorId);
         const position = evaluator
           ? await evaluatorPosition(client, input.evaluatorId, {
-              // Settlement assets are configured at job creation, but neither may bypass the
-              // same independent-review capacity boundary.
-              addedExposureUsdg: Number(budget),
+              asset: settlementAsset,
+              addedExposure: Number(budget),
             })
           : null;
-        if (!evaluator?.active || position!.stakeUsdg < MINIMUM_EVALUATOR_STAKE_USDG)
+        const minimumStake = minimumEvaluatorStake(settlementAsset);
+        if (!evaluator?.active || position!.stakeAmount < minimumStake)
           throw new ApiError(
             422,
             "evaluator_ineligible",
-            `The selected evaluator must have an active profile with at least ${MINIMUM_EVALUATOR_STAKE_USDG.toLocaleString("en-US")} USDG staked.`,
+            `The selected evaluator must have an active profile with at least ${minimumStake.toLocaleString("en-US")} ${settlementAsset.toUpperCase()} staked.`,
           );
         if (!position!.covered)
           throw new ApiError(
