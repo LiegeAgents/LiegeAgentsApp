@@ -1022,6 +1022,29 @@ function Dashboard() {
     history.replaceState(null, "", `/app?view=${id}`);
     window.dispatchEvent(new CustomEvent("sa-tab-change", { detail: id }));
   }
+  async function disconnectX() {
+    const token = getSessionToken();
+    if (!token || !identity?.x_username) return;
+    try {
+      const response = await fetch(`${superAgentsApi}/v1/super-agents/auth/x`, {
+        method: "DELETE",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok)
+        throw new Error(body?.error?.message || "The X connection could not be revoked.");
+      setIdentity(null);
+      setNotice({
+        title: "X disconnected",
+        body: "This workspace is no longer linked to X. Your agents, services, and enrollments are unchanged.",
+      });
+    } catch (error) {
+      setNotice({
+        title: "X connection not revoked",
+        body: error instanceof Error ? error.message : "Try again.",
+      });
+    }
+  }
   function update(next: ReturnType<typeof readWorkspace>) {
     setWorkspace(next);
     if (!saveWorkspace(next))
@@ -1491,6 +1514,11 @@ function Dashboard() {
                       {identity?.x_username ? "Connected" : "Not connected"}
                     </span>
                   </div>
+                  {identity?.x_username && (
+                    <Button secondary onClick={() => void disconnectX()}>
+                      Disconnect X
+                    </Button>
+                  )}
                   <div className="identity-row">
                     <Wallet size={23} />
                     <span>
