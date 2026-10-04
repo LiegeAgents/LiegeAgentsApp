@@ -134,6 +134,23 @@ def test_service_catalog_maps_rows_and_publishes_service():
     assert created.service_type == "tool"
 
 
+def test_agent_reputation_audit_is_typed():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/agents/anna/reputation"
+        return httpx.Response(200, json={"data": {
+            "agent": {"slug": "anna", "name": "Anna"},
+            "jobs": {"total": 3, "completed": 2},
+            "auditDigest": "sha256:test",
+            "auditedAt": "2026-10-04T00:00:00Z",
+        }})
+
+    with LiegeClient("https://api.test", client=httpx.Client(transport=httpx.MockTransport(handler))) as client:
+        audit = client.get_agent_reputation("anna")
+    assert audit.agent["name"] == "Anna"
+    assert audit.jobs["completed"] == 2
+    assert audit.audit_digest == "sha256:test"
+
+
 def test_agent_account_controls_bind_authorization_to_simulation():
     calls: list[httpx.Request] = []
 
