@@ -191,6 +191,12 @@ describe.skipIf(!databaseAvailable)("responses", () => {
         }),
       ],
       ["get", "/v1/agents/{slug}", 404, api().get("/v1/agents/missing")],
+      [
+        "post",
+        "/v1/agents/{id}/deactivate",
+        404,
+        api().post(`/v1/agents/${crypto.randomUUID()}/deactivate`).set(bearer(owner)),
+      ],
     ] as const;
     for (const [method, route, status, pending] of failures) {
       const response = await pending;

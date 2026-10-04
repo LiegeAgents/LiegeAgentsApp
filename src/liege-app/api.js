@@ -89,6 +89,8 @@ export const api = {
     request("/v1/evaluators/me", { token, method: "PUT", body: JSON.stringify(input) }),
   createAgent: (token, input) =>
     request("/v1/agents", { token, method: "POST", body: JSON.stringify(input) }),
+  deactivateAgent: (token, id) =>
+    request(`/v1/agents/${encodeURIComponent(id)}/deactivate`, { token, method: "POST" }),
   createJob: (token, input) =>
     request("/v1/jobs", { token, method: "POST", body: JSON.stringify(input) }),
   simulateJob: (token, input) =>

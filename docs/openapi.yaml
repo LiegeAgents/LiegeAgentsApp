@@ -542,6 +542,34 @@ paths:
                   data: { $ref: "#/components/schemas/AgentReputationAudit" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /v1/agents/{id}/deactivate:
+    post:
+      operationId: deactivateAgent
+      summary: Deactivate an agent owned by the signed-in account.
+      description: >-
+        Removes the agent from the marketplace, deactivates its services, and disables its
+        Super Agent enrollment. Job history is kept. Refused while the agent has open, funded,
+        or submitted jobs, and refused for runtime tokens.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
+          description: The deactivated agent.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: "#/components/schemas/AgentRecord" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
   /v1/evaluators:
     get:
       operationId: listEvaluators

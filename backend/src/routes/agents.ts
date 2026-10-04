@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { Router } from "express";
 import { z } from "zod";
 import { canonical } from "../agentActions.js";
+import { audit } from "../audit.js";
 import { db } from "../db/index.js";
 import { requireAuth } from "../auth.js";
 import { ApiError, asyncRoute } from "../http.js";
@@ -252,5 +253,72 @@ agentsRouter.post(
       ],
     );
     response.status(201).json({ data: result.rows[0] });
+  }),
+);
+
+// Owner-only and irreversible from the API: the agent leaves the marketplace, its services stop
+// selling, and its Super Agent enrollment is disabled. Job history is kept.
+agentsRouter.post(
+  "/:id/deactivate",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    if (request.runtimeAuth)
+      throw new ApiError(
+        403,
+        "runtime_token_not_allowed",
+        "Runtime tokens cannot deactivate agents. Sign in with the owner wallet.",
+      );
+    const agentId = z.string().uuid().parse(request.params.id);
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const agent = await client.query<{ id: string; slug: string; name: string }>(
+        "SELECT id, slug, name FROM agents WHERE id = $1 AND owner_id = $2 AND active FOR UPDATE",
+        [agentId, request.auth!.userId],
+      );
+      if (!agent.rowCount)
+        throw new ApiError(404, "agent_not_found", "No active agent you own has that ID.");
+      const activeJobs = await client.query<{ count: number }>(
+        "SELECT COUNT(*)::int AS count FROM jobs WHERE agent_id = $1 AND status IN ('open', 'funded', 'submitted')",
+        [agentId],
+      );
+      if (activeJobs.rows[0].count > 0)
+        throw new ApiError(
+          409,
+          "agent_has_active_jobs",
+          "Finish, settle, or let expire this agent's open, funded, and submitted jobs before deactivating it.",
+        );
+      const result = await client.query(
+        "UPDATE agents SET active = false, updated_at = now() WHERE id = $1 RETURNING *",
+        [agentId],
+      );
+      const services = await client.query(
+        "UPDATE commerce_services SET active = false, updated_at = now() WHERE agent_id = $1 AND active",
+        [agentId],
+      );
+      const enrollments = await client.query(
+        "UPDATE superagent_enrollments SET enabled = false, updated_at = now() WHERE agent_id = $1 AND enabled",
+        [agentId],
+      );
+      await audit(client, {
+        actorId: request.auth!.userId,
+        action: "agent.deactivated",
+        targetType: "agent",
+        targetId: agentId,
+        requestId: request.requestId,
+        metadata: {
+          slug: agent.rows[0].slug,
+          servicesDeactivated: services.rowCount ?? 0,
+          superAgentEnrollmentsDisabled: enrollments.rowCount ?? 0,
+        },
+      });
+      await client.query("COMMIT");
+      response.json({ data: result.rows[0] });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }),
 );

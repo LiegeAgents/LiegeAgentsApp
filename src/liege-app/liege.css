@@ -1779,6 +1779,23 @@ section[id] {
   font-size: 11px;
   margin-top: 19px;
 }
+.owned-agent-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  padding: 14px 0;
+  border-top: 1px solid var(--l-border);
+}
+.owned-agent-row strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+.settings-panel .owned-agent-row p {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
 .launch-layout {
   grid-template-columns: 1.1fr 0.8fr;
 }
