@@ -4387,28 +4387,29 @@ function PolicyForm({ policy, onSave, onPause }) {
   );
 }
 function OwnedAgents({ token, agents, ownerAddress, onDeactivated }) {
-  const [pending, setPending] = useState(""),
+  const [confirming, setConfirming] = useState(null),
+    [pending, setPending] = useState(false),
     [error, setError] = useState("");
   const owned = agents.filter(
     (agent) => ownerAddress && agent.owner_wallet?.toLowerCase() === ownerAddress.toLowerCase(),
   );
   if (!token || !owned.length) return null;
-  const deactivate = async (agent) => {
-    if (
-      !window.confirm(
-        `Deactivate ${agent.name}? It leaves the marketplace, its services stop selling, and its Super Agent enrollment is disabled. This cannot be undone from the workspace.`,
-      )
-    )
-      return;
-    setPending(agent.id);
+  const close = () => {
+    if (pending) return;
+    setConfirming(null);
+    setError("");
+  };
+  const deactivate = async () => {
+    setPending(true);
     setError("");
     try {
-      await api.deactivateAgent(token, agent.id);
-      onDeactivated(agent);
+      await api.deactivateAgent(token, confirming.id);
+      onDeactivated(confirming);
+      setConfirming(null);
     } catch (e) {
       setError(e?.message || "Could not deactivate this agent.");
     } finally {
-      setPending("");
+      setPending(false);
     }
   };
   return (
@@ -4426,12 +4427,42 @@ function OwnedAgents({ token, agents, ownerAddress, onDeactivated }) {
               {agent.category} · {agent.id}
             </p>
           </div>
-          <Button secondary small disabled={!!pending} onClick={() => deactivate(agent)}>
-            {pending === agent.id ? "Deactivating..." : "Deactivate"}
+          <Button secondary small onClick={() => setConfirming(agent)}>
+            Deactivate
           </Button>
         </div>
       ))}
-      {error && <Notice error>{error}</Notice>}
+      {confirming && (
+        <Modal title="Deactivate agent" onClose={close}>
+          <div className="dialog-body">
+            <div className="agent-detail-intro">
+              <AgentIcon agent={confirming} size={32} />
+              <div>
+                <span className="eyebrow">{confirming.category}</span>
+                <p>
+                  <strong>{confirming.name}</strong>
+                </p>
+              </div>
+            </div>
+            <p>Deactivating this agent will:</p>
+            <ul className="deactivate-effects">
+              <li>Remove it from the marketplace and Super Agents matching.</li>
+              <li>Stop its services from accepting new jobs.</li>
+              <li>Keep its past jobs, receipts, and audit history.</li>
+            </ul>
+            <Notice>This cannot be undone from the workspace.</Notice>
+            {error && <Notice error>{error}</Notice>}
+            <div className="form-actions">
+              <Button secondary disabled={pending} onClick={close}>
+                Cancel
+              </Button>
+              <Button className="l-button danger" disabled={pending} onClick={deactivate}>
+                {pending ? "Deactivating..." : "Deactivate agent"}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

@@ -1796,6 +1796,21 @@ section[id] {
   margin: 4px 0 0;
   overflow-wrap: anywhere;
 }
+.deactivate-effects {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--l-muted);
+  list-style: disc;
+}
+.l-button.danger {
+  background: #ef7b77;
+  border-color: #ef7b77;
+  color: #1a0807;
+}
 .launch-layout {
   grid-template-columns: 1.1fr 0.8fr;
 }
