@@ -82,7 +82,8 @@ export const api = {
     request(`/v1/invoices/${encodeURIComponent(id)}/refunds`, { token }),
   cancelInvoice: (token, id) =>
     request(`/v1/invoices/${encodeURIComponent(id)}/cancel`, { token, method: "POST" }),
-  evaluators: () => request("/v1/evaluators"),
+  evaluators: (asset) =>
+    request(`/v1/evaluators${asset ? `?asset=${encodeURIComponent(asset)}` : ""}`),
   evaluatorProfile: (token) => request("/v1/evaluators/me", { token }),
   updateEvaluatorProfile: (token, input) =>
     request("/v1/evaluators/me", { token, method: "PUT", body: JSON.stringify(input) }),
