@@ -868,8 +868,8 @@ function SuperAgentChat({ live = false }: { live?: boolean }) {
         </button>
       </form>
       <p className="chat-note">
-        Natural language creates a proposal only. You approve before any job, spend, or signing
-        step.
+        Natural language creates a reviewable proposal. Approval opens an unfunded job; funding and
+        signing remain separate steps.
       </p>
     </section>
   );
@@ -954,16 +954,31 @@ function Dashboard() {
         body: "Your browser could not save this change locally.",
       });
   }
-  function decide(status: "Approved draft" | "Dismissed") {
+  async function decide(status: "Approved draft" | "Dismissed") {
     if (!selected) return;
     const decision = status === "Approved draft" ? "approved" : "rejected";
     const token = getSessionToken();
+    let createdJobId = "";
     if (token && /^[0-9a-f-]{36}$/i.test(selected.id)) {
-      fetch(`${superAgentsApi}/v1/super-agents/intents/${selected.id}/decision`, {
-        method: "POST",
-        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-        body: JSON.stringify({ decision }),
-      }).catch(() => undefined);
+      try {
+        const response = await fetch(
+          `${superAgentsApi}/v1/super-agents/intents/${selected.id}/decision`,
+          {
+            method: "POST",
+            headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+            body: JSON.stringify({ decision }),
+          },
+        );
+        if (!response.ok) throw new Error("The proposal could not be updated.");
+        const body = await response.json();
+        createdJobId = body?.data?.job?.id || "";
+      } catch (error) {
+        setNotice({
+          title: "Proposal not updated",
+          body: error instanceof Error ? error.message : "Try again from Requests.",
+        });
+        return;
+      }
     }
     const next = requests.map((r) => (r.id === selected.id ? { ...r, status } : r));
     setLiveRequests(next);
@@ -973,7 +988,9 @@ function Dashboard() {
       title: status === "Approved draft" ? "Draft approved" : "Request dismissed",
       body:
         status === "Approved draft"
-          ? "The proposal has been marked approved. Funding and signing remain separate steps."
+          ? createdJobId
+            ? `Open job ${createdJobId} created. Review it and fund it when you are ready.`
+            : "The proposal has been marked approved. Funding and signing remain separate steps."
           : "The request has been removed from your review queue.",
     });
   }

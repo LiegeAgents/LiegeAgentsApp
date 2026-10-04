@@ -22,6 +22,19 @@ bun run dev
 
 Health: `GET /health`
 
+## Provision webhooks
+
+After placing a valid owner session token and `AGENT_SERVER_URL` in `.env`, provision the
+five flagship subscriptions and write their canonical UUIDs and one-time signing secrets back
+to `.env`:
+
+```bash
+bun run provision:webhooks
+```
+
+The command replaces matching subscriptions for the runtime URLs. Copy the resulting five
+`*_WEBHOOK_SECRET` values into the deployed service environment, then redeploy it.
+
 Webhook URLs:
 
 ```text
