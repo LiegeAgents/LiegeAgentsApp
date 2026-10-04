@@ -4,10 +4,12 @@ One Bun service hosts Scott, Anna, Marcus, Chloe, and Daniel. It consumes signed
 `job.funded` webhooks, fetches only the authorized job brief, routes the work to the assigned
 handler, and submits the deliverable back through the Liege API.
 
-The runtime has no wallet private key and cannot fund, sign, evaluate, or settle jobs. Human
-approval and wallet operations remain in Liege. Duplicate events are ignored in-process, and every
-job is checked for agent ownership, funded status, expiry, and delivery deadline before Groq is
-called.
+The runtime has no wallet private key and never calls funding, signing, evaluation, or settlement
+endpoints. Human approval and wallet operations remain in Liege. Duplicate events are ignored
+in-process, and every job is checked for agent ownership, funded status, expiry, and delivery
+deadline before Groq is called. Until a dedicated scoped worker token is enabled in the API, treat
+`LIEGE_SESSION_TOKEN` as a broad owner credential: use a dedicated service owner account and
+rotate it if the runtime is compromised.
 
 ## Local run
 

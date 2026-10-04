@@ -26,4 +26,59 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run check
       - run: bun test
-      - run: docker build -t liege-superagents-agents:ci .
+
+  build-push:
+    if: github.repository == 'liegeagents/liegeagentsapp' && github.event_name == 'push'
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}-superagents-agents" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: ./superagents-agents
+          push: true
+          build-args: GIT_SHA=${{ github.sha }}
+          tags: |
+            ${{ steps.image.outputs.name }}:latest
+            ${{ steps.image.outputs.name }}:${{ github.sha }}
+
+  deploy:
+    if: github.repository == 'liegeagents/liegeagentsapp' && github.event_name == 'push'
+    needs: build-push
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Deploy and verify Super Agents runtime
+        env:
+          DEPLOY_HOOK: ${{ secrets.SUPERAGENTS_AGENTS_RENDER_DEPLOY_HOOK_URL }}
+          RUNTIME_URL: ${{ vars.SUPERAGENTS_AGENTS_URL }}
+        run: |
+          if [ -z "$DEPLOY_HOOK" ]; then
+            echo "No Super Agents runtime deploy hook configured; skipping deployment."
+            exit 0
+          fi
+          curl --fail --silent --show-error --request POST "$DEPLOY_HOOK"
+          if [ -z "$RUNTIME_URL" ]; then
+            echo "::warning::SUPERAGENTS_AGENTS_URL is not set, so deployment was not verified."
+            exit 0
+          fi
+          for attempt in $(seq 1 60); do
+            commit=$(curl --silent --max-time 5 "$RUNTIME_URL/health" | jq -r '.data.commit // empty' || true)
+            if [ "$commit" = "$GITHUB_SHA" ]; then
+              echo "Super Agents runtime commit $GITHUB_SHA is serving."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Super Agents runtime commit $GITHUB_SHA was not serving at $RUNTIME_URL within 10 minutes."
+          exit 1

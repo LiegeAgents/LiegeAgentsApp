@@ -67,7 +67,7 @@ export const server = Bun.serve({
   async fetch(request) {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/health")
-      return json(200, { status: "ok", service: "superagents-agents", agents: Object.keys(config.agents), walletAuthority: false });
+      return json(200, { status: "ok", service: "superagents-agents", commit: process.env.GIT_SHA ?? null, agents: Object.keys(config.agents), walletAuthority: false });
     if (request.method !== "POST" || !url.pathname.startsWith("/webhooks/")) return json(404, { code: "not_found" });
     const agentKey = agentForPath(url.pathname);
     if (!agentKey) return json(404, { code: "agent_not_found" });
