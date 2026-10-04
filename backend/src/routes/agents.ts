@@ -19,7 +19,9 @@ const createAgent = z
     settlementAssets: z
       .array(z.enum(["usdg", "liege"]).or(z.string()))
       .min(1)
-      .default(["usdg"]),
+      // Legacy callers omitted settlementAssets; keep those agents compatible with both
+      // independent rails while new clients can explicitly narrow the list.
+      .default(["usdg", "liege"]),
     metadata: z.record(z.unknown()).default({}),
   })
   .transform((value, ctx) => {
