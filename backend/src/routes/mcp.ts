@@ -11,6 +11,8 @@ import { ApiError, asyncRoute } from "../http.js";
 import { agentActionDigest, normalizeAgentAction, ownerRuleReasons } from "../agentActions.js";
 import { parseWebhookCursor, replayWebhookEvents } from "../webhooks.js";
 import { ensureAccount, publicAccount } from "./agentAccounts.js";
+import { issueExecutionGrant, readExecutionGrant } from "../executionGrants.js";
+import { submitDeliverableWithExecutionGrant } from "./jobs.js";
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const connectionInput = z.object({ agentId: z.string().uuid(), name: z.string().min(2).max(80) });
@@ -541,7 +543,7 @@ mcpRouter.post(
        WHERE p.id = $1 AND p.user_id = $2 AND p.status = 'pending' AND p.expires_at > now()
          AND ($3 = 'rejected' OR NOT EXISTS (
            SELECT 1 FROM agent_accounts a WHERE a.agent_id = p.agent_id AND a.status <> 'active'))
-       RETURNING p.id, p.status`,
+       RETURNING p.id, p.agent_id, p.action, p.payload, p.status, p.expires_at`,
       [id, request.auth!.userId, decision],
     );
     if (!result.rowCount && decision === "approved") {
@@ -563,6 +565,21 @@ mcpRouter.post(
         "proposal_unavailable",
         "This proposal is no longer available to decide.",
       );
+    let executionGrant: { id: string; expiresAt: Date } | undefined;
+    if (decision === "approved" && result.rows[0].action === "submit_deliverable") {
+      const payload = result.rows[0].payload as { jobId?: unknown; deliverable?: unknown };
+      if (typeof payload.jobId === "string" && typeof payload.deliverable === "string") {
+        const grant = await issueExecutionGrant({
+          proposalId: result.rows[0].id,
+          userId: request.auth!.userId,
+          agentId: result.rows[0].agent_id,
+          jobId: payload.jobId,
+          deliverable: payload.deliverable,
+          expiresAt: result.rows[0].expires_at,
+        });
+        executionGrant = { id: grant.id, expiresAt: grant.expiresAt };
+      }
+    }
     await audit(db, {
       actorId: request.auth!.userId,
       action: `mcp.proposal_${decision}`,
@@ -570,11 +587,36 @@ mcpRouter.post(
       targetId: id,
       requestId: request.requestId,
     });
-    response.json({ data: result.rows[0] });
+    response.json({ data: { ...result.rows[0], executionGrant } });
   }),
 );
 
 export const mcpInternalRouter = Router();
+mcpInternalRouter.post(
+  "/execution-grants/submit",
+  asyncRoute(async (request, response) => {
+    const c = await connection(request);
+    const grantToken = request.header("x-liege-execution-grant");
+    if (!grantToken)
+      throw new ApiError(401, "execution_grant_required", "An execution grant is required.");
+    const input = z
+      .object({
+        jobId: z.string().uuid(),
+        deliverable: z.string().min(1).max(100_000),
+        evidence: z.array(z.string().url()).max(20).default([]),
+      })
+      .parse(request.body);
+    const data = await submitDeliverableWithExecutionGrant({
+      grantToken,
+      jobId: input.jobId,
+      agentId: c.agent_id,
+      deliverable: input.deliverable,
+      evidence: input.evidence,
+      requestId: request.requestId,
+    });
+    response.json({ data });
+  }),
+);
 const cursorFor = (createdAt: Date | string, id: string) =>
   Buffer.from(JSON.stringify({ createdAt: new Date(createdAt).toISOString(), id })).toString(
     "base64url",
@@ -719,6 +761,46 @@ mcpInternalRouter.get(
       metadata: { agentId: c.agent_id, status: query.status, count: result.rowCount },
     });
     response.json({ data: result.rows });
+  }),
+);
+mcpInternalRouter.get(
+  "/proposals/:id/grant",
+  asyncRoute(async (request, response) => {
+    const c = await connection(request);
+    const id = z.string().uuid().parse(request.params.id);
+    const proposal = await db.query<{ status: string; action: string }>(
+      "SELECT status, action FROM mcp_proposals WHERE id=$1 AND user_id=$2 AND agent_id=$3 AND expires_at > now()",
+      [id, c.user_id, c.agent_id],
+    );
+    if (!proposal.rowCount || proposal.rows[0].status !== "approved")
+      throw new ApiError(
+        409,
+        "execution_grant_unavailable",
+        "This proposal has no active execution grant.",
+      );
+    if (proposal.rows[0].action !== "submit_deliverable")
+      throw new ApiError(
+        409,
+        "execution_grant_unavailable",
+        "Only deliverable proposals receive execution grants.",
+      );
+    const grant = await readExecutionGrant(id, c.agent_id);
+    if (!grant || grant.usedAt || grant.expiresAt <= new Date())
+      throw new ApiError(
+        409,
+        "execution_grant_unavailable",
+        "This execution grant is unavailable or expired.",
+      );
+    await audit(db, {
+      actorId: c.user_id,
+      action: "mcp.execution_grant_read",
+      targetType: "mcp_execution_grant",
+      targetId: grant.id,
+      metadata: { agentId: c.agent_id, jobId: grant.jobId },
+    });
+    response.json({
+      data: { grantToken: grant.token, jobId: grant.jobId, expiresAt: grant.expiresAt },
+    });
   }),
 );
 mcpInternalRouter.get(

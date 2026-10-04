@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireAuth, requireMobileAuth, hashSessionToken } from "../auth.js";
 import { audit } from "../audit.js";
 import { db } from "../db/index.js";
+import { issueExecutionGrant } from "../executionGrants.js";
 import { ApiError, asyncRoute } from "../http.js";
 
 export const mobileRouter = Router();
@@ -330,7 +331,7 @@ mobileRouter.post(
        WHERE p.id=$1 AND p.user_id=$2 AND p.status='pending' AND p.expires_at > now()
          AND ($3='rejected' OR NOT EXISTS (
            SELECT 1 FROM agent_accounts a WHERE a.agent_id=p.agent_id AND a.status <> 'active'))
-       RETURNING id, status, decided_at`,
+       RETURNING id, agent_id, action, payload, status, expires_at, decided_at`,
       [id, request.mobileAuth!.userId, decision],
     );
     if (!result.rowCount)
@@ -339,6 +340,32 @@ mobileRouter.post(
         "proposal_unavailable",
         "This proposal is no longer available to decide.",
       );
+    const proposal = result.rows[0] as {
+      id: string;
+      agent_id: string;
+      action: string;
+      payload: unknown;
+      status: string;
+      expires_at: Date;
+      decided_at: Date;
+    };
+    let executionGrant: { id: string; expiresAt: Date } | undefined;
+    if (decision === "approved" && proposal.action === "submit_deliverable") {
+      const payload = z
+        .object({ jobId: z.string().uuid(), deliverable: z.string().min(1) })
+        .safeParse(proposal.payload);
+      if (payload.success) {
+        const grant = await issueExecutionGrant({
+          proposalId: proposal.id,
+          userId: request.mobileAuth!.userId,
+          agentId: proposal.agent_id,
+          jobId: payload.data.jobId,
+          deliverable: payload.data.deliverable,
+          expiresAt: proposal.expires_at,
+        });
+        executionGrant = { id: grant.id, expiresAt: grant.expiresAt };
+      }
+    }
     await audit(db, {
       actorId: request.mobileAuth!.userId,
       action: `mcp.proposal_${decision}_mobile`,
@@ -347,6 +374,6 @@ mobileRouter.post(
       requestId: request.requestId,
       metadata: { deviceId: request.mobileAuth!.deviceId },
     });
-    response.json({ data: result.rows[0] });
+    response.json({ data: { ...proposal, executionGrant } });
   }),
 );

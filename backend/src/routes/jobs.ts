@@ -22,6 +22,7 @@ import {
   selfSettlementLimit,
   STAKE_COVERAGE,
 } from "../capacity.js";
+import { consumeExecutionGrant } from "../executionGrants.js";
 
 const decimalAmount = (positive = false) =>
   z
@@ -660,6 +661,70 @@ async function transition(
       "This job has expired and can no longer be settled; its escrow is refunded to the client.",
     );
   return value;
+}
+
+export async function submitDeliverableWithExecutionGrant(input: {
+  grantToken: string;
+  jobId: string;
+  agentId: string;
+  deliverable: string;
+  evidence: string[];
+  requestId?: string;
+}) {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const grant = await consumeExecutionGrant(
+      client,
+      input.grantToken,
+      input.jobId,
+      input.agentId,
+      input.deliverable,
+    );
+    if (!grant)
+      throw new ApiError(
+        409,
+        "execution_grant_unavailable",
+        "This execution grant is invalid, expired, already used, or does not match the deliverable.",
+      );
+    const request = {
+      params: { id: input.jobId },
+      auth: { userId: grant.user_id },
+      requestId: input.requestId,
+    } as any;
+    const job = await transition(client, request, "submitted");
+    await client.query(
+      "INSERT INTO submissions (job_id, provider_id, deliverable_ciphertext, deliverable_hash, evidence) VALUES ($1,$2,$3,$4,$5)",
+      [
+        job.id,
+        grant.user_id,
+        encryptPayload(input.deliverable, payloadContext(job.id, "deliverable")),
+        payloadDigest(input.deliverable),
+        JSON.stringify(input.evidence),
+      ],
+    );
+    const result = await client.query(
+      "UPDATE jobs SET status = 'submitted', submitted_at = now(), updated_at = now() WHERE id = $1 RETURNING *",
+      [job.id],
+    );
+    await client.query("INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,$3)", [
+      job.id,
+      grant.user_id,
+      "job.submitted",
+    ]);
+    await enqueueWebhookEvent(client, {
+      jobId: job.id,
+      eventType: "job.submitted",
+      actorId: grant.user_id,
+    });
+    await client.query("COMMIT");
+    return publicJob(result.rows[0]);
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 jobsRouter.post(

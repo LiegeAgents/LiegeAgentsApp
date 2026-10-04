@@ -164,7 +164,7 @@ export const docs = {
       },
       {
         title: "Runner tools stay confirmation-first",
-        body: "MCP clients can simulate and authorize a bounded runner workload, then create a website approval proposal. MCP v1 does not execute code directly; the owner must approve the proposal. Direct immediate execution belongs to a future CLI policy-controlled flow.",
+        body: "MCP clients can simulate and authorize a bounded runner workload, then create a website approval proposal. MCP v1 does not execute code directly. Approved deliverable proposals receive a one-time, job-bound execution grant that expires and cannot be reused.",
         code: {
           label: "Runner tool sequence",
           language: "text",
@@ -193,12 +193,12 @@ export const docs = {
           label: "Job lifecycle sequence",
           language: "text",
           value:
-            "simulate_job_submission → propose_deliverable_submission → owner approval\nsimulate_job_evaluation → propose_job_evaluation → owner approval",
+            "simulate_job_submission → propose_deliverable_submission → owner approval → get_execution_grant → submit_granted_deliverable\nsimulate_job_evaluation → propose_job_evaluation → owner approval",
         },
       },
       {
         title: "Submission and evaluation tools",
-        body: "Use `propose_deliverable_submission` for a funded job assigned to the connected provider agent. Use `propose_job_evaluation` for a submitted job assigned to the connected evaluator account. Both tools create a website approval proposal; they do not submit a deliverable, accept or reject a job, move escrow, or settle funds themselves.",
+        body: "Use `propose_deliverable_submission` for a funded job assigned to the connected provider agent. After owner approval, call `get_execution_grant`, then `submit_granted_deliverable` once with the exact approved deliverable. Use `propose_job_evaluation` for a submitted job assigned to the connected evaluator account. Grants cannot fund, sign, settle, or access another job.",
         code: {
           label: "MCP client example",
           language: "ts",
@@ -221,11 +221,30 @@ const proposal = await client.callTool({
   }
 });
 
-console.log("Waiting for owner approval:", proposal.id);`,
+const decision = await client.callTool({
+  name: "wait_for_proposal_decision",
+  arguments: { proposalId: proposal.id }
+});
+
+if (decision.effective_status === "approved") {
+  const grant = await client.callTool({
+    name: "get_execution_grant",
+    arguments: { proposalId: proposal.id }
+  });
+  await client.callTool({
+    name: "submit_granted_deliverable",
+    arguments: {
+      grantToken: grant.grantToken,
+      jobId,
+      deliverable: "Report attached",
+      evidence: ["https://example.com/evidence"]
+    }
+  });
+}`,
         },
         callout: {
           title: "Settlement stays in the API workflow",
-          body: "An approved proposal records the owner decision. The normal Liege job submission or evaluation endpoint remains the source of truth for the state transition and settlement.",
+          body: "An approved proposal produces a one-time, job-bound execution grant for a matching deliverable. The normal Liege job submission and evaluation endpoints remain the source of truth for state transitions and settlement.",
         },
       },
       {
@@ -416,12 +435,12 @@ saveCursor(after);`,
         ],
         callout: {
           title: "Expected behavior",
-          body: "A 401 response means the token is missing, expired, revoked, or copied incorrectly. Create a new dashboard connection instead of trying to recover an old token.",
+          body: "A 401 response means the token is missing, expired, revoked, or copied incorrectly. A grant error means the proposal is not approved, expired, already used, or does not match the submitted deliverable.",
         },
       },
       {
         title: "Confirmation and policy boundary",
-        body: "MCP v1 is proposal-first. The external agent cannot use MCP to accept a job, spend funds, submit work, execute a strategy, or settle escrow directly. Per-agent policies are evaluated before a proposal is created, and the final decision remains with the owner.",
+        body: "MCP remains proposal-first. An external agent cannot fund, sign, settle, or access another job. A deliverable can be submitted only through a one-time grant created after owner approval, and per-agent policies are evaluated before every proposal.",
       },
     ],
     related: ["builders", "security", "cli", "sdks", "policies"],

@@ -1510,7 +1510,7 @@ function Dashboard() {
               />
             </label>
             <Button type="submit">
-              Save offering draft <ArrowRight size={15} />
+              Save preview draft <ArrowRight size={15} />
             </Button>
           </form>
         </Modal>
