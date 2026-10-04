@@ -79,6 +79,13 @@ export const server = Bun.serve({
     if (!eventId) return json(400, { code: "event_id_required" });
     let event: LiegeWebhook;
     try { event = JSON.parse(body) as LiegeWebhook; } catch { return json(400, { code: "invalid_json" }); }
+    if (event.type === "superagent.connection_test") {
+      const probe = event as unknown as {agentId: string; challenge: string; serviceSlug: string};
+      if (probe.agentId !== config.agents[agentKey].id || !/^[a-f0-9]{64}$/.test(probe.challenge || "")) return json(400, {code:"invalid_connection_test"});
+      if (!handlers[agentKey].serviceSlugs.includes(probe.serviceSlug)) return json(422, {code:"unknown_service"});
+      const proof = createHmac("sha256",config.agents[agentKey].secret).update(`superagent.connection_test:${probe.agentId}:${probe.challenge}`).digest("hex");
+      return new Response(null,{status:204,headers:{"x-liege-connection-proof":proof}});
+    }
     if (event.type !== "job.funded") return json(202, { status: "ignored", reason: event.type ?? "unknown_event" });
     try { return json(200, await execute(agentKey, eventId, event)); }
     catch (error) { console.error(JSON.stringify({ eventId, agentKey, error: error instanceof Error ? error.message : String(error) })); return json(500, { code: "execution_failed" }); }

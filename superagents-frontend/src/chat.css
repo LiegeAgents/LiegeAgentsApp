@@ -2,6 +2,50 @@
   background: #08090a;
   color: #e6ece7;
 }
+.enrollment-panel {
+  margin-top: 24px;
+}
+.enrollment-panel label {
+  display: grid;
+  gap: 9px;
+  margin: 20px 0;
+  font-size: 13px;
+  color: #b4c7bb;
+}
+.enrollment-panel input,
+.enrollment-panel select,
+.enrollment-panel textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #36503e;
+  border-radius: 8px;
+  background: #101a14;
+  color: #e5eee8;
+  font: inherit;
+  box-sizing: border-box;
+}
+.enrollment-panel textarea {
+  min-height: 100px;
+}
+.enrollment-panel details {
+  padding: 15px 0;
+  border-bottom: 1px solid #293d30;
+}
+.enrollment-panel summary {
+  cursor: pointer;
+  color: #a1ebbd;
+  font-size: 13px;
+}
+.enrollment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 24px 0;
+}
+.enrollment-panel button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .chat-workspace .dash-heading,
 .chat-workspace .dash-footer {
   display: none;

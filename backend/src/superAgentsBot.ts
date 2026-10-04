@@ -2,6 +2,7 @@ import { parseSuperAgentIntent } from "./routes/superAgents.js";
 import { env } from "./config.js";
 import { db } from "./db/index.js";
 import { audit } from "./audit.js";
+import { findEnrolledAgent } from "./superAgentEnrollment.js";
 
 let timer: ReturnType<typeof setInterval> | undefined;
 let running = false;
@@ -74,15 +75,8 @@ async function pollMentions() {
       );
       const userId = identity.rows[0]?.user_id ?? null;
       const parsed = await parseSuperAgentIntent(tweet.text);
-      const agent = parsed.agentName
-        ? await db.query<{ id: string }>(
-            "SELECT id FROM agents WHERE active AND (name ILIKE $1 OR slug ILIKE $2) ORDER BY created_at ASC LIMIT 1",
-            [
-              `%${parsed.agentName}%`,
-              `%${parsed.agentName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}%`,
-            ],
-          )
-        : { rows: [] as Array<{ id: string }> };
+      const matched = await findEnrolledAgent(parsed.agentName);
+      const agent = { rows: matched ? [matched] : [] };
       await db.query(
         `INSERT INTO superagent_intents (user_id,x_post_id,x_author_id,raw_text,parsed,agent_id,status,source)
          VALUES ($1,$2,$3,$4,$5,$6,$7,'x') ON CONFLICT (x_post_id) DO NOTHING`,
