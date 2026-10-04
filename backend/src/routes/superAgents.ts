@@ -6,6 +6,7 @@ import { audit } from "../audit.js";
 import { env } from "../config.js";
 import { selfSettlementLimit } from "../capacity.js";
 import { decryptPayload, encryptPayload, payloadContext, payloadDigest } from "../crypto.js";
+import { ensureEscrowWallet } from "../escrow.js";
 import { probeTransport } from "../superAgentProbe.js";
 import { findEnrolledAgent, readyEnrollment } from "../superAgentEnrollment.js";
 import { db } from "../db/index.js";
@@ -662,6 +663,7 @@ superAgentsRouter.post(
           ],
         );
         job = created.rows[0];
+        if (env.ESCROW_MODE === "onchain") await ensureEscrowWallet(client, created.rows[0].id);
         await client.query(
           "INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,$3)",
           [jobId, request.auth!.userId, "job.opened"],
