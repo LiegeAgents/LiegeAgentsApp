@@ -1,4 +1,4 @@
-export type AgentKey = "scott" | "anna" | "marcus" | "chloe" | "daniel";
+export type AgentKey = "scott" | "anna" | "marcus" | "chloe" | "daniel" | "kori";
 
 export type SuperAgentHandler = {
   agentKey: AgentKey;
