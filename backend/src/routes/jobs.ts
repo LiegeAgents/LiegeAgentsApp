@@ -747,9 +747,10 @@ jobsRouter.post(
       budget_amount: string;
       evaluator_fee_amount: string;
       address: string;
+      deadline_at: Date;
       expires_at: Date;
     }>(
-      "SELECT j.client_id, j.status, j.escrow_mode, COALESCE(j.settlement_asset, 'usdg') AS settlement_asset, COALESCE(j.budget_amount, j.budget_usdg) AS budget_amount, CASE WHEN COALESCE(j.settlement_asset, 'usdg') = 'usdg' THEN COALESCE(j.evaluator_fee_usdg, j.evaluator_fee_amount, 0) ELSE COALESCE(j.evaluator_fee_amount, 0) END AS evaluator_fee_amount, j.expires_at, ew.address FROM jobs j LEFT JOIN escrow_wallets ew ON ew.job_id = j.id WHERE j.id = $1",
+      "SELECT j.client_id, j.status, j.escrow_mode, COALESCE(j.settlement_asset, 'usdg') AS settlement_asset, COALESCE(j.budget_amount, j.budget_usdg) AS budget_amount, CASE WHEN COALESCE(j.settlement_asset, 'usdg') = 'usdg' THEN COALESCE(j.evaluator_fee_usdg, j.evaluator_fee_amount, 0) ELSE COALESCE(j.evaluator_fee_amount, 0) END AS evaluator_fee_amount, j.deadline_at, j.expires_at, ew.address FROM jobs j LEFT JOIN escrow_wallets ew ON ew.job_id = j.id WHERE j.id = $1",
       [id],
     );
     if (!job.rowCount || job.rows[0].client_id !== request.auth!.userId)
@@ -769,6 +770,12 @@ jobsRouter.post(
         409,
         "funding_quote_near_expiry",
         "This job expires too soon to safely fund.",
+      );
+    if (job.rows[0].deadline_at.getTime() <= Date.now())
+      throw new ApiError(
+        409,
+        "job_deadline_passed",
+        "This job's delivery deadline has passed, so it can no longer be funded.",
       );
     response.json({
       data: {
