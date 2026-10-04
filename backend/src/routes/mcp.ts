@@ -700,6 +700,35 @@ mcpInternalRouter.get(
   }),
 );
 mcpInternalRouter.get(
+  "/runner/health",
+  asyncRoute(async (request, response) => {
+    const c = await connection(request);
+    const configured = Boolean(env.RUNNER_WORKER_URL && env.RUNNER_WORKER_TOKEN);
+    let reachable = false;
+    let worker: Record<string, unknown> | null = null;
+    if (configured) {
+      try {
+        const health = await fetch(`${env.RUNNER_WORKER_URL!.replace(/\/$/, "")}/health`, {
+          signal: AbortSignal.timeout(3_000),
+        });
+        reachable = health.ok;
+        worker = (await health.json().catch(() => null)) as Record<string, unknown> | null;
+      } catch {
+        reachable = false;
+      }
+    }
+    await audit(db, {
+      actorId: c.user_id,
+      action: "runner.health_read",
+      targetType: "runner_worker",
+      targetId: c.agent_id,
+      requestId: request.requestId,
+      metadata: { configured, reachable },
+    });
+    response.json({ data: { configured, reachable, worker } });
+  }),
+);
+mcpInternalRouter.get(
   "/runner/:id",
   asyncRoute(async (request, response) => {
     const c = await connection(request);

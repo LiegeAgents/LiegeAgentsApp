@@ -483,6 +483,14 @@ function serverFor(connectionToken: string) {
       ),
   );
   server.registerTool(
+    "runner_health",
+    {
+      description:
+        "Check whether the Liege runner worker is configured and reachable. Read-only; no workload is started.",
+    },
+    async () => text(await api("/v1/internal/mcp/runner/health", connectionToken)),
+  );
+  server.registerTool(
     "runner_status",
     {
       description:
