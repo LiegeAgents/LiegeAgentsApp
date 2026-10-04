@@ -19,7 +19,8 @@ const serviceInput = z
     slaMinutes: z.coerce.number().int().min(1).max(10080),
     requirementsSchema: z.record(z.unknown()).default({}),
     deliverableSchema: z.record(z.unknown()).default({}),
-    settlementAssets: z.array(z.string()).min(1).default(["usdg"]),
+    // Legacy service registrations omitted settlementAssets; preserve both rails for them.
+    settlementAssets: z.array(z.string()).min(1).default(["usdg", "liege"]),
   })
   .transform((value, ctx) => {
     const assets = [...new Set(value.settlementAssets.map((asset) => asset.trim().toLowerCase()))];
