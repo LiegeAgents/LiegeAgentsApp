@@ -7,6 +7,7 @@ type Agent = {
   service_id: string | null;
   webhook_id: string | null;
   settlement_assets: string[];
+  enrollment_settlement_assets: string[] | null;
   enabled: boolean;
   verified_at: string | null;
 };
@@ -115,7 +116,11 @@ export function Enrollment({
                   setServiceId(a?.service_id || "");
                   setWebhookId(a?.webhook_id || "");
                   setSettlementAssets(
-                    a?.settlement_assets?.length ? a.settlement_assets : ["usdg"],
+                    a?.enrollment_settlement_assets?.length
+                      ? a.enrollment_settlement_assets
+                      : a?.settlement_assets?.length
+                        ? a.settlement_assets
+                        : ["usdg"],
                   );
                 }}
               >
