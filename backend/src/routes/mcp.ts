@@ -1517,6 +1517,7 @@ mcpInternalRouter.get(
       .object({
         limit: z.coerce.number().int().min(1).max(100).default(50),
         cursor: z.string().optional(),
+        settlementAsset: z.enum(["usdg", "liege"]).optional(),
       })
       .parse(request.query);
     const cursor = parseCursor(query.cursor);
