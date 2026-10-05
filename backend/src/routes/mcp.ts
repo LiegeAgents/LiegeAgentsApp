@@ -897,6 +897,7 @@ mcpInternalRouter.get(
       .object({
         limit: z.coerce.number().int().min(1).max(100).default(50),
         cursor: z.string().optional(),
+        settlementAsset: z.enum(["usdg", "liege"]).optional(),
       })
       .parse(request.query);
     const cursor = parseCursor(query.cursor);
@@ -1521,13 +1522,20 @@ mcpInternalRouter.get(
     const cursor = parseCursor(query.cursor);
     const result = await db.query(
       `SELECT s.id, s.agent_id, s.slug, s.name, s.description, s.service_type, s.execution_mode,
-        s.price_usd, s.sla_minutes, s.requirements_schema, s.deliverable_schema, a.name AS agent_name
+        s.price_usd, s.sla_minutes, s.requirements_schema, s.deliverable_schema, s.settlement_assets, a.name AS agent_name
        FROM commerce_services s
        JOIN agents a ON a.id = s.agent_id
-       WHERE s.active = true AND ($1::timestamptz IS NULL OR (s.created_at,s.id) < ($1::timestamptz,$2::uuid))
+       WHERE s.active = true
+         AND ($1::timestamptz IS NULL OR (s.created_at,s.id) < ($1::timestamptz,$2::uuid))
+         AND ($3::text IS NULL OR $3 = ANY(s.settlement_assets))
        ORDER BY s.created_at DESC, s.id DESC
-       LIMIT $3`,
-      [cursor?.createdAt ?? null, cursor?.id ?? null, query.limit + 1],
+       LIMIT $4`,
+      [
+        cursor?.createdAt ?? null,
+        cursor?.id ?? null,
+        query.settlementAsset ?? null,
+        query.limit + 1,
+      ],
     );
     const rows = result.rows.slice(0, query.limit);
     response.json({

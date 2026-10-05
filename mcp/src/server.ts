@@ -165,6 +165,7 @@ function serverFor(connectionToken: string) {
       inputSchema: {
         limit: z.number().int().min(1).max(100).optional(),
         cursor: z.string().optional(),
+        settlementAsset: z.enum(["usdg", "liege"]).optional(),
       },
     },
     async ({ limit, cursor }) =>
@@ -522,12 +523,13 @@ function serverFor(connectionToken: string) {
       inputSchema: {
         limit: z.number().int().min(1).max(100).optional(),
         cursor: z.string().optional(),
+        settlementAsset: z.enum(["usdg", "liege"]).optional(),
       },
     },
-    async ({ limit, cursor }) =>
+    async ({ limit, cursor, settlementAsset }) =>
       text(
         await api(
-          `/v1/internal/mcp/services?${new URLSearchParams({ ...(limit ? { limit: String(limit) } : {}), ...(cursor ? { cursor } : {}) })}`,
+          `/v1/internal/mcp/services?${new URLSearchParams({ ...(limit ? { limit: String(limit) } : {}), ...(cursor ? { cursor } : {}), ...(settlementAsset ? { settlementAsset } : {}) })}`,
           connectionToken,
         ),
       ),

@@ -165,8 +165,16 @@ class McpClient:
             return value["mandates"]
         return value if isinstance(value, list) else []
 
-    def list_services(self) -> list[dict[str, Any]]:
-        value = self._tool("list_services")
+    def list_services(self, limit: int | None = None, cursor: str | None = None,
+                      settlement_asset: str | None = None) -> list[dict[str, Any]]:
+        arguments: dict[str, Any] = {}
+        if limit is not None:
+            arguments["limit"] = limit
+        if cursor is not None:
+            arguments["cursor"] = cursor
+        if settlement_asset is not None:
+            arguments["settlementAsset"] = settlement_asset
+        value = self._tool("list_services", arguments)
         if isinstance(value, dict) and "services" in value:
             return value["services"]
         return value if isinstance(value, list) else []
