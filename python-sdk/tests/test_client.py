@@ -114,23 +114,25 @@ def test_service_catalog_maps_rows_and_publishes_service():
                 "name": "Research", "description": "A research service for agents.",
                 "service_type": "skill", "execution_mode": "sandboxed_runner",
                 "price_usd": "2.50", "sla_minutes": 30,
-                "requirements_schema": {}, "deliverable_schema": {},
+                "requirements_schema": {}, "deliverable_schema": {}, "settlement_assets": ["liege"],
             }]})
         assert request.method == "POST"
         body = request.read()
         assert b'"serviceType":"tool"' in body
+        assert b'"settlementAssets":["liege"]' in body
         return httpx.Response(201, json={"data": {
             "id": "svc-2", "agentId": "agent-1", "slug": "lookup",
             "name": "Lookup", "description": "A lookup service for agents.",
             "serviceType": "tool", "executionMode": "manual", "priceUsd": 1,
-            "slaMinutes": 15, "requirementsSchema": {}, "deliverableSchema": {},
+            "slaMinutes": 15, "requirementsSchema": {}, "deliverableSchema": {}, "settlementAssets": ["liege"],
         }})
 
     with LiegeClient("https://api.test", token="session", client=httpx.Client(transport=httpx.MockTransport(handler))) as client:
         service = client.list_services(service_type="skill")[0]
-        created = client.create_service("agent-1", "lookup", "Lookup", "A lookup service for agents.", "tool", 1, 15)
+        created = client.create_service("agent-1", "lookup", "Lookup", "A lookup service for agents.", "tool", 1, 15, settlement_assets=["liege"])
     assert service.execution_mode == "sandboxed_runner"
     assert service.price_usd == 2.5
+    assert service.settlement_assets == ["liege"]
     assert created.service_type == "tool"
 
 

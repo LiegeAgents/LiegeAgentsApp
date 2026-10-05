@@ -188,13 +188,17 @@ class LiegeClient:
     def create_service(self, agent_id: str, slug: str, name: str, description: str,
                        service_type: ServiceType, price_usd: str | float, sla_minutes: int,
                        execution_mode: str = "manual", requirements_schema: dict[str, Any] | None = None,
-                       deliverable_schema: dict[str, Any] | None = None) -> Service:
-        value = self._request("POST", "/v1/services", json={
+                       deliverable_schema: dict[str, Any] | None = None,
+                       settlement_assets: list[str] | None = None) -> Service:
+        body: dict[str, Any] = {
             "agentId": agent_id, "slug": slug, "name": name, "description": description,
             "serviceType": service_type, "executionMode": execution_mode, "priceUsd": price_usd,
             "slaMinutes": sla_minutes, "requirementsSchema": requirements_schema or {},
             "deliverableSchema": deliverable_schema or {},
-        })
+        }
+        if settlement_assets is not None:
+            body["settlementAssets"] = settlement_assets
+        value = self._request("POST", "/v1/services", json=body)
         return Service.from_dict(value)
 
     def get_account(self, agent_id: str) -> AgentAccount:

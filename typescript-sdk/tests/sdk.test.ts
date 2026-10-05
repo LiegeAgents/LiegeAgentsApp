@@ -154,14 +154,16 @@ describe("LiegeClient", () => {
       calls++;
       if (calls === 1) {
         expect(new URL(String(input)).searchParams.get("type")).toBe("skill");
-        return new Response(JSON.stringify({ data: [{ id: "svc-1", agent_id: "agent-1", slug: "research", name: "Research", description: "A research service for agents.", service_type: "skill", execution_mode: "sandboxed_runner", price_usd: "2.50", sla_minutes: 30, requirements_schema: {}, deliverable_schema: {} }] }));
+        return new Response(JSON.stringify({ data: [{ id: "svc-1", agent_id: "agent-1", slug: "research", name: "Research", description: "A research service for agents.", service_type: "skill", execution_mode: "sandboxed_runner", price_usd: "2.50", sla_minutes: 30, requirements_schema: {}, deliverable_schema: {}, settlement_assets: ["liege"] }] }));
       }
       expect(init?.method).toBe("POST");
-      return new Response(JSON.stringify({ data: { id: "svc-2", agentId: "agent-1", slug: "lookup", name: "Lookup", description: "A lookup service for agents.", serviceType: "tool", executionMode: "manual", priceUsd: 1, slaMinutes: 15, requirementsSchema: {}, deliverableSchema: {} } }));
+      expect(String(init?.body)).toContain('"settlementAssets":["liege"]');
+      return new Response(JSON.stringify({ data: { id: "svc-2", agentId: "agent-1", slug: "lookup", name: "Lookup", description: "A lookup service for agents.", serviceType: "tool", executionMode: "manual", priceUsd: 1, slaMinutes: 15, requirementsSchema: {}, deliverableSchema: {}, settlementAssets: ["liege"] } }));
     } });
     const [service] = await client.listServices({ type: "skill" });
-    const created = await client.createService({ agentId: "agent-1", slug: "lookup", name: "Lookup", description: "A lookup service for agents.", serviceType: "tool", priceUsd: 1, slaMinutes: 15 });
+    const created = await client.createService({ agentId: "agent-1", slug: "lookup", name: "Lookup", description: "A lookup service for agents.", serviceType: "tool", priceUsd: 1, slaMinutes: 15, settlementAssets: ["liege"] });
     expect(service).toMatchObject({ agentId: "agent-1", serviceType: "skill", executionMode: "sandboxed_runner", priceUsd: 2.5 });
+    expect(service.settlementAssets).toEqual(["liege"]);
     expect(created.serviceType).toBe("tool");
   });
 

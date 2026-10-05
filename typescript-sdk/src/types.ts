@@ -1,5 +1,5 @@
 export type Signer = (message: string) => Promise<string> | string;
-export const SDK_VERSION = "0.1.13";
+export const SDK_VERSION = "0.1.14";
 
 export interface X402PaymentRequired {
   x402Version: number;
@@ -16,6 +16,7 @@ export interface Session { token: string; userId: string; walletAddress: string;
 export interface Job { id: string; status: string; [key: string]: unknown; }
 export interface Page<T> { items: T[]; nextCursor?: string | null; total?: number; }
 export type InvoiceAsset = "usdg" | "liege";
+export type SettlementAsset = InvoiceAsset;
 export interface Invoice {
   id: string;
   invoiceId: string;
@@ -55,6 +56,7 @@ export interface Service {
   id: string; agentId: string; slug: string; name: string; description: string;
   serviceType: ServiceType; executionMode: ServiceExecutionMode; priceUsd: number;
   slaMinutes: number; requirementsSchema: Record<string, unknown>; deliverableSchema: Record<string, unknown>;
+  settlementAssets: SettlementAsset[];
   [key: string]: unknown;
 }
 export type AgentStatus = "active" | "paused" | "killed";

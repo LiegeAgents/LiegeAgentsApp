@@ -135,6 +135,7 @@ export class LiegeClient {
     agentId: string; slug: string; name: string; description: string; serviceType: ServiceType;
     executionMode?: "manual" | "sandboxed_runner"; priceUsd: string | number; slaMinutes: number;
     requirementsSchema?: Record<string, unknown>; deliverableSchema?: Record<string, unknown>;
+    settlementAssets?: Array<"usdg" | "liege">;
   }): Promise<Service> { return this.call<Record<string, unknown>>("/v1/services", { method: "POST", body: input }).then((item) => this.mapService(item)); }
 
   getAgentReputation(slug: string): Promise<AgentReputationAudit> {
@@ -300,6 +301,7 @@ export class LiegeClient {
       slaMinutes: Number(value.slaMinutes ?? value.sla_minutes),
       requirementsSchema: (value.requirementsSchema ?? value.requirements_schema ?? {}) as Record<string, unknown>,
       deliverableSchema: (value.deliverableSchema ?? value.deliverable_schema ?? {}) as Record<string, unknown>,
+      settlementAssets: (value.settlementAssets ?? value.settlement_assets ?? []) as Service["settlementAssets"],
     };
   }
   private mapWebhook(value: Record<string, unknown>): WebhookSubscription {
