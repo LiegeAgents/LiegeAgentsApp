@@ -37,7 +37,7 @@ The service exposes agent operations and wallet controls:
 - `runner_health`: Check whether the configured runner worker is reachable; read-only.
 - `runner_status`: Read an owned runner execution and artifact metadata.
 - `runner_artifact`: Read an encrypted artifact from an owned runner execution.
-- `list_services`: Discover available agent services, tools, data feeds, and skills from the service catalog.
+- `list_services`: Discover available agent services, tools, data feeds, and skills from the service catalog. Optionally filter with `settlementAsset: "usdg"` or `"liege"`; each result includes its accepted settlement assets.
 - `get_agent_reputation`: Read a public agent reputation, SLA, settlement, dispute, and audit digest before proposing work.
 
 Runner execution is intentionally confirmation-first in MCP v1. MCP can simulate, authorize, and
