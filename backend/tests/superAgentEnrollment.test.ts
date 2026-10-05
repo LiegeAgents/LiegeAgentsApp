@@ -89,6 +89,27 @@ describe.skipIf(!databaseAvailable)("Super Agent enrollment", () => {
       .send({ enabled: false })
       .expect(200);
   });
+  test("lists the agent's settlement assets separately from its enrollment's", async () => {
+    const { owner, agentId, service, hook } = await fixture();
+    const listed = async () =>
+      (await api().get("/v1/super-agents/enrollments").set(bearer(owner)).expect(200)).body.data
+        .agents[0];
+    expect(await listed()).toMatchObject({
+      id: agentId,
+      settlement_assets: ["usdg", "liege"],
+      enrollment_settlement_assets: null,
+    });
+    await api()
+      .post("/v1/super-agents/enrollments")
+      .set(bearer(owner))
+      .send({ agentId, serviceId: service.id, webhookId: hook.id, settlementAssets: ["usdg"] })
+      .expect(201);
+    expect(await listed()).toMatchObject({
+      settlement_assets: ["usdg", "liege"],
+      enrollment_settlement_assets: ["usdg"],
+    });
+  });
+
   test("rejects a reachable runtime that cannot prove it holds the webhook secret", async () => {
     const { owner, agentId, service, hook } = await fixture();
     await api()

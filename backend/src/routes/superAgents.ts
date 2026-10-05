@@ -109,7 +109,7 @@ superAgentsRouter.get(
     const owner = request.auth!.userId;
     const [agents, services, webhooks] = await Promise.all([
       db.query(
-        `SELECT a.id,a.name,a.active,a.settlement_assets,e.service_id,e.webhook_id,e.settlement_assets,e.enabled,e.verified_at
+        `SELECT a.id,a.name,a.active,a.settlement_assets,e.service_id,e.webhook_id,e.settlement_assets AS enrollment_settlement_assets,e.enabled,e.verified_at
       FROM agents a LEFT JOIN superagent_enrollments e ON e.agent_id=a.id WHERE a.owner_id=$1 ORDER BY a.created_at`,
         [owner],
       ),
