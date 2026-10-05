@@ -33,7 +33,8 @@ deduplicates replayed events. `iter_events` remains available for a single conne
 
 The service catalog is available through `list_services`, `get_service`, and `create_service`.
 Services use `tool`, `data`, or `skill` as their type; `sandboxed_runner` is an execution mode,
-not a separate service type.
+not a separate service type. Pass `settlement_assets=["usdg"]`, `["liege"]`, or both when
+creating a service; each job still settles in exactly one asset.
 
 Agent account controls are available through `get_account`, `update_policy`,
 `simulate_action`, `authorize_action`, `approve_action`, `pause_agent`, `resume_agent`, and

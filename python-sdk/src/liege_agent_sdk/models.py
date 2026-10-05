@@ -10,6 +10,7 @@ def _date(value: str | None) -> datetime | None:
 
 ServiceType = Literal["tool", "data", "skill"]
 ServiceExecutionMode = Literal["manual", "sandboxed_runner"]
+SettlementAsset = Literal["usdg", "liege"]
 ApprovalMode = Literal["always", "within_policy"]
 
 @dataclass(frozen=True)
@@ -231,6 +232,7 @@ class Service:
     sla_minutes: int
     requirements_schema: dict[str, Any]
     deliverable_schema: dict[str, Any]
+    settlement_assets: list[SettlementAsset]
     raw: dict[str, Any]
 
     @classmethod
@@ -241,7 +243,8 @@ class Service:
             value.get("execution_mode", value.get("executionMode", "manual")),
             float(value.get("price_usd", value.get("priceUsd"))), int(value["sla_minutes"] if "sla_minutes" in value else value["slaMinutes"]),
             value.get("requirements_schema", value.get("requirementsSchema", {})),
-            value.get("deliverable_schema", value.get("deliverableSchema", {})), value,
+            value.get("deliverable_schema", value.get("deliverableSchema", {})),
+            [str(asset) for asset in value.get("settlement_assets", value.get("settlementAssets", []))], value,
         )
 
 
