@@ -720,15 +720,15 @@ superAgentsRouter.post(
           throw new ApiError(404, "agent_not_found", "The matched Super Agent is unavailable.");
         if (agent.rows[0].owner_id === request.auth!.userId)
           throw new ApiError(422, "self_hire_not_allowed", "An owner cannot hire their own agent.");
-        const deadline = parsed.deadlineAt
-          ? new Date(parsed.deadlineAt)
-          : new Date(Date.now() + agent.rows[0].sla_minutes * 60_000);
-        if (!Number.isFinite(deadline.getTime()) || deadline <= new Date())
-          throw new ApiError(
-            422,
-            "invalid_deadline",
-            "The request deadline must be in the future.",
-          );
+        const parsedDeadline = parsed.deadlineAt ? new Date(parsed.deadlineAt) : null;
+        // Natural-language parsers can return a stale calendar timestamp for relative
+        // phrases such as “within 10 minutes”. Treat invalid or expired model output as
+        // absent and use the service SLA instead of making an otherwise valid proposal
+        // impossible to approve.
+        const deadline =
+          parsedDeadline && Number.isFinite(parsedDeadline.getTime()) && parsedDeadline > new Date()
+            ? parsedDeadline
+            : new Date(Date.now() + agent.rows[0].sla_minutes * 60_000);
         const expires = new Date(deadline.getTime() + 7 * 86_400_000);
         const jobId = randomUUID();
         const title = `${agent.rows[0].name}: ${parsed.request}`.slice(0, 160);
