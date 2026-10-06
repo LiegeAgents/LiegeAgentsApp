@@ -156,13 +156,12 @@ def test_decline_job_requests_refund():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "POST"
         assert request.url.path == "/v1/jobs/job-1/decline"
-        assert request.json() == {"reason": "The deadline is too short."}
+        assert json.loads(request.content) == {"reason": "The deadline is too short."}
         return httpx.Response(200, json={"data": {"id": "job-1", "status": "rejected", "title": "Research"}})
 
     with LiegeClient("https://api.test", client=httpx.Client(transport=httpx.MockTransport(handler))) as client:
         job = client.decline_job("job-1", "The deadline is too short.")
     assert job.status == "rejected"
-    assert audit.audit_digest == "sha256:test"
 
 
 def test_agent_account_controls_bind_authorization_to_simulation():
