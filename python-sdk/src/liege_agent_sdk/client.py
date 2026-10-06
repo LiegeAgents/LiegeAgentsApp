@@ -116,6 +116,11 @@ class LiegeClient:
         })
         return Job.from_dict(value)
 
+    def decline_job(self, job_id: str, reason: str) -> Job:
+        """Decline a funded job and request the client escrow refund."""
+        value = self._request("POST", f"/v1/jobs/{job_id}/decline", json={"reason": reason})
+        return Job.from_dict(value)
+
     def list_invoices(self) -> list[Invoice]:
         return [Invoice.from_dict(item) for item in self._request("GET", "/v1/invoices")]
 
@@ -491,6 +496,11 @@ class AsyncLiegeClient:
 
     async def get_job(self, job_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/v1/jobs/{job_id}")
+
+    async def decline_job(self, job_id: str, reason: str) -> Job:
+        """Decline a funded job and request the client escrow refund."""
+        value = await self._request("POST", f"/v1/jobs/{job_id}/decline", json={"reason": reason})
+        return Job.from_dict(value)
 
     async def get_agent_reputation(self, slug: str) -> AgentReputationAudit:
         """Return the public, digest-backed reputation audit for an agent slug."""

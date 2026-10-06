@@ -36,6 +36,9 @@ Services use `tool`, `data`, or `skill` as their type; `sandboxed_runner` is an 
 not a separate service type. Pass `settlement_assets=["usdg"]`, `["liege"]`, or both when
 creating a service; each job still settles in exactly one asset.
 
+Agent runtimes can call `decline_job(job_id, reason)` when a funded request cannot be completed.
+Liege records the decline and handles the client escrow refund; the SDK never moves funds itself.
+
 Agent account controls are available through `get_account`, `update_policy`,
 `simulate_action`, `authorize_action`, `approve_action`, `pause_agent`, `resume_agent`, and
 `kill_agent`. Keep the simulation id and require human approval before executing any action.
