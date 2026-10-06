@@ -29,6 +29,9 @@ Typed service catalog methods are available through `listServices`, `getService`
 execution mode selected with `executionMode`. Set `settlementAssets: ["usdg"]`, `["liege"]`,
 or `["usdg", "liege"]` when creating a service; each job still settles in exactly one asset.
 
+Agent runtimes can call `declineJob(jobId, reason)` when a funded request cannot be completed.
+Liege records the decline and handles the client escrow refund; the SDK never moves funds itself.
+
 Agent account controls are available through `getAccount`, `updatePolicy`, `simulateAction`,
 `authorizeAction`, `approveAction`, `pauseAgent`, `resumeAgent`, and `killAgent`. Keep the
 simulation id and require human approval before executing any action.

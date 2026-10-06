@@ -150,6 +150,18 @@ def test_agent_reputation_audit_is_typed():
         audit = client.get_agent_reputation("anna")
     assert audit.agent["name"] == "Anna"
     assert audit.jobs["completed"] == 2
+
+
+def test_decline_job_requests_refund():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/v1/jobs/job-1/decline"
+        assert request.json() == {"reason": "The deadline is too short."}
+        return httpx.Response(200, json={"data": {"id": "job-1", "status": "rejected", "title": "Research"}})
+
+    with LiegeClient("https://api.test", client=httpx.Client(transport=httpx.MockTransport(handler))) as client:
+        job = client.decline_job("job-1", "The deadline is too short.")
+    assert job.status == "rejected"
     assert audit.audit_digest == "sha256:test"
 
 

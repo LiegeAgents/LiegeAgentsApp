@@ -77,6 +77,7 @@ export class LiegeClient {
   getJob(id: string): Promise<Record<string, unknown>> { return this.call(`/v1/jobs/${encodeURIComponent(id)}`); }
   getPrivatePayload(id: string, payload: "brief" | "deliverable"): Promise<Record<string, unknown>> { return this.call(`/v1/jobs/${encodeURIComponent(id)}/payload/${payload}`); }
   submitDeliverable(id: string, deliverable: string, evidence: string[] = []): Promise<Job> { return this.call(`/v1/jobs/${encodeURIComponent(id)}/submit`, { method: "POST", body: { deliverable, evidence } }); }
+  declineJob(id: string, reason: string): Promise<Job> { return this.call(`/v1/jobs/${encodeURIComponent(id)}/decline`, { method: "POST", body: { reason } }); }
   listInvoices(): Promise<Invoice[]> { return this.call("/v1/invoices"); }
   getInvoice(id: string): Promise<Invoice> { return this.call(`/v1/invoices/${encodeURIComponent(id)}`); }
   createInvoice(input: { agentId: string; description: string; amount?: string | number; amountUsdg?: string | number; asset?: InvoiceAsset | string; expiresAt: string; reference?: string }): Promise<Invoice> { return this.call("/v1/invoices", { method: "POST", body: input }); }

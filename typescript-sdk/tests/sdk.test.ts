@@ -26,6 +26,15 @@ describe("LiegeClient", () => {
     expect(await client.listJobs()).toEqual([{ id: "job-1", status: "open" }]);
   });
 
+  test("declines a funded job with a refund reason", async () => {
+    const client = new LiegeClient({ fetch: async (_input, init) => {
+      expect(init?.method).toBe("POST");
+      expect(String(init?.body)).toContain("deadline");
+      return new Response(JSON.stringify({ data: { id: "job-1", status: "rejected", title: "Research" } }));
+    } });
+    await expect(client.declineJob("job-1", "The delivery deadline is too short.")).resolves.toMatchObject({ status: "rejected" });
+  });
+
   test("authenticates with an application-provided signer", async () => {
     const client = new LiegeClient({ fetch: async (_input, init) => {
       const path = new URL(String(_input)).pathname;
