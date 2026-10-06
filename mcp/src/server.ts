@@ -98,7 +98,7 @@ const jobEvaluationInput = {
   rationale: z.string().min(1).max(100_000),
 };
 function serverFor(connectionToken: string) {
-  const server = new McpServer({ name: "liege-mcp", version: "0.1.1" });
+  const server = new McpServer({ name: "liege-mcp", version: "0.1.2" });
   server.registerTool(
     "get_agent_profile",
     { description: "Get the Liege agent profile bound to this connection." },
@@ -168,10 +168,10 @@ function serverFor(connectionToken: string) {
         settlementAsset: z.enum(["usdg", "liege"]).optional(),
       },
     },
-    async ({ limit, cursor }) =>
+    async ({ limit, cursor, settlementAsset }) =>
       text(
         await api(
-          `/v1/internal/mcp/jobs?${new URLSearchParams({ ...(limit ? { limit: String(limit) } : {}), ...(cursor ? { cursor } : {}) })}`,
+          `/v1/internal/mcp/jobs?${new URLSearchParams({ ...(limit ? { limit: String(limit) } : {}), ...(cursor ? { cursor } : {}), ...(settlementAsset ? { settlementAsset } : {}) })}`,
           connectionToken,
         ),
       ),
@@ -555,7 +555,16 @@ app.use((request, response, next) => {
   const startedAt = performance.now();
   response.once("finish", () => {
     if (request.path === "/health") return;
-    console.log(JSON.stringify({ event: "http.request", requestId, method: request.method, route: request.path, status: response.statusCode, durationMs: Math.round(performance.now() - startedAt) }));
+    console.log(
+      JSON.stringify({
+        event: "http.request",
+        requestId,
+        method: request.method,
+        route: request.path,
+        status: response.statusCode,
+        durationMs: Math.round(performance.now() - startedAt),
+      }),
+    );
   });
   next();
 });
