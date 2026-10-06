@@ -37,3 +37,11 @@ export async function submitDeliverable(jobId: string, deliverable: string, evid
     body: JSON.stringify({ deliverable, evidence }),
   });
 }
+
+export async function declineJob(jobId: string, reason: string) {
+  return request<LiegeJob>(`/v1/jobs/${encodeURIComponent(jobId)}/decline`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ reason }),
+  });
+}

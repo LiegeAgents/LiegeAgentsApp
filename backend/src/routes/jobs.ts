@@ -1039,6 +1039,123 @@ jobsRouter.post(
 );
 
 jobsRouter.post(
+  "/:id/decline",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const input = z.object({ reason: z.string().trim().min(1).max(10_000) }).parse(request.body);
+    const id = z.string().uuid().parse(request.params.id);
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const jobResult = await client.query(
+        `SELECT j.*, a.owner_id AS provider_id
+         FROM jobs j JOIN agents a ON a.id = j.agent_id
+         WHERE j.id = $1 FOR UPDATE OF j`,
+        [id],
+      );
+      if (!jobResult.rowCount) throw new ApiError(404, "job_not_found", "This job does not exist.");
+      const job = jobResult.rows[0];
+      if (job.provider_id !== request.auth!.userId)
+        throw new ApiError(
+          403,
+          "not_provider",
+          "Only the assigned agent runtime can decline this job.",
+        );
+      if (job.status !== "funded")
+        throw new ApiError(
+          409,
+          "invalid_job_transition",
+          `A ${job.status} job cannot be declined.`,
+        );
+
+      const evaluatorFee =
+        job.settlement_asset === "usdg"
+          ? String(job.evaluator_fee_usdg ?? job.evaluator_fee_amount ?? 0)
+          : String(job.evaluator_fee_amount ?? 0);
+      if (job.escrow_mode === "onchain") {
+        const addresses = await client.query<{
+          client_address: string;
+          provider_address: string;
+          evaluator_address: string;
+        }>(
+          `SELECT c.wallet_address AS client_address, p.wallet_address AS provider_address,
+             COALESCE(e.wallet_address, c.wallet_address) AS evaluator_address
+           FROM jobs j JOIN users c ON c.id=j.client_id JOIN users p ON p.id=j.provider_id
+           LEFT JOIN users e ON e.id=j.evaluator_id WHERE j.id=$1`,
+          [job.id],
+        );
+        if (!addresses.rowCount)
+          throw new ApiError(
+            409,
+            "escrow_participants_missing",
+            "The on-chain escrow participants are incomplete.",
+          );
+        await planSettlement(client, {
+          jobId: job.id,
+          outcome: "rejected",
+          cause: "agent_decline",
+          funded: true,
+          clientAddress: addresses.rows[0].client_address,
+          providerAddress: addresses.rows[0].provider_address,
+          evaluatorAddress: addresses.rows[0].evaluator_address,
+          budget: String(job.budget_amount),
+          evaluatorFee,
+          asset: job.settlement_asset,
+        });
+      } else {
+        const escrow = await escrowAccount(client, job.id, job.settlement_asset);
+        const clientBalance = await userBalance(
+          client,
+          job.client_id,
+          "available",
+          job.settlement_asset,
+        );
+        await transfer(client, {
+          reference: `job-agent-decline-refund:${job.id}`,
+          type: "job_refund",
+          from: escrow,
+          to: clientBalance.accountId,
+          amount: Number(job.budget_amount) + Number(evaluatorFee),
+          asset: job.settlement_asset,
+          createdBy: request.auth!.userId,
+          metadata: { jobId: job.id, reason: input.reason, source: "agent_decline" },
+        });
+      }
+      const result = await client.query(
+        "UPDATE jobs SET status='rejected', settled_at=now(), updated_at=now() WHERE id=$1 RETURNING *",
+        [job.id],
+      );
+      await client.query(
+        "INSERT INTO job_events (job_id, actor_id, event_type, payload) VALUES ($1,$2,$3,$4)",
+        [
+          job.id,
+          request.auth!.userId,
+          "job.rejected",
+          JSON.stringify({ reason: input.reason, source: "agent_decline" }),
+        ],
+      );
+      await enqueueWebhookEvent(client, {
+        jobId: job.id,
+        eventType: "job.rejected",
+        actorId: request.auth!.userId,
+        data: { reason: input.reason, source: "agent_decline" },
+      });
+      await client.query("COMMIT");
+      response.json({ data: publicJob(result.rows[0]) });
+      if (job.escrow_mode === "onchain")
+        void processSettlement(job.id).catch((error) =>
+          console.error(`Escrow refund for declined job ${job.id} could not start:`, error),
+        );
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }),
+);
+
+jobsRouter.post(
   "/:id/evaluate",
   requireAuth,
   asyncRoute(async (request, response) => {

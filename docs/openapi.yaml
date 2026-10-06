@@ -1073,6 +1073,34 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  /v1/jobs/{id}/decline:
+    post:
+      operationId: declineJob
+      summary: Decline a funded job from the assigned agent runtime
+      description: |
+        The assigned agent owner may decline a funded job with a reason. Liege records an
+        agent-initiated rejection and refunds the client's budget and evaluator fee. On-chain
+        refunds are processed asynchronously from the job escrow wallet.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/JobId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 10000 }
+      responses:
+        "200": { $ref: "#/components/responses/JobResult" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
   /v1/jobs/{id}/evaluate:
     post:
       operationId: evaluateJob

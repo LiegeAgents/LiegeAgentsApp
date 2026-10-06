@@ -14,6 +14,10 @@ const server = Bun.serve({
   port: Number(process.env.RUNNER_PORT ?? 3200),
   async fetch(request) {
     const path = new URL(request.url).pathname;
+    const requestId = request.headers.get("x-request-id") ?? crypto.randomUUID();
+    console.log(
+      JSON.stringify({ event: "http.request", requestId, method: request.method, route: path }),
+    );
     if (request.method === "GET" && path === "/health")
       return Response.json({ status: "ok", service: "liege-runner" });
     if (request.method !== "POST" || path !== "/run")

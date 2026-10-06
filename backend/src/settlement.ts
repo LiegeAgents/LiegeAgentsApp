@@ -55,7 +55,7 @@ export async function planSettlement(
   input: {
     jobId: string;
     outcome: "accepted" | "rejected";
-    cause: "evaluation" | "expiry";
+    cause: "evaluation" | "expiry" | "agent_decline";
     // False for a job that expired while open: only whatever reached its wallet is returned.
     funded: boolean;
     clientAddress: string;
