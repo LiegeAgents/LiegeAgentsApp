@@ -11,6 +11,10 @@ deadline before Groq is called. Until a dedicated scoped worker token is enabled
 `LIEGE_RUNTIME_TOKEN` as a scoped runtime credential:
 rotate it if the runtime is compromised.
 
+If a funded job cannot be completed, the runtime reports an agent decline to Liege with a reason.
+Liege records `job.rejected` and refunds the client through the ledger or escrow settlement path;
+the runtime never moves funds itself.
+
 ## Local run
 
 ```bash

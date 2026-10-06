@@ -18,6 +18,22 @@ export function requestContext(request: Request, response: Response, next: NextF
   response.setHeader("X-Content-Type-Options", "nosniff");
   response.setHeader("Referrer-Policy", "no-referrer");
   response.setHeader("Cache-Control", "no-store");
+  const startedAt = performance.now();
+  response.once("finish", () => {
+    if (request.path === "/health") return;
+    const auth = (request as Request & { auth?: { userId?: string; method?: string } }).auth;
+    console.log(
+      JSON.stringify({
+        event: "http.request",
+        requestId: request.requestId,
+        method: request.method,
+        route: request.route?.path ?? request.path,
+        status: response.statusCode,
+        durationMs: Math.round(performance.now() - startedAt),
+        actor: auth?.method ?? (auth?.userId ? "session" : "anonymous"),
+      }),
+    );
+  });
   next();
 }
 

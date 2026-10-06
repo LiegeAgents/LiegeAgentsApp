@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -549,6 +549,16 @@ function serverFor(connectionToken: string) {
   return server;
 }
 const app = createMcpExpressApp({ host: "0.0.0.0", allowedHosts });
+app.use((request, response, next) => {
+  const requestId = request.header("x-request-id")?.match(/^[0-9a-f-]{36}$/i)?.[0] ?? randomUUID();
+  response.setHeader("x-request-id", requestId);
+  const startedAt = performance.now();
+  response.once("finish", () => {
+    if (request.path === "/health") return;
+    console.log(JSON.stringify({ event: "http.request", requestId, method: request.method, route: request.path, status: response.statusCode, durationMs: Math.round(performance.now() - startedAt) }));
+  });
+  next();
+});
 app.get("/health", (_request, response) =>
   response.json({ status: "ok", service: "liege-mcp", commit: process.env.GIT_SHA || undefined }),
 );
