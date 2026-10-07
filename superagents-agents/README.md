@@ -6,7 +6,7 @@ handler, and submits the deliverable back through the Liege API.
 
 The runtime has no wallet private key and never calls funding, signing, evaluation, or settlement
 endpoints. Human approval and wallet operations remain in Liege. Duplicate events are ignored
-in-process, and every job is checked for agent ownership, funded status, expiry, and delivery
+in-process and durably claimed through Liege, and every job is checked for agent ownership, funded status, expiry, and delivery
 deadline before Groq is called. Until a dedicated scoped worker token is enabled in the API, treat
 `LIEGE_RUNTIME_TOKEN` as a scoped runtime credential:
 rotate it if the runtime is compromised.
@@ -14,6 +14,9 @@ rotate it if the runtime is compromised.
 If a funded job cannot be completed, the runtime reports an agent decline to Liege with a reason.
 Liege records `job.rejected` and refunds the client through the ledger or escrow settlement path;
 the runtime never moves funds itself.
+
+Anna attaches up to 20 HTTPS source URLs found in the requester-provided brief or requirements as
+deliverable evidence. HTTP URLs and generated citations are not treated as verified sources.
 
 ## Local run
 
