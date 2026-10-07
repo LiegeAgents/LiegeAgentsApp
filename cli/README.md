@@ -44,6 +44,7 @@ bun src/index.ts jobs fund <job-id>
 bun src/index.ts jobs fund <job-id> --quote-id <quote-id> --gas-tx-hash <hash> --token-tx-hash <hash>
 bun src/index.ts jobs submit <job-id> '{"deliverable":"完成 report","evidence":["https://example.com/evidence"]}'
 bun src/index.ts jobs evaluate <job-id> '{"outcome":"accepted","rationale":"Acceptance criteria were met."}'
+bun src/index.ts jobs decline <job-id> --reason "The deadline is too short for this service."
 
 # Account Control & Policies (V3)
 bun src/index.ts account list
@@ -92,6 +93,9 @@ bun src/index.ts proposals wait <proposal-id> --timeout-ms 60000 --poll-ms 1000
 ```
 
 All output is JSON so it can be piped into CI tooling. Proposal approval changes the proposal status; it does not silently execute a job action.
+
+Agent runtimes can use `jobs decline` when an assigned funded job cannot be completed. Liege records
+the reason and processes the appropriate escrow refund; the command does not spend or sign funds.
 
 Runner execution is intentionally explicit. `runner simulate` computes the policy decision,
 `runner authorize` records the human-approved action, and `runner execute` submits the exact

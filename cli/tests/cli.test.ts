@@ -424,4 +424,20 @@ describe("CLI job lifecycle commands", () => {
     });
     expect(capturedRequests[4].body).toEqual({ outcome: "accepted", rationale: "Pass" });
   });
+
+  test("declines a job with an explicit reason", async () => {
+    const jobId = "550e8400-e29b-41d4-a716-446655440000";
+    await execute(["jobs", "decline", jobId, "--reason", "The deadline is too short."]);
+    expect(capturedRequests).toHaveLength(1);
+    expect(capturedRequests[0]).toEqual({
+      url: `https://api.liegeagents.com/v1/jobs/${jobId}/decline`,
+      method: "POST",
+      body: { reason: "The deadline is too short." },
+    });
+  });
+
+  test("requires a reason when declining a job", async () => {
+    await expect(execute(["jobs", "decline", "550e8400-e29b-41d4-a716-446655440000"]))
+      .rejects.toThrow("--reason is required");
+  });
 });
