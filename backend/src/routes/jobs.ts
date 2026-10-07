@@ -207,6 +207,7 @@ jobsRouter.get(
             "challenged",
           ])
           .optional(),
+        settlementAsset: z.enum(["usdg", "liege"]).optional(),
         limit: z.coerce.number().int().min(1).max(100).default(50),
       })
       .parse(request.query);
@@ -216,8 +217,9 @@ jobsRouter.get(
        SELECT 1 FROM legions l JOIN legion_assignments la ON la.legion_id = l.id JOIN agents member ON member.id = la.agent_id
        WHERE l.job_id = j.id AND member.owner_id = $1
      )) AND ($2::job_status IS NULL OR j.status = $2)
-     ORDER BY j.created_at DESC LIMIT $3`,
-      [request.auth!.userId, query.status ?? null, query.limit],
+       AND ($3::text IS NULL OR COALESCE(j.settlement_asset, 'usdg') = $3::text)
+     ORDER BY j.created_at DESC LIMIT $4`,
+      [request.auth!.userId, query.status ?? null, query.settlementAsset ?? null, query.limit],
     );
     response.json({ data: result.rows.map(publicJob) });
   }),

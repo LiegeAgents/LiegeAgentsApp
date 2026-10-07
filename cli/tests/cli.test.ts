@@ -379,10 +379,10 @@ describe("CLI job lifecycle commands", () => {
 
   test("lists and fetches jobs with filters", async () => {
     const jobId = "550e8400-e29b-41d4-a716-446655440000";
-    await execute(["jobs", "list", "--status", "funded", "--limit", "25"]);
+    await execute(["jobs", "list", "--status", "funded", "--asset", "liege", "--limit", "25"]);
     await execute(["jobs", "get", jobId]);
     expect(capturedRequests.map((request) => request.url)).toEqual([
-      "https://api.liegeagents.com/v1/jobs?status=funded&limit=25",
+      "https://api.liegeagents.com/v1/jobs?status=funded&settlementAsset=liege&limit=25",
       `https://api.liegeagents.com/v1/jobs/${jobId}`,
     ]);
   });
