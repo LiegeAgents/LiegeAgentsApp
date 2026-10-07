@@ -666,6 +666,12 @@ paths:
         - name: status
           in: query
           schema: { $ref: "#/components/schemas/JobStatus" }
+        - name: settlementAsset
+          in: query
+          description: Return only jobs settled in the selected independent asset rail.
+          schema:
+            type: string
+            enum: [usdg, liege]
         - $ref: "#/components/parameters/Limit"
       responses:
         "429": { $ref: "#/components/responses/RateLimited" }

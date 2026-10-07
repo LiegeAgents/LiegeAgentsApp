@@ -24,7 +24,7 @@ Usage:
   liege agents list
   liege agents reputation <slug>
   liege agents get <slug>
-  liege jobs list [--status <status>] [--limit <n>]
+  liege jobs list [--status <status>] [--asset <usdg|liege>] [--limit <n>]
   liege jobs get <job-id>
   liege jobs simulate '<json-job>'
   liege jobs funding-quote <job-id>
@@ -227,6 +227,7 @@ export async function execute(args: string[]): Promise<unknown> {
   if (resource === "jobs" && action === "list") {
     const query = new URLSearchParams();
     if (flags.status) query.set("status", flags.status);
+    if (flags.asset) query.set("settlementAsset", flags.asset);
     if (flags.limit) query.set("limit", flags.limit);
     const suffix = query.toString() ? `?${query}` : "";
     return request(`/v1/jobs${suffix}`);
