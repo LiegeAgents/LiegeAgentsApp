@@ -86,6 +86,7 @@ const env = z
     ACP_DEFAULT_PRICE_USD: z.coerce.number().positive().finite().default(0.01),
     ADMIN_WALLET_ADDRESSES: z.string().optional(),
     MASTER_ADMIN_CODE: z.string().min(12).optional(),
+    RESEND_API_KEY: z.string().min(1).optional(),
   })
   .parse(source);
 

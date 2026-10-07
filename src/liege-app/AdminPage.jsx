@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ArrowLeft, LockKeyhole, LogOut, RefreshCw, ShieldCheck } from "lucide-react";
+import { ArrowLeft, LockKeyhole, LogOut, Mail, RefreshCw, ShieldCheck } from "lucide-react";
 import "./admin.css";
 
 const tokenKey = "liege_admin_token";
@@ -177,9 +177,81 @@ function Dashboard({ token, onLogout }) {
               </div>
             </div>
           </section>
+          <EmailPanel token={token} />
         </div>
       </div>
     </main>
+  );
+}
+
+function EmailPanel({ token }) {
+  const [to, setTo] = useState("");
+  const [subject, setSubject] = useState("");
+  const [text, setText] = useState("");
+  const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
+  const send = async (event) => {
+    event.preventDefault();
+    setBusy(true);
+    setStatus("");
+    try {
+      await request("/v1/admin/email", {
+        method: "POST",
+        token,
+        body: JSON.stringify({ to, subject, text }),
+      });
+      setStatus("Email sent from team@liegeagents.com.");
+      setSubject("");
+      setText("");
+    } catch (cause) {
+      setStatus(cause.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="admin-panel admin-email-panel">
+      <h2>
+        <Mail size={15} /> Send email
+      </h2>
+      <p className="admin-panel-note">Send plain-text mail from team@liegeagents.com.</p>
+      <form className="admin-email-form" onSubmit={send}>
+        <label htmlFor="admin-email-to">Recipient</label>
+        <input
+          id="admin-email-to"
+          type="email"
+          required
+          value={to}
+          onChange={(event) => setTo(event.target.value)}
+          placeholder="recipient@example.com"
+        />
+        <label htmlFor="admin-email-subject">Subject</label>
+        <input
+          id="admin-email-subject"
+          required
+          value={subject}
+          onChange={(event) => setSubject(event.target.value)}
+          placeholder="A note from Liege"
+        />
+        <label htmlFor="admin-email-text">Message</label>
+        <textarea
+          id="admin-email-text"
+          required
+          rows={5}
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          placeholder="Write your message…"
+        />
+        <button type="submit" disabled={busy}>
+          {busy ? "Sending…" : "Send email"}
+        </button>
+        {status && (
+          <div className="admin-email-status" role="status">
+            {status}
+          </div>
+        )}
+      </form>
+    </section>
   );
 }
 

@@ -154,8 +154,64 @@
   gap: 12px;
 }
 .admin-panel h2 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   font-size: 14px;
   margin: 0 0 18px;
+}
+.admin-panel-note {
+  color: #8da999;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: -7px 0 17px;
+}
+.admin-email-panel {
+  grid-column: span 2;
+}
+.admin-email-form {
+  display: grid;
+  gap: 8px;
+}
+.admin-email-form label {
+  color: #abc0af;
+  font-size: 12px;
+  margin-top: 3px;
+}
+.admin-email-form input,
+.admin-email-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #335540;
+  border-radius: 8px;
+  background: #08130c;
+  color: #edf5ed;
+  font: inherit;
+  padding: 10px 11px;
+  resize: vertical;
+}
+.admin-email-form input:focus,
+.admin-email-form textarea:focus {
+  border-color: #9bf0b9;
+  outline: none;
+}
+.admin-email-form button {
+  border: 1px solid #6edb99;
+  background: #9bf0b9;
+  color: #07100b;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.admin-email-form button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+.admin-email-status {
+  color: #9bf0b9;
+  font-size: 12px;
+  line-height: 1.4;
 }
 .admin-rows {
   display: grid;
@@ -187,6 +243,9 @@
   }
   .admin-panels {
     grid-template-columns: 1fr;
+  }
+  .admin-email-panel {
+    grid-column: auto;
   }
   .admin-header {
     align-items: flex-start;
