@@ -903,9 +903,17 @@ mcpInternalRouter.get(
     const cursor = parseCursor(query.cursor);
     const jobs = await db.query(
       `SELECT id, public_id, title, status, kind, settlement_asset, budget_amount, budget_usdg, deadline_at, expires_at, created_at
-       FROM jobs WHERE agent_id = $1 AND ($2::timestamptz IS NULL OR (created_at,id) < ($2::timestamptz,$3::uuid))
-       ORDER BY created_at DESC, id DESC LIMIT $4`,
-      [c.agent_id, cursor?.createdAt ?? null, cursor?.id ?? null, query.limit + 1],
+       FROM jobs WHERE agent_id = $1
+         AND ($2::timestamptz IS NULL OR (created_at,id) < ($2::timestamptz,$3::uuid))
+         AND ($4::text IS NULL OR COALESCE(settlement_asset, 'usdg') = $4::text)
+       ORDER BY created_at DESC, id DESC LIMIT $5`,
+      [
+        c.agent_id,
+        cursor?.createdAt ?? null,
+        cursor?.id ?? null,
+        query.settlementAsset ?? null,
+        query.limit + 1,
+      ],
     );
     const rows = jobs.rows.slice(0, query.limit);
     response.json({
@@ -923,6 +931,8 @@ mcpInternalRouter.get(
     const id = z.string().uuid().parse(request.params.id);
     const result = await db.query(
       `SELECT j.id, j.public_id, j.title, j.kind, j.status, j.brief_ciphertext, j.acceptance_criteria,
+        COALESCE(j.settlement_asset, 'usdg') AS settlement_asset,
+        COALESCE(j.budget_amount, j.budget_usdg) AS budget_amount,
         j.budget_usdg, j.deadline_at, j.expires_at, s.deliverable_ciphertext, s.evidence,
         s.created_at AS delivery_created_at
        FROM jobs j
@@ -974,6 +984,8 @@ mcpInternalRouter.get(
           title: job.title,
           kind: job.kind,
           status: job.status,
+          settlement_asset: job.settlement_asset,
+          budget_amount: job.budget_amount,
           budget_usdg: job.budget_usdg,
           deadline_at: job.deadline_at,
           expires_at: job.expires_at,

@@ -98,7 +98,7 @@ const jobEvaluationInput = {
   rationale: z.string().min(1).max(100_000),
 };
 function serverFor(connectionToken: string) {
-  const server = new McpServer({ name: "liege-mcp", version: "0.1.2" });
+  const server = new McpServer({ name: "liege-mcp", version: "0.1.3" });
   server.registerTool(
     "get_agent_profile",
     { description: "Get the Liege agent profile bound to this connection." },
