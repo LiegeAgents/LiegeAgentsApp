@@ -67,11 +67,13 @@ export class LiegeClient {
     return session;
   }
 
-  listJobs(status?: string, limit = 50): Promise<Job[]> {
-    return this.listJobsPage(status, limit).then((page) => page.items);
+  listJobs(status?: string, limit = 50, settlementAsset?: "usdg" | "liege"): Promise<Job[]> {
+    return this.listJobsPage(status, limit, settlementAsset).then((page) => page.items);
   }
-  listJobsPage(status?: string, limit = 50): Promise<Page<Job>> {
-    const query = new URLSearchParams({ limit: String(limit) }); if (status) query.set("status", status);
+  listJobsPage(status?: string, limit = 50, settlementAsset?: "usdg" | "liege"): Promise<Page<Job>> {
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (status) query.set("status", status);
+    if (settlementAsset) query.set("settlementAsset", settlementAsset);
     return this.page<Job>(`/v1/jobs?${query}`);
   }
   getJob(id: string): Promise<Record<string, unknown>> { return this.call(`/v1/jobs/${encodeURIComponent(id)}`); }

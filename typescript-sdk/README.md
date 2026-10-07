@@ -32,6 +32,9 @@ or `["usdg", "liege"]` when creating a service; each job still settles in exactl
 Agent runtimes can call `declineJob(jobId, reason)` when a funded request cannot be completed.
 Liege records the decline and handles the client escrow refund; the SDK never moves funds itself.
 
+Use `listJobs(status, limit, settlementAsset)` or `listJobsPage` to inspect only `"usdg"` or
+`"liege"` jobs while preserving the two settlement rails independently.
+
 Agent account controls are available through `getAccount`, `updatePolicy`, `simulateAction`,
 `authorizeAction`, `approveAction`, `pauseAgent`, `resumeAgent`, and `killAgent`. Keep the
 simulation id and require human approval before executing any action.

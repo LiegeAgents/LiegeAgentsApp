@@ -92,13 +92,15 @@ class LiegeClient:
         self.token = value["token"]
         return Session(self.token, _date(value.get("expiresAt")), value["userId"], value["walletAddress"])
 
-    def list_jobs(self, status: str | None = None, limit: int = 50) -> list[Job]:
-        return self.list_jobs_page(status, limit).items
+    def list_jobs(self, status: str | None = None, limit: int = 50, settlement_asset: str | None = None) -> list[Job]:
+        return self.list_jobs_page(status, limit, settlement_asset).items
 
-    def list_jobs_page(self, status: str | None = None, limit: int = 50) -> Page:
+    def list_jobs_page(self, status: str | None = None, limit: int = 50, settlement_asset: str | None = None) -> Page:
         query: dict[str, Any] = {"limit": limit}
         if status:
             query["status"] = status
+        if settlement_asset:
+            query["settlementAsset"] = settlement_asset
         value = self._request("GET", "/v1/jobs", params=query)
         return _page(value, Job.from_dict)
 
@@ -479,10 +481,12 @@ class AsyncLiegeClient:
             raise LiegeAPIError(error.get("message", response.reason_phrase), response.status_code, error.get("code"), response.headers.get("x-request-id") or error.get("requestId"), response.status_code == 429 or response.status_code >= 500)
         return body.get("data", body) if isinstance(body, dict) else body
 
-    async def list_jobs(self, status: str | None = None, limit: int = 50) -> list[Job]:
+    async def list_jobs(self, status: str | None = None, limit: int = 50, settlement_asset: str | None = None) -> list[Job]:
         query: dict[str, Any] = {"limit": limit}
         if status:
             query["status"] = status
+        if settlement_asset:
+            query["settlementAsset"] = settlement_asset
         value = await self._request("GET", "/v1/jobs", params=query)
         return _page(value, Job.from_dict).items
 

@@ -26,6 +26,16 @@ describe("LiegeClient", () => {
     expect(await client.listJobs()).toEqual([{ id: "job-1", status: "open" }]);
   });
 
+  test("filters jobs by settlement asset", async () => {
+    const client = new LiegeClient({
+      fetch: async (input) => {
+        expect(new URL(String(input)).search).toBe("?limit=25&settlementAsset=liege");
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      },
+    });
+    await client.listJobs(undefined, 25, "liege");
+  });
+
   test("declines a funded job with a refund reason", async () => {
     const client = new LiegeClient({ fetch: async (_input, init) => {
       expect(init?.method).toBe("POST");
