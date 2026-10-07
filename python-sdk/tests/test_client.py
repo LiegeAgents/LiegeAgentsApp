@@ -54,6 +54,15 @@ def test_authentication_and_job_mapping():
         assert client.list_jobs()[0].id == "j1"
 
 
+def test_list_jobs_filters_by_settlement_asset():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params["settlementAsset"] == "liege"
+        return httpx.Response(200, json={"data": []})
+
+    with LiegeClient("https://api.test", client=httpx.Client(transport=httpx.MockTransport(handler))) as client:
+        assert client.list_jobs(settlement_asset="liege") == []
+
+
 def test_x402_challenge_retries_with_application_signature():
     challenge = {"x402Version": 2, "accepts": [{"scheme": "exact", "network": "eip155:4663"}]}
     calls = 0
