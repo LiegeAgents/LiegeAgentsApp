@@ -12,8 +12,12 @@ const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
     },
     signal: init.signal ?? AbortSignal.timeout(20_000),
   });
-  const body = await response.json().catch(() => ({})) as { data?: T; error?: { message?: string } };
-  if (!response.ok) throw new Error(body.error?.message ?? `Liege API returned ${response.status}.`);
+  const body = (await response.json().catch(() => ({}))) as {
+    data?: T;
+    error?: { message?: string };
+  };
+  if (!response.ok)
+    throw new Error(body.error?.message ?? `Liege API returned ${response.status}.`);
   return (body.data ?? body) as T;
 };
 
@@ -30,7 +34,11 @@ export async function getBrief(jobId: string) {
   return brief;
 }
 
-export async function submitDeliverable(jobId: string, deliverable: string, evidence: string[] = []) {
+export async function submitDeliverable(
+  jobId: string,
+  deliverable: string,
+  evidence: string[] = [],
+) {
   return request<LiegeJob>(`/v1/jobs/${encodeURIComponent(jobId)}/submit`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -43,5 +51,21 @@ export async function declineJob(jobId: string, reason: string) {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ reason }),
+  });
+}
+
+export async function claimEvent(eventId: string, agentId: string) {
+  return request<{ claimed: boolean }>("/v1/runtime/event-receipts/claim", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ eventId, agentId }),
+  });
+}
+
+export async function completeEvent(eventId: string, agentId: string) {
+  await request("/v1/runtime/event-receipts/complete", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ eventId, agentId }),
   });
 }

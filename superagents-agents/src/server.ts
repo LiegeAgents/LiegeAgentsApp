@@ -1,6 +1,13 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { config } from "./config.js";
-import { declineJob, getBrief, getJob, submitDeliverable } from "./liege-client.js";
+import {
+  claimEvent,
+  completeEvent,
+  declineJob,
+  getBrief,
+  getJob,
+  submitDeliverable,
+} from "./liege-client.js";
 import { handlers } from "./handlers.js";
 import type { AgentKey, LiegeWebhook } from "./types.js";
 
@@ -39,16 +46,20 @@ async function execute(agentKey: AgentKey, eventId: string, event: LiegeWebhook)
     if (assignedAgent !== configuredAgent.id)
       return { status: "ignored" as const, reason: "job_assigned_to_different_agent" };
     if (job.status !== "funded") return { status: "ignored" as const, reason: `job_${job.status}` };
+    const receipt = await claimEvent(eventId, configuredAgent.id);
+    if (!receipt.claimed) return { status: "ignored" as const, reason: "durable_duplicate" };
     const deadline = new Date(job.deadlineAt ?? job.deadline_at ?? 0);
     const expires = new Date(job.expiresAt ?? job.expires_at ?? 0);
     if (Number.isNaN(deadline.getTime()) || deadline <= new Date()) {
       await declineJob(jobId, "The delivery deadline has passed before execution could begin.");
+      await completeEvent(eventId, configuredAgent.id);
       processed.set(eventId, Date.now());
       cleanProcessed();
       return { status: "declined" as const, reason: "job_deadline_passed", jobId, agentKey };
     }
     if (Number.isNaN(expires.getTime()) || expires <= new Date()) {
       await declineJob(jobId, "The job expired before execution could begin.");
+      await completeEvent(eventId, configuredAgent.id);
       processed.set(eventId, Date.now());
       cleanProcessed();
       return { status: "declined" as const, reason: "job_expired", jobId, agentKey };
@@ -61,6 +72,7 @@ async function execute(agentKey: AgentKey, eventId: string, event: LiegeWebhook)
         jobId,
         `The runtime does not support the requested service: ${serviceSlug}.`,
       );
+      await completeEvent(eventId, configuredAgent.id);
       processed.set(eventId, Date.now());
       cleanProcessed();
       return { status: "declined" as const, reason: "unknown_service", jobId, agentKey };
@@ -68,6 +80,7 @@ async function execute(agentKey: AgentKey, eventId: string, event: LiegeWebhook)
     const brief = await getBrief(jobId);
     const result = await handler.execute({ jobId, brief, requirements: policy });
     await submitDeliverable(jobId, result.deliverable, result.evidence ?? []);
+    await completeEvent(eventId, configuredAgent.id);
     processed.set(eventId, Date.now());
     cleanProcessed();
     return { status: "submitted" as const, jobId, agentKey, metadata: result.metadata ?? {} };
