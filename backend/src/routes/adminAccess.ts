@@ -7,6 +7,11 @@ import { ApiError, asyncRoute } from "../http.js";
 
 const TOKEN_TTL_SECONDS = 8 * 60 * 60;
 const codeInput = z.object({ code: z.string().min(1).max(500) });
+const emailInput = z.object({
+  to: z.string().email().max(320),
+  subject: z.string().trim().min(1).max(200),
+  text: z.string().trim().min(1).max(100_000),
+});
 const tokenDigest = (expiresAt: string) =>
   createHmac("sha256", env.MASTER_ADMIN_CODE ?? "")
     .update(`liege-admin:${expiresAt}`)
@@ -103,5 +108,41 @@ adminAccessRouter.get(
         invoices: invoices.rows[0].count,
       },
     });
+  }),
+);
+
+adminAccessRouter.post(
+  "/email",
+  asyncRoute(async (request, response) => {
+    assertMasterAdmin(request);
+    if (!env.RESEND_API_KEY)
+      throw new ApiError(503, "email_not_configured", "Resend email delivery is not configured.");
+    const input = emailInput.parse(request.body);
+    const resendResponse = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: "Liege <team@liegeagents.com>",
+        to: [input.to],
+        subject: input.subject,
+        text: input.text,
+      }),
+    });
+    const payload = (await resendResponse.json().catch(() => null)) as {
+      id?: string;
+      message?: string;
+      name?: string;
+    } | null;
+    if (!resendResponse.ok) {
+      throw new ApiError(
+        502,
+        "email_delivery_failed",
+        payload?.message || "Resend could not deliver the email.",
+      );
+    }
+    response.status(202).json({ data: { id: payload?.id ?? null, to: input.to } });
   }),
 );

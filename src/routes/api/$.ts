@@ -21,6 +21,7 @@ async function proxy({ request, params }: { request: Request; params: { _splat?:
     path === "v1/admin/evaluators/stake" ||
     path === "v1/admin/escrows/backfill" ||
     path === "v1/admin/session" ||
+    path === "v1/admin/email" ||
     path === "v1/admin/metrics";
   if (
     !path.startsWith("v1/") ||
