@@ -105,11 +105,11 @@ export const routers = [
   ["/v1/services", servicesRouter],
   ["/v1/mobile", mobileRouter],
   ["/v1/super-agents", superAgentsRouter],
-  ["/v1/runtime", runtimeRouter],
 ] as const;
 for (const [path, router] of routers) app.use(path, router);
 // MCP's internal service routes are intentionally outside the public OpenAPI contract.
 app.use("/v1/mcp", mcpRouter);
 app.use("/v1/internal/mcp", mcpInternalRouter);
+app.use("/v1/internal/runtime", runtimeRouter);
 app.use((_request, _response, next) => next(new ApiError(404, "not_found", "Route not found.")));
 app.use(errorHandler);

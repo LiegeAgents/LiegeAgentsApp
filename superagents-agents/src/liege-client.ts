@@ -55,7 +55,7 @@ export async function declineJob(jobId: string, reason: string) {
 }
 
 export async function claimEvent(eventId: string, agentId: string) {
-  return request<{ claimed: boolean }>("/v1/runtime/event-receipts/claim", {
+  return request<{ claimed: boolean }>("/v1/internal/runtime/event-receipts/claim", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ eventId, agentId }),
@@ -63,7 +63,7 @@ export async function claimEvent(eventId: string, agentId: string) {
 }
 
 export async function completeEvent(eventId: string, agentId: string) {
-  await request("/v1/runtime/event-receipts/complete", {
+  await request("/v1/internal/runtime/event-receipts/complete", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ eventId, agentId }),
