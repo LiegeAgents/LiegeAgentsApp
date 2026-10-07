@@ -7,6 +7,7 @@ import { jobsRouter } from "./routes/jobs.js";
 import { cronRouter } from "./routes/cron.js";
 import { evaluatorsRouter } from "./routes/evaluators.js";
 import { adminRouter } from "./routes/admin.js";
+import { adminAccessRouter } from "./routes/adminAccess.js";
 import { accountRouter } from "./routes/account.js";
 import { mcpInternalRouter, mcpRouter } from "./routes/mcp.js";
 import { webhooksRouter } from "./routes/webhooks.js";
@@ -85,6 +86,8 @@ app.post(
   }),
 );
 app.post("/v1/auth/logout", revokeSession);
+// Password-authenticated metrics are separate from wallet-admin mutations.
+app.use("/v1/admin", adminAccessRouter);
 // Keep the callback path already configured in deployed X applications.
 app.get("/api/v1/auth/x/callback", xCallback);
 // Exported so the API contract test can list every route.

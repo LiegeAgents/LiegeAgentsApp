@@ -85,6 +85,7 @@ const env = z
     ACP_BUILDER_CODE: z.string().min(1).optional(),
     ACP_DEFAULT_PRICE_USD: z.coerce.number().positive().finite().default(0.01),
     ADMIN_WALLET_ADDRESSES: z.string().optional(),
+    MASTER_ADMIN_CODE: z.string().min(12).optional(),
   })
   .parse(source);
 
@@ -104,10 +105,11 @@ if (
     env.AUTH_URI === "http://localhost" ||
     !env.MCP_INTERNAL_API_TOKEN ||
     !env.RUNNER_WORKER_URL ||
-    !env.RUNNER_WORKER_TOKEN)
+    !env.RUNNER_WORKER_TOKEN ||
+    !env.MASTER_ADMIN_CODE)
 ) {
   throw new Error(
-    "AUTH_TOKEN_PEPPER, CRON_SECRET, ADMIN_WALLET_ADDRESSES, AUTH_DOMAIN, AUTH_URI, MCP_INTERNAL_API_TOKEN, RUNNER_WORKER_URL, and RUNNER_WORKER_TOKEN are required in production.",
+    "AUTH_TOKEN_PEPPER, CRON_SECRET, ADMIN_WALLET_ADDRESSES, MASTER_ADMIN_CODE, AUTH_DOMAIN, AUTH_URI, MCP_INTERNAL_API_TOKEN, RUNNER_WORKER_URL, and RUNNER_WORKER_TOKEN are required in production.",
   );
 }
 if (env.X_BOT_ENABLED === "true" && (!env.X_ACCESS_TOKEN || !env.X_BOT_HANDLE)) {
