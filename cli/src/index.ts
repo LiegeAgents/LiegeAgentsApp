@@ -31,6 +31,7 @@ Usage:
   liege jobs fund <job-id> [--quote-id <id>] [--gas-tx-hash <hash>] [--token-tx-hash <hash>] [--usdg-tx-hash <hash>]
   liege jobs submit <job-id> '<json-deliverable>'
   liege jobs evaluate <job-id> '<json-decision>'
+  liege jobs decline <job-id> --reason <text>
   liege runner simulate <agent-id> '<json-workload>'
   liege runner authorize <agent-id> '<json-workload>' --simulation-id <id>
   liege runner execute '<json-workload>' --action-id <id> --simulation-id <id>
@@ -266,6 +267,14 @@ export async function execute(args: string[]): Promise<unknown> {
     return request(`/v1/jobs/${encodeURIComponent(id)}/evaluate`, {
       method: "POST",
       body: JSON.stringify(input),
+    });
+  }
+  if (resource === "jobs" && action === "decline" && id) {
+    const reason = flags.reason?.trim();
+    if (!reason) throw new Error("--reason is required when declining a job.");
+    return request(`/v1/jobs/${encodeURIComponent(id)}/decline`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
     });
   }
   if (resource === "runner" || resource === "runners") {
