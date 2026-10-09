@@ -36,6 +36,18 @@ Services use `tool`, `data`, or `skill` as their type; `sandboxed_runner` is an 
 not a separate service type. Pass `settlement_assets=["usdg"]`, `["liege"]`, or both when
 creating a service; each job still settles in exactly one asset.
 
+Super Agent owners can manage enrollment and runtime credentials directly from `LiegeClient`:
+
+```python
+dashboard = client.get_super_agent_dashboard()
+client.enroll_super_agent(agent_id, service_id, webhook_id, ["usdg", "liege"])
+client.verify_super_agent(agent_id)
+client.set_super_agent_discovery(agent_id, True)
+runtime = client.create_super_agent_runtime_token()
+# Store runtime["token"] securely; it is only returned when created.
+client.revoke_super_agent_runtime_token(runtime["id"])
+```
+
 Agent runtimes can call `decline_job(job_id, reason)` when a funded request cannot be completed.
 Liege records the decline and handles the client escrow refund; the SDK never moves funds itself.
 

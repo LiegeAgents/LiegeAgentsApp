@@ -192,6 +192,34 @@ class LiegeClient:
         """Return the public, digest-backed reputation audit for an agent slug."""
         return AgentReputationAudit.from_dict(self._request("GET", f"/v1/agents/{slug}/reputation"))
 
+    def get_super_agent_dashboard(self) -> dict[str, Any]:
+        return self._request("GET", "/v1/super-agents/dashboard")
+
+    def list_super_agent_enrollments(self) -> dict[str, Any]:
+        return self._request("GET", "/v1/super-agents/enrollments")
+
+    def enroll_super_agent(self, agent_id: str, service_id: str, webhook_id: str,
+                           settlement_assets: list[str] | None = None) -> dict[str, Any]:
+        return self._request("POST", "/v1/super-agents/enrollments", json={
+            "agentId": agent_id, "serviceId": service_id, "webhookId": webhook_id,
+            "settlementAssets": list(dict.fromkeys(settlement_assets or ["usdg"])),
+        })
+
+    def verify_super_agent(self, agent_id: str) -> dict[str, Any]:
+        return self._request("POST", f"/v1/super-agents/enrollments/{agent_id}/verify")
+
+    def set_super_agent_discovery(self, agent_id: str, enabled: bool) -> dict[str, Any]:
+        return self._request("POST", f"/v1/super-agents/enrollments/{agent_id}/discovery", json={"enabled": enabled})
+
+    def create_super_agent_runtime_token(self) -> dict[str, Any]:
+        return self._request("POST", "/v1/super-agents/runtime-token")
+
+    def list_super_agent_runtime_tokens(self) -> list[dict[str, Any]]:
+        return self._request("GET", "/v1/super-agents/runtime-tokens")
+
+    def revoke_super_agent_runtime_token(self, token_id: str) -> dict[str, Any]:
+        return self._request("DELETE", f"/v1/super-agents/runtime-tokens/{token_id}")
+
     def create_service(self, agent_id: str, slug: str, name: str, description: str,
                        service_type: ServiceType, price_usd: str | float, sla_minutes: int,
                        execution_mode: str = "manual", requirements_schema: dict[str, Any] | None = None,
@@ -509,6 +537,34 @@ class AsyncLiegeClient:
     async def get_agent_reputation(self, slug: str) -> AgentReputationAudit:
         """Return the public, digest-backed reputation audit for an agent slug."""
         return AgentReputationAudit.from_dict(await self._request("GET", f"/v1/agents/{slug}/reputation"))
+
+    async def get_super_agent_dashboard(self) -> dict[str, Any]:
+        return await self._request("GET", "/v1/super-agents/dashboard")
+
+    async def list_super_agent_enrollments(self) -> dict[str, Any]:
+        return await self._request("GET", "/v1/super-agents/enrollments")
+
+    async def enroll_super_agent(self, agent_id: str, service_id: str, webhook_id: str,
+                                 settlement_assets: list[str] | None = None) -> dict[str, Any]:
+        return await self._request("POST", "/v1/super-agents/enrollments", json={
+            "agentId": agent_id, "serviceId": service_id, "webhookId": webhook_id,
+            "settlementAssets": list(dict.fromkeys(settlement_assets or ["usdg"])),
+        })
+
+    async def verify_super_agent(self, agent_id: str) -> dict[str, Any]:
+        return await self._request("POST", f"/v1/super-agents/enrollments/{agent_id}/verify")
+
+    async def set_super_agent_discovery(self, agent_id: str, enabled: bool) -> dict[str, Any]:
+        return await self._request("POST", f"/v1/super-agents/enrollments/{agent_id}/discovery", json={"enabled": enabled})
+
+    async def create_super_agent_runtime_token(self) -> dict[str, Any]:
+        return await self._request("POST", "/v1/super-agents/runtime-token")
+
+    async def list_super_agent_runtime_tokens(self) -> list[dict[str, Any]]:
+        return await self._request("GET", "/v1/super-agents/runtime-tokens")
+
+    async def revoke_super_agent_runtime_token(self, token_id: str) -> dict[str, Any]:
+        return await self._request("DELETE", f"/v1/super-agents/runtime-tokens/{token_id}")
 
 
 def _page(value: Any, mapper: Callable[[dict[str, Any]], Any]) -> Page:

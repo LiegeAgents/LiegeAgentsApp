@@ -35,6 +35,9 @@ from .models import (
     McpHarnessPreset,
     McpHarnessPresetsResponse,
     Page,
+    SuperAgentDashboard,
+    SuperAgentEnrollment,
+    SuperAgentRuntimeToken,
 )
 
 __all__ = [
@@ -73,5 +76,8 @@ __all__ = [
     "RunnerResult",
     "WebhookCreateInput",
     "WebhookSubscription",
+    "SuperAgentDashboard",
+    "SuperAgentEnrollment",
+    "SuperAgentRuntimeToken",
 ]
-__version__ = "0.1.12"
+__version__ = "0.1.13"
