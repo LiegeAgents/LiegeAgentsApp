@@ -24,6 +24,7 @@ import { getAcpStatus } from "./acp.js";
 import { mobileRouter } from "./routes/mobile.js";
 import { superAgentsRouter, xCallback } from "./routes/superAgents.js";
 import { runtimeRouter } from "./routes/runtime.js";
+import { stakingRouter } from "./routes/staking.js";
 
 export const app = express();
 export const healthPayload = () => ({
@@ -108,6 +109,7 @@ export const routers = [
   ["/v1/services", servicesRouter],
   ["/v1/mobile", mobileRouter],
   ["/v1/super-agents", superAgentsRouter],
+  ["/v1/staking", stakingRouter],
 ] as const;
 for (const [path, router] of routers) app.use(path, router);
 // MCP's internal service routes are intentionally outside the public OpenAPI contract.

@@ -2523,6 +2523,130 @@ paths:
           }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  /v1/staking/config:
+    get:
+      operationId: getLiegeStakingConfig
+      summary: Public LIEGE staking pool configuration and fixed terms.
+      responses:
+        "200": { description: Pool address, balance, token, terms and readiness. }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /v1/staking/prepare:
+    post:
+      operationId: prepareLiegeStake
+      summary: Build the LIEGE token transfer for a fixed-term stake.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, termDays]
+              properties:
+                amount:
+                  { type: string, pattern: "^[1-9][0-9]{0,77}$", description: LIEGE base units. }
+                termDays: { type: integer, enum: [30, 45, 90] }
+      responses:
+        "200": { description: Token transfer transaction and projected reward. }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /v1/staking/locks:
+    post:
+      operationId: creditLiegeStake
+      summary: Verify a confirmed LIEGE deposit and create its fixed-term position.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [walletAddress, txHash, amount, termDays]
+              properties:
+                walletAddress: { $ref: "#/components/schemas/Address" }
+                txHash: { type: string, pattern: "^0x[0-9a-fA-F]{64}$" }
+                amount: { type: string, pattern: "^[1-9][0-9]{0,77}$" }
+                termDays: { type: integer, enum: [30, 45, 90] }
+      responses:
+        "201": { description: Created, verified staking lock. }
+        "202": { description: Deposit is awaiting chain indexing or confirmations. }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /v1/staking/locks/{walletAddress}:
+    get:
+      operationId: listLiegeStakes
+      summary: List fixed-term LIEGE stake positions for a wallet.
+      parameters:
+        - name: walletAddress
+          in: path
+          required: true
+          schema: { $ref: "#/components/schemas/Address" }
+      responses:
+        "200": { description: Wallet stake positions and chain-derived maturity. }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /v1/staking/payouts/{walletAddress}:
+    get:
+      operationId: listLiegeStakePayouts
+      summary: List matured stake payout status for a wallet.
+      parameters:
+        - name: walletAddress
+          in: path
+          required: true
+          schema: { $ref: "#/components/schemas/Address" }
+      responses:
+        "200": { description: Payout records and transaction state. }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /v1/staking/locks/{lockId}/claim-message:
+    post:
+      operationId: getLiegeStakeClaimMessage
+      summary: Prepare a wallet-signable claim authorization for a matured position.
+      parameters:
+        - name: lockId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [walletAddress]
+              properties:
+                walletAddress: { $ref: "#/components/schemas/Address" }
+      responses:
+        "200": { description: Claim message bound to wallet, position, token and chain. }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /v1/staking/locks/{lockId}/claim:
+    post:
+      operationId: claimLiegeStake
+      summary: Request the pool to pay a matured position after verifying the wallet signature and reserves.
+      parameters:
+        - name: lockId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [walletAddress, signature]
+              properties:
+                walletAddress: { $ref: "#/components/schemas/Address" }
+                signature: { type: string }
+      responses:
+        "202": { description: Durable payout request accepted. }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, description: A session token from /v1/auth/verify. }

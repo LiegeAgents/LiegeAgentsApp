@@ -45,7 +45,8 @@ const budgets = [
   {
     name: "chain",
     limit: 20,
-    matches: (path: string) => /^\/v1\/jobs\/[^/]+\/(fund|funding-quote)$/.test(path),
+    matches: (path: string) =>
+      /^\/v1\/jobs\/[^/]+\/(fund|funding-quote)$/.test(path) || path.startsWith("/v1/staking/"),
   },
   { name: "general", limit: 120, matches: () => true },
 ];

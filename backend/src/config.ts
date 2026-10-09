@@ -52,6 +52,22 @@ const env = z
       .regex(/^0x[0-9a-fA-F]{40}$/)
       .default("0xc32ab2e562ade6fba6d3d1e3960d49b0957ef645"),
     LIEGE_DECIMALS: z.coerce.number().int().min(0).max(18).default(18),
+    LIEGE_STAKING_POOL_ADDRESS: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z
+        .string()
+        .regex(/^0x[0-9a-fA-F]{40}$/)
+        .optional(),
+    ),
+    LIEGE_STAKING_POOL_PRIVATE_KEY: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z
+        .string()
+        .regex(/^0x[0-9a-fA-F]{64}$/)
+        .optional(),
+    ),
+    LIEGE_STAKING_ENABLED: z.enum(["true", "false"]).default("false"),
+    LIEGE_STAKING_CONFIRMATIONS: z.coerce.number().int().min(1).max(100).default(2),
     ESCROW_GAS_RESERVE_USD: z.coerce.number().positive().default(1),
     ESCROW_QUOTE_TTL_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
     ESCROW_CONFIRMATIONS: z.coerce.number().int().min(1).max(100).default(1),
