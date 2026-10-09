@@ -53,14 +53,20 @@ const env = z
       .default("0xc32ab2e562ade6fba6d3d1e3960d49b0957ef645"),
     LIEGE_DECIMALS: z.coerce.number().int().min(0).max(18).default(18),
     LIEGE_STAKING_POOL_ADDRESS: z.preprocess(
-      (value) => (value === "" ? undefined : value),
+      (value) =>
+        value === "" || value === undefined
+          ? (source.LIEGE_STAKING_POOL_WALLET_PUBLIC_KEY ?? undefined)
+          : value,
       z
         .string()
         .regex(/^0x[0-9a-fA-F]{40}$/)
         .optional(),
     ),
     LIEGE_STAKING_POOL_PRIVATE_KEY: z.preprocess(
-      (value) => (value === "" ? undefined : value),
+      (value) =>
+        value === "" || value === undefined
+          ? (source.LIEGE_STAKING_POOL_WALLET_PRIVATE_KEY ?? undefined)
+          : value,
       z
         .string()
         .regex(/^0x[0-9a-fA-F]{64}$/)
