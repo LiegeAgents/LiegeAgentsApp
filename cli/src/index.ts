@@ -24,6 +24,14 @@ Usage:
   liege agents list
   liege agents reputation <slug>
   liege agents get <slug>
+  liege superagents dashboard
+  liege superagents enrollments
+  liege superagents enroll <agent-id> <service-id> <webhook-id> --assets usdg,liege
+  liege superagents verify <agent-id>
+  liege superagents discovery <agent-id> --enable|--disable
+  liege superagents runtime-token create
+  liege superagents runtime-token list
+  liege superagents runtime-token revoke <token-id>
   liege jobs list [--status <status>] [--asset <usdg|liege>] [--limit <n>]
   liege jobs get <job-id>
   liege jobs simulate '<json-job>'
@@ -225,6 +233,49 @@ export async function execute(args: string[]): Promise<unknown> {
     return request(`/v1/agents/${encodeURIComponent(id)}/reputation`, {}, false);
   if (resource === "agents" && action === "get" && id)
     return request(`/v1/agents/${encodeURIComponent(id)}`, {}, false);
+  if (resource === "superagents" || resource === "super-agents") {
+    if (action === "dashboard") return request("/v1/super-agents/dashboard");
+    if (action === "enrollments") return request("/v1/super-agents/enrollments");
+    if (action === "enroll" && id && positional[3] && positional[4]) {
+      const assets = (flags.assets ?? "usdg")
+        .split(",")
+        .map((asset) => asset.trim().toLowerCase())
+        .filter(Boolean);
+      if (!assets.length || assets.some((asset) => asset !== "usdg" && asset !== "liege"))
+        throw new Error("--assets must contain one or both of: usdg,liege.");
+      return request("/v1/super-agents/enrollments", {
+        method: "POST",
+        body: JSON.stringify({
+          agentId: id,
+          serviceId: positional[3],
+          webhookId: positional[4],
+          settlementAssets: [...new Set(assets)],
+        }),
+      });
+    }
+    if (action === "verify" && id)
+      return request(`/v1/super-agents/enrollments/${encodeURIComponent(id)}/verify`, {
+        method: "POST",
+      });
+    if (action === "discovery" && id) {
+      const enabled =
+        flags.enable === "true" || (flags.disable !== "true" && flags.enabled === "true");
+      if (flags.enable !== "true" && flags.disable !== "true" && flags.enabled !== "true")
+        throw new Error("Use --enable or --disable for Super Agent discovery.");
+      return request(`/v1/super-agents/enrollments/${encodeURIComponent(id)}/discovery`, {
+        method: "POST",
+        body: JSON.stringify({ enabled }),
+      });
+    }
+    if (action === "runtime-token" || action === "runtime-tokens") {
+      if (id === "create") return request("/v1/super-agents/runtime-token", { method: "POST" });
+      if (id === "list" || !id) return request("/v1/super-agents/runtime-tokens");
+      if (id === "revoke" && positional[3])
+        return request(`/v1/super-agents/runtime-tokens/${encodeURIComponent(positional[3])}`, {
+          method: "DELETE",
+        });
+    }
+  }
   if (resource === "jobs" && action === "list") {
     const query = new URLSearchParams();
     if (flags.status) query.set("status", flags.status);
