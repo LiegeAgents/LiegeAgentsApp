@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   ArrowDownLeft,
@@ -56,7 +56,13 @@ function App() {
   const [selectedTerm, setSelectedTerm] = useState(30),
     [amount, setAmount] = useState(""),
     [busy, setBusy] = useState(false),
-    [message, setMessage] = useState("");
+    [toast, setToast] = useState(null);
+  const toastTimer = useRef(null);
+  const notify = useCallback((type, text) => {
+    clearTimeout(toastTimer.current);
+    setToast({ type, text, id: Date.now() });
+    toastTimer.current = setTimeout(() => setToast(null), 5000);
+  }, []);
   const [copied, setCopied] = useState(false);
   const tiers = config?.terms || [];
   const selected = tiers.find((tier) => tier.days === Number(selectedTerm));
@@ -89,8 +95,9 @@ function App() {
     [wallet],
   );
   useEffect(() => {
-    refresh().catch((error) => setMessage(error.message));
+    refresh().catch((error) => notify("error", error.message));
   }, []);
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
   useEffect(() => {
     if (!wallet) return;
     const timer = setInterval(() => refresh(wallet).catch(() => {}), 30_000);
@@ -129,15 +136,14 @@ function App() {
       }
       setWallet(address);
       await refresh(address);
-      setMessage("");
+      notify("success", "Wallet connected.");
     } catch (error) {
-      setMessage(error.message);
+      notify("error", error.message);
     }
   }
 
   async function stake() {
     setBusy(true);
-    setMessage("");
     try {
       if (!wallet || !estimated || !config?.poolAddress)
         throw new Error("Connect a wallet and enter a valid amount first.");
@@ -149,7 +155,7 @@ function App() {
         method: "eth_sendTransaction",
         params: [{ from: wallet, ...prepared.transaction }],
       });
-      setMessage("Transfer submitted. Waiting for confirmation…");
+      notify("info", "Transfer submitted. Waiting for confirmation…");
       let credited;
       for (let attempt = 0; attempt < 60; attempt++) {
         try {
@@ -172,13 +178,14 @@ function App() {
         throw new Error(
           "Still waiting for confirmation. Refresh later to reconcile this transfer using its transaction hash.",
         );
-      setMessage(
+      notify(
+        "success",
         `LIEGE locked for ${selectedTerm} days. Position ${credited.lock.id.slice(0, 8)}…`,
       );
       setAmount("");
       await refresh(wallet);
     } catch (error) {
-      setMessage(error.message);
+      notify("error", error.message);
     } finally {
       setBusy(false);
     }
@@ -186,7 +193,6 @@ function App() {
 
   async function claim(lock) {
     setBusy(true);
-    setMessage("");
     try {
       const { message: claimMessage } = await api(`/locks/${lock.id}/claim-message`, {
         method: "POST",
@@ -200,13 +206,14 @@ function App() {
         method: "POST",
         body: JSON.stringify({ walletAddress: wallet, signature }),
       });
-      setMessage(
+      notify(
+        "success",
         "Claim requested. The pool will send your principal and LIEGE reward after the payout confirms.",
       );
       await refresh(wallet);
       void result;
     } catch (error) {
-      setMessage(error.message);
+      notify("error", error.message);
     } finally {
       setBusy(false);
     }
@@ -214,9 +221,23 @@ function App() {
 
   async function copyPool() {
     if (!config?.poolAddress) return;
-    await navigator.clipboard.writeText(config.poolAddress);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
+    try {
+      await navigator.clipboard.writeText(config.poolAddress);
+      setCopied(true);
+      notify("success", "Pool address copied.");
+      setTimeout(() => setCopied(false), 1600);
+    } catch (error) {
+      notify("error", error.message || "Could not copy the pool address.");
+    }
+  }
+
+  async function refreshWithToast() {
+    try {
+      await refresh(wallet);
+      notify("success", "Staking activity refreshed.");
+    } catch (error) {
+      notify("error", error.message);
+    }
   }
 
   if (!config)
@@ -224,7 +245,22 @@ function App() {
       <main className="loading">
         <div className="spinner" />
         <p>Loading staking pool…</p>
-        {message && <p className="notice error">{message}</p>}
+        {toast && (
+          <div
+            className={`toast ${toast.type}`}
+            role={toast.type === "error" ? "alert" : "status"}
+            aria-live="polite"
+            key={toast.id}
+          >
+            <span className="toast-mark" aria-hidden="true">
+              {toast.type === "success" ? "✓" : toast.type === "error" ? "!" : "·"}
+            </span>
+            <span>{toast.text}</span>
+            <button aria-label="Dismiss notification" onClick={() => setToast(null)}>
+              ×
+            </button>
+          </div>
+        )}
       </main>
     );
   const poolReady = config.enabled;
@@ -238,9 +274,6 @@ function App() {
           <span>staking</span>
         </a>
         <div className="header-right">
-          <span className="network">
-            <i /> Robinhood Chain
-          </span>
           {wallet ? (
             <button className="wallet connected" onClick={() => setWallet("")}>
               <Wallet size={16} />
@@ -256,9 +289,6 @@ function App() {
       </header>
       <main>
         <section className="hero">
-          <div className="eyebrow">
-            <span /> LIEGE TOKEN STAKING
-          </div>
           <h1>
             Lock with purpose.
             <br />
@@ -287,14 +317,6 @@ function App() {
           <div className="notice warning">
             <ShieldCheck size={18} /> Pool setup is not complete yet. Deposits stay disabled until
             the pool wallet and its payout signer are configured and funded.
-          </div>
-        )}
-        {message && (
-          <div className="notice">
-            <span>{message}</span>
-            <button aria-label="Dismiss" onClick={() => setMessage("")}>
-              ×
-            </button>
           </div>
         )}
         <section className="content-grid">
@@ -433,7 +455,7 @@ function App() {
               <h2>Staking activity</h2>
             </div>
             {wallet && (
-              <button className="refresh" onClick={() => refresh(wallet)}>
+              <button className="refresh" onClick={refreshWithToast}>
                 <RefreshCw size={15} /> Refresh
               </button>
             )}
@@ -541,6 +563,22 @@ function App() {
           Liege Agents <ExternalLink size={13} />
         </a>
       </footer>
+      {toast && (
+        <div
+          className={`toast ${toast.type}`}
+          role={toast.type === "error" ? "alert" : "status"}
+          aria-live="polite"
+          key={toast.id}
+        >
+          <span className="toast-mark" aria-hidden="true">
+            {toast.type === "success" ? "✓" : toast.type === "error" ? "!" : "·"}
+          </span>
+          <span>{toast.text}</span>
+          <button aria-label="Dismiss notification" onClick={() => setToast(null)}>
+            ×
+          </button>
+        </div>
+      )}
     </div>
   );
 }
