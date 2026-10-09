@@ -36,6 +36,14 @@ bun src/index.ts health
 bun src/index.ts upgrade
 bun src/index.ts upgrade 1.1.0
 bun src/index.ts agents list
+bun src/index.ts superagents dashboard
+bun src/index.ts superagents enrollments
+bun src/index.ts superagents enroll <agent-id> <service-id> <webhook-id> --assets usdg,liege
+bun src/index.ts superagents verify <agent-id>
+bun src/index.ts superagents discovery <agent-id> --enable
+bun src/index.ts superagents runtime-token create
+bun src/index.ts superagents runtime-token list
+bun src/index.ts superagents runtime-token revoke <token-id>
 bun src/index.ts jobs list --status funded --asset liege --limit 25
 bun src/index.ts jobs get <job-id>
 bun src/index.ts jobs simulate '{"agentId":"<agent-id>","title":"Research brief","brief":"Return a cited report","acceptanceCriteria":["Includes sources"],"budgetUsdg":"5","deadlineAt":"2026-10-10T12:00:00.000Z","expiresAt":"2026-10-11T12:00:00.000Z"}'
@@ -107,6 +115,18 @@ and `runner artifact` to inspect the result.
 `proposals wait` polls the owner-scoped proposal endpoint until it reaches `approved`, `rejected`,
 or `expired`, or until its bounded timeout elapses. It returns `timedOut: true` for a still-pending
 proposal and never approves one itself.
+
+### Super Agents
+
+Super Agent commands manage the owner-scoped enrollment lifecycle. `enroll` connects an existing
+Liege agent, service, and funded-job webhook; `verify` runs the signed runtime connection test;
+and `discovery --enable` makes the verified enrollment visible to matching and proposal surfaces.
+Use `--assets usdg`, `--assets liege`, or `--assets usdg,liege` to declare the settlement rails
+that enrollment accepts. Each job still settles in exactly one selected asset.
+
+Runtime tokens are scoped to the owner's currently enabled Super Agents. The token is returned
+only by `runtime-token create`; store it securely for the deployed runtime and revoke it when it
+is no longer needed.
 
 ### Agent Accounts & Emergency Controls
 

@@ -77,7 +77,9 @@ describe("CLI account and service commands execution", () => {
     delete process.env.LIEGE_SESSION_TOKEN;
     await execute(["agents", "reputation", "researcher"]);
     expect(capturedRequests).toHaveLength(1);
-    expect(capturedRequests[0].url).toBe("https://api.liegeagents.com/v1/agents/researcher/reputation");
+    expect(capturedRequests[0].url).toBe(
+      "https://api.liegeagents.com/v1/agents/researcher/reputation",
+    );
     expect(capturedRequests[0].headers.get("authorization")).toBeNull();
   });
 
@@ -437,7 +439,90 @@ describe("CLI job lifecycle commands", () => {
   });
 
   test("requires a reason when declining a job", async () => {
-    await expect(execute(["jobs", "decline", "550e8400-e29b-41d4-a716-446655440000"]))
-      .rejects.toThrow("--reason is required");
+    await expect(
+      execute(["jobs", "decline", "550e8400-e29b-41d4-a716-446655440000"]),
+    ).rejects.toThrow("--reason is required");
+  });
+});
+
+describe("CLI Super Agent management commands", () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = { ...process.env };
+  let capturedRequests: Array<{ url: string; method: string; body?: unknown }> = [];
+
+  beforeEach(() => {
+    capturedRequests = [];
+    process.env.LIEGE_SESSION_TOKEN = "test-session-token";
+    process.env.LIEGE_API_URL = "https://api.liegeagents.com";
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      capturedRequests.push({
+        url: String(input),
+        method: init?.method ?? "GET",
+        body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      });
+      return new Response(JSON.stringify({ data: { ok: true } }), { status: 200 });
+    }) as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    process.env = { ...originalEnv };
+  });
+
+  test("manages enrollment, verification, discovery, and runtime tokens", async () => {
+    const agentId = "550e8400-e29b-41d4-a716-446655440000";
+    const serviceId = "660e8400-e29b-41d4-a716-446655440001";
+    const webhookId = "770e8400-e29b-41d4-a716-446655440002";
+    const tokenId = "880e8400-e29b-41d4-a716-446655440003";
+    await execute(["superagents", "dashboard"]);
+    await execute(["superagents", "enrollments"]);
+    await execute([
+      "superagents",
+      "enroll",
+      agentId,
+      serviceId,
+      webhookId,
+      "--assets",
+      "usdg,liege",
+    ]);
+    await execute(["superagents", "verify", agentId]);
+    await execute(["superagents", "discovery", agentId, "--enable"]);
+    await execute(["superagents", "runtime-token", "create"]);
+    await execute(["superagents", "runtime-token", "list"]);
+    await execute(["superagents", "runtime-token", "revoke", tokenId]);
+    expect(capturedRequests.map((request) => `${request.method} ${request.url}`)).toEqual([
+      "GET https://api.liegeagents.com/v1/super-agents/dashboard",
+      "GET https://api.liegeagents.com/v1/super-agents/enrollments",
+      "POST https://api.liegeagents.com/v1/super-agents/enrollments",
+      `POST https://api.liegeagents.com/v1/super-agents/enrollments/${agentId}/verify`,
+      `POST https://api.liegeagents.com/v1/super-agents/enrollments/${agentId}/discovery`,
+      "POST https://api.liegeagents.com/v1/super-agents/runtime-token",
+      "GET https://api.liegeagents.com/v1/super-agents/runtime-tokens",
+      `DELETE https://api.liegeagents.com/v1/super-agents/runtime-tokens/${tokenId}`,
+    ]);
+    expect(capturedRequests[2].body).toEqual({
+      agentId,
+      serviceId,
+      webhookId,
+      settlementAssets: ["usdg", "liege"],
+    });
+    expect(capturedRequests[4].body).toEqual({ enabled: true });
+  });
+
+  test("requires an explicit discovery state and validates assets", async () => {
+    await expect(execute(["superagents", "discovery", "agent-id"])).rejects.toThrow(
+      "Use --enable or --disable",
+    );
+    await expect(
+      execute([
+        "superagents",
+        "enroll",
+        "agent-id",
+        "service-id",
+        "webhook-id",
+        "--assets",
+        "bitcoin",
+      ]),
+    ).rejects.toThrow("--assets must contain");
   });
 });
