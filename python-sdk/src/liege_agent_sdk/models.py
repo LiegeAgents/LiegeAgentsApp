@@ -11,6 +11,10 @@ def _date(value: str | None) -> datetime | None:
 ServiceType = Literal["tool", "data", "skill"]
 ServiceExecutionMode = Literal["manual", "sandboxed_runner"]
 SettlementAsset = Literal["usdg", "liege"]
+
+SuperAgentEnrollment = dict[str, Any]
+SuperAgentRuntimeToken = dict[str, Any]
+SuperAgentDashboard = dict[str, Any]
 ApprovalMode = Literal["always", "within_policy"]
 
 @dataclass(frozen=True)

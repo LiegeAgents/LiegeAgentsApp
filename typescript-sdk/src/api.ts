@@ -26,6 +26,9 @@ import {
   type Job,
   type JobEvent,
   type Session,
+  type SuperAgentDashboard,
+  type SuperAgentEnrollment,
+  type SuperAgentRuntimeToken,
   type Signer,
   type X402PaymentPayload,
   type X402PaymentRequired,
@@ -39,8 +42,20 @@ import {
   type AgentReputationAudit,
 } from "./types.js";
 
-export interface LiegeClientOptions { baseUrl?: string; token?: string; fetch?: typeof globalThis.fetch; timeoutMs?: number; maxRetries?: number; retryBackoffMs?: number; }
-export interface LiegeRequestOptions { method?: string; body?: unknown; signal?: AbortSignal; timeoutMs?: number; }
+export interface LiegeClientOptions {
+  baseUrl?: string;
+  token?: string;
+  fetch?: typeof globalThis.fetch;
+  timeoutMs?: number;
+  maxRetries?: number;
+  retryBackoffMs?: number;
+}
+export interface LiegeRequestOptions {
+  method?: string;
+  body?: unknown;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
 
 export class LiegeClient {
   private readonly fetcher: typeof globalThis.fetch;
@@ -60,9 +75,15 @@ export class LiegeClient {
   }
 
   async authenticate(address: string, signer: Signer): Promise<Session> {
-    const nonce = await this.call<{ message: string; nonce: string }>("/v1/auth/nonce", { method: "POST", body: { address } });
+    const nonce = await this.call<{ message: string; nonce: string }>("/v1/auth/nonce", {
+      method: "POST",
+      body: { address },
+    });
     const signature = await signer(nonce.message);
-    const session = await this.call<Session>("/v1/auth/verify", { method: "POST", body: { address, nonce: nonce.nonce, signature } });
+    const session = await this.call<Session>("/v1/auth/verify", {
+      method: "POST",
+      body: { address, nonce: nonce.nonce, signature },
+    });
     this.token = session.token;
     return session;
   }
@@ -70,112 +91,294 @@ export class LiegeClient {
   listJobs(status?: string, limit = 50, settlementAsset?: "usdg" | "liege"): Promise<Job[]> {
     return this.listJobsPage(status, limit, settlementAsset).then((page) => page.items);
   }
-  listJobsPage(status?: string, limit = 50, settlementAsset?: "usdg" | "liege"): Promise<Page<Job>> {
+  listJobsPage(
+    status?: string,
+    limit = 50,
+    settlementAsset?: "usdg" | "liege",
+  ): Promise<Page<Job>> {
     const query = new URLSearchParams({ limit: String(limit) });
     if (status) query.set("status", status);
     if (settlementAsset) query.set("settlementAsset", settlementAsset);
     return this.page<Job>(`/v1/jobs?${query}`);
   }
-  getJob(id: string): Promise<Record<string, unknown>> { return this.call(`/v1/jobs/${encodeURIComponent(id)}`); }
-  getPrivatePayload(id: string, payload: "brief" | "deliverable"): Promise<Record<string, unknown>> { return this.call(`/v1/jobs/${encodeURIComponent(id)}/payload/${payload}`); }
-  submitDeliverable(id: string, deliverable: string, evidence: string[] = []): Promise<Job> { return this.call(`/v1/jobs/${encodeURIComponent(id)}/submit`, { method: "POST", body: { deliverable, evidence } }); }
-  declineJob(id: string, reason: string): Promise<Job> { return this.call(`/v1/jobs/${encodeURIComponent(id)}/decline`, { method: "POST", body: { reason } }); }
-  listInvoices(): Promise<Invoice[]> { return this.call("/v1/invoices"); }
-  getInvoice(id: string): Promise<Invoice> { return this.call(`/v1/invoices/${encodeURIComponent(id)}`); }
-  createInvoice(input: { agentId: string; description: string; amount?: string | number; amountUsdg?: string | number; asset?: InvoiceAsset | string; expiresAt: string; reference?: string }): Promise<Invoice> { return this.call("/v1/invoices", { method: "POST", body: input }); }
-  payInvoice(id: string): Promise<Invoice> { return this.call(`/v1/invoices/${encodeURIComponent(id)}/pay`, { method: "POST" }); }
-  refundInvoice(id: string, input?: RefundInvoiceInput): Promise<Invoice> { return this.call(`/v1/invoices/${encodeURIComponent(id)}/refund`, { method: "POST", body: input }); }
-  listInvoiceRefunds(id: string): Promise<InvoiceRefund[]> { return this.call(`/v1/invoices/${encodeURIComponent(id)}/refunds`); }
-  cancelInvoice(id: string): Promise<Invoice> { return this.call(`/v1/invoices/${encodeURIComponent(id)}/cancel`, { method: "POST" }); }
-  listWebhooks(): Promise<WebhookSubscription[]> { return this.call<Record<string, unknown>[]>("/v1/webhooks").then((items) => items.map((item) => this.mapWebhook(item))); }
-  createWebhook(input: WebhookCreateInput): Promise<WebhookCreated> { return this.call<Record<string, unknown>>("/v1/webhooks", { method: "POST", body: input }).then((item) => ({ ...this.mapWebhook(item), secret: String(item.secret) })); }
-  async deleteWebhook(id: string): Promise<void> { await this.call(`/v1/webhooks/${encodeURIComponent(id)}`, { method: "DELETE" }); }
+  getJob(id: string): Promise<Record<string, unknown>> {
+    return this.call(`/v1/jobs/${encodeURIComponent(id)}`);
+  }
+  getPrivatePayload(
+    id: string,
+    payload: "brief" | "deliverable",
+  ): Promise<Record<string, unknown>> {
+    return this.call(`/v1/jobs/${encodeURIComponent(id)}/payload/${payload}`);
+  }
+  submitDeliverable(id: string, deliverable: string, evidence: string[] = []): Promise<Job> {
+    return this.call(`/v1/jobs/${encodeURIComponent(id)}/submit`, {
+      method: "POST",
+      body: { deliverable, evidence },
+    });
+  }
+  declineJob(id: string, reason: string): Promise<Job> {
+    return this.call(`/v1/jobs/${encodeURIComponent(id)}/decline`, {
+      method: "POST",
+      body: { reason },
+    });
+  }
+  listInvoices(): Promise<Invoice[]> {
+    return this.call("/v1/invoices");
+  }
+  getInvoice(id: string): Promise<Invoice> {
+    return this.call(`/v1/invoices/${encodeURIComponent(id)}`);
+  }
+  createInvoice(input: {
+    agentId: string;
+    description: string;
+    amount?: string | number;
+    amountUsdg?: string | number;
+    asset?: InvoiceAsset | string;
+    expiresAt: string;
+    reference?: string;
+  }): Promise<Invoice> {
+    return this.call("/v1/invoices", { method: "POST", body: input });
+  }
+  payInvoice(id: string): Promise<Invoice> {
+    return this.call(`/v1/invoices/${encodeURIComponent(id)}/pay`, { method: "POST" });
+  }
+  refundInvoice(id: string, input?: RefundInvoiceInput): Promise<Invoice> {
+    return this.call(`/v1/invoices/${encodeURIComponent(id)}/refund`, {
+      method: "POST",
+      body: input,
+    });
+  }
+  listInvoiceRefunds(id: string): Promise<InvoiceRefund[]> {
+    return this.call(`/v1/invoices/${encodeURIComponent(id)}/refunds`);
+  }
+  cancelInvoice(id: string): Promise<Invoice> {
+    return this.call(`/v1/invoices/${encodeURIComponent(id)}/cancel`, { method: "POST" });
+  }
+  listWebhooks(): Promise<WebhookSubscription[]> {
+    return this.call<Record<string, unknown>[]>("/v1/webhooks").then((items) =>
+      items.map((item) => this.mapWebhook(item)),
+    );
+  }
+  createWebhook(input: WebhookCreateInput): Promise<WebhookCreated> {
+    return this.call<Record<string, unknown>>("/v1/webhooks", { method: "POST", body: input }).then(
+      (item) => ({ ...this.mapWebhook(item), secret: String(item.secret) }),
+    );
+  }
+  async deleteWebhook(id: string): Promise<void> {
+    await this.call(`/v1/webhooks/${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
   /** Verify the exact request body against x-liege-signature (sha256=<hex>). */
-  async verifyWebhookSignature(payload: string | ArrayBuffer, signature: string, secret: string): Promise<boolean> {
+  async verifyWebhookSignature(
+    payload: string | ArrayBuffer,
+    signature: string,
+    secret: string,
+  ): Promise<boolean> {
     const expected = /^sha256=([a-f0-9]{64})$/i.exec(signature)?.[1];
     if (!expected) return false;
-    const bytes = typeof payload === "string" ? new TextEncoder().encode(payload) : new Uint8Array(payload);
-    const key = await globalThis.crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
-    const expectedBytes = new Uint8Array(expected.match(/.{2}/g)!.map((value) => Number.parseInt(value, 16)));
+    const bytes =
+      typeof payload === "string" ? new TextEncoder().encode(payload) : new Uint8Array(payload);
+    const key = await globalThis.crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+    const expectedBytes = new Uint8Array(
+      expected.match(/.{2}/g)!.map((value) => Number.parseInt(value, 16)),
+    );
     return globalThis.crypto.subtle.verify("HMAC", key, expectedBytes, bytes);
   }
 
   listReceipts(options: { format: "otel"; limit?: number }): Promise<OtelTraceExport>;
   listReceipts(options?: { format?: "json"; limit?: number }): Promise<Receipt[]>;
   listReceipts(options: { format: "csv"; limit?: number }): Promise<string>;
-  listReceipts(options?: { format?: "json" | "csv" | "otel"; limit?: number }): Promise<Receipt[] | OtelTraceExport | string> {
+  listReceipts(options?: {
+    format?: "json" | "csv" | "otel";
+    limit?: number;
+  }): Promise<Receipt[] | OtelTraceExport | string> {
     const query = new URLSearchParams({ limit: String(options?.limit ?? 500) });
     if (options?.format) query.set("format", options.format);
     if (options?.format === "csv") {
-      return this.fetcher(`${this.baseUrl}/v1/receipts?${query}`, { headers: this.headers() }).then((r) => r.text());
+      return this.fetcher(`${this.baseUrl}/v1/receipts?${query}`, { headers: this.headers() }).then(
+        (r) => r.text(),
+      );
     }
     return this.call(`/v1/receipts?${query}`);
   }
 
   getReceipt(id: string, options?: { format?: "json" }): Promise<{ data: Receipt }>;
   getReceipt(id: string, options: { format: "otel" }): Promise<OtelTraceExport>;
-  getReceipt(id: string, options?: { format?: "json" | "otel" }): Promise<{ data: Receipt } | OtelTraceExport> {
+  getReceipt(
+    id: string,
+    options?: { format?: "json" | "otel" },
+  ): Promise<{ data: Receipt } | OtelTraceExport> {
     const query = options?.format ? `?format=${options.format}` : "";
     return this.call(`/v1/receipts/${encodeURIComponent(id)}${query}`);
   }
 
-  listServices(options: { agentId?: string; type?: ServiceType; limit?: number } = {}): Promise<Service[]> {
+  listServices(
+    options: { agentId?: string; type?: ServiceType; limit?: number } = {},
+  ): Promise<Service[]> {
     return this.listServicesPage(options).then((page) => page.items);
   }
-  listServicesPage(options: { agentId?: string; type?: ServiceType; limit?: number } = {}): Promise<Page<Service>> {
+  listServicesPage(
+    options: { agentId?: string; type?: ServiceType; limit?: number } = {},
+  ): Promise<Page<Service>> {
     const query = new URLSearchParams({ limit: String(options.limit ?? 50) });
     if (options.agentId) query.set("agentId", options.agentId);
     if (options.type) query.set("type", options.type);
     return this.call<unknown>(`/v1/services?${query}`).then((value) => {
-      const page = Array.isArray(value) ? { items: value as Record<string, unknown>[], nextCursor: null, total: undefined } : (value as { items?: Record<string, unknown>[]; nextCursor?: string | null; total?: number });
-      return { items: (page.items ?? []).map((item) => this.mapService(item)), nextCursor: page.nextCursor ?? null, total: page.total };
+      const page = Array.isArray(value)
+        ? { items: value as Record<string, unknown>[], nextCursor: null, total: undefined }
+        : (value as {
+            items?: Record<string, unknown>[];
+            nextCursor?: string | null;
+            total?: number;
+          });
+      return {
+        items: (page.items ?? []).map((item) => this.mapService(item)),
+        nextCursor: page.nextCursor ?? null,
+        total: page.total,
+      };
     });
   }
   getService(agentId: string, slug: string): Promise<Service> {
-    return this.call<Record<string, unknown>>(`/v1/services/${encodeURIComponent(agentId)}/${encodeURIComponent(slug)}`).then((item) => this.mapService(item));
+    return this.call<Record<string, unknown>>(
+      `/v1/services/${encodeURIComponent(agentId)}/${encodeURIComponent(slug)}`,
+    ).then((item) => this.mapService(item));
   }
   createService(input: {
-    agentId: string; slug: string; name: string; description: string; serviceType: ServiceType;
-    executionMode?: "manual" | "sandboxed_runner"; priceUsd: string | number; slaMinutes: number;
-    requirementsSchema?: Record<string, unknown>; deliverableSchema?: Record<string, unknown>;
+    agentId: string;
+    slug: string;
+    name: string;
+    description: string;
+    serviceType: ServiceType;
+    executionMode?: "manual" | "sandboxed_runner";
+    priceUsd: string | number;
+    slaMinutes: number;
+    requirementsSchema?: Record<string, unknown>;
+    deliverableSchema?: Record<string, unknown>;
     settlementAssets?: Array<"usdg" | "liege">;
-  }): Promise<Service> { return this.call<Record<string, unknown>>("/v1/services", { method: "POST", body: input }).then((item) => this.mapService(item)); }
+  }): Promise<Service> {
+    return this.call<Record<string, unknown>>("/v1/services", { method: "POST", body: input }).then(
+      (item) => this.mapService(item),
+    );
+  }
 
   getAgentReputation(slug: string): Promise<AgentReputationAudit> {
     return this.call<AgentReputationAudit>(`/v1/agents/${encodeURIComponent(slug)}/reputation`);
   }
 
+  getSuperAgentDashboard(): Promise<SuperAgentDashboard> {
+    return this.call("/v1/super-agents/dashboard");
+  }
+  listSuperAgentEnrollments(): Promise<{
+    agents: Record<string, unknown>[];
+    services: Record<string, unknown>[];
+    webhooks: Record<string, unknown>[];
+  }> {
+    return this.call("/v1/super-agents/enrollments");
+  }
+  enrollSuperAgent(
+    agentId: string,
+    serviceId: string,
+    webhookId: string,
+    settlementAssets: Array<"usdg" | "liege"> = ["usdg"],
+  ): Promise<SuperAgentEnrollment> {
+    return this.call("/v1/super-agents/enrollments", {
+      method: "POST",
+      body: { agentId, serviceId, webhookId, settlementAssets: [...new Set(settlementAssets)] },
+    });
+  }
+  verifySuperAgent(agentId: string): Promise<SuperAgentEnrollment> {
+    return this.call(`/v1/super-agents/enrollments/${encodeURIComponent(agentId)}/verify`, {
+      method: "POST",
+    });
+  }
+  setSuperAgentDiscovery(agentId: string, enabled: boolean): Promise<SuperAgentEnrollment> {
+    return this.call(`/v1/super-agents/enrollments/${encodeURIComponent(agentId)}/discovery`, {
+      method: "POST",
+      body: { enabled },
+    });
+  }
+  createSuperAgentRuntimeToken(): Promise<SuperAgentRuntimeToken> {
+    return this.call("/v1/super-agents/runtime-token", { method: "POST" });
+  }
+  listSuperAgentRuntimeTokens(): Promise<SuperAgentRuntimeToken[]> {
+    return this.call("/v1/super-agents/runtime-tokens");
+  }
+  revokeSuperAgentRuntimeToken(tokenId: string): Promise<{ id: string; revokedAt: string }> {
+    return this.call(`/v1/super-agents/runtime-tokens/${encodeURIComponent(tokenId)}`, {
+      method: "DELETE",
+    });
+  }
+
   getAccount(agentId: string): Promise<AgentAccount> {
-    return this.call<Record<string, unknown>>(`/v1/agent-accounts/${encodeURIComponent(agentId)}`).then((item) => this.mapAccount(item));
+    return this.call<Record<string, unknown>>(
+      `/v1/agent-accounts/${encodeURIComponent(agentId)}`,
+    ).then((item) => this.mapAccount(item));
   }
   updatePolicy(agentId: string, policy: AgentPolicyInput): Promise<AgentAccount> {
-    return this.call<Record<string, unknown>>(`/v1/agent-accounts/${encodeURIComponent(agentId)}/policy`, { method: "PUT", body: policy }).then((item) => this.mapAccount(item));
+    return this.call<Record<string, unknown>>(
+      `/v1/agent-accounts/${encodeURIComponent(agentId)}/policy`,
+      { method: "PUT", body: policy },
+    ).then((item) => this.mapAccount(item));
   }
   simulateAction(agentId: string, action: AgentActionInput): Promise<AgentActionSimulation> {
-    return this.call<Record<string, unknown>>(`/v1/agent-accounts/${encodeURIComponent(agentId)}/actions/simulate`, { method: "POST", body: action }).then((item) => this.mapSimulation(item));
+    return this.call<Record<string, unknown>>(
+      `/v1/agent-accounts/${encodeURIComponent(agentId)}/actions/simulate`,
+      { method: "POST", body: action },
+    ).then((item) => this.mapSimulation(item));
   }
   authorizeAction(agentId: string, action: AgentActionInput): Promise<AgentActionAuthorization> {
-    return this.call<Record<string, unknown>>(`/v1/agent-accounts/${encodeURIComponent(agentId)}/actions/authorize`, { method: "POST", body: action }).then((item) => this.mapAuthorization(item));
+    return this.call<Record<string, unknown>>(
+      `/v1/agent-accounts/${encodeURIComponent(agentId)}/actions/authorize`,
+      { method: "POST", body: action },
+    ).then((item) => this.mapAuthorization(item));
   }
   approveAction(agentId: string, actionId: string): Promise<AgentActionAuthorization> {
-    return this.call<Record<string, unknown>>(`/v1/agent-accounts/${encodeURIComponent(agentId)}/actions/${encodeURIComponent(actionId)}/approve`, { method: "POST" }).then((item) => this.mapAuthorization(item));
+    return this.call<Record<string, unknown>>(
+      `/v1/agent-accounts/${encodeURIComponent(agentId)}/actions/${encodeURIComponent(actionId)}/approve`,
+      { method: "POST" },
+    ).then((item) => this.mapAuthorization(item));
   }
-  pauseAgent(agentId: string, reason?: string): Promise<AgentControlResult> { return this.controlAgent(agentId, "pause", reason); }
-  resumeAgent(agentId: string): Promise<AgentControlResult> { return this.controlAgent(agentId, "resume"); }
-  killAgent(agentId: string, reason?: string): Promise<AgentControlResult> { return this.controlAgent(agentId, "kill", reason); }
+  pauseAgent(agentId: string, reason?: string): Promise<AgentControlResult> {
+    return this.controlAgent(agentId, "pause", reason);
+  }
+  resumeAgent(agentId: string): Promise<AgentControlResult> {
+    return this.controlAgent(agentId, "resume");
+  }
+  killAgent(agentId: string, reason?: string): Promise<AgentControlResult> {
+    return this.controlAgent(agentId, "kill", reason);
+  }
   listAgentMandates(agentId: string): Promise<AgentMandate[]> {
     return this.call(`/v1/agent-accounts/${encodeURIComponent(agentId)}/mandates`);
   }
   getAgentMandate(agentId: string, mandateId: string): Promise<AgentMandate> {
-    return this.call(`/v1/agent-accounts/${encodeURIComponent(agentId)}/mandates/${encodeURIComponent(mandateId)}`);
+    return this.call(
+      `/v1/agent-accounts/${encodeURIComponent(agentId)}/mandates/${encodeURIComponent(mandateId)}`,
+    );
   }
   exportAgentMandateAp2(agentId: string, mandateId: string): Promise<Ap2MandateExport> {
-    return this.call(`/v1/agent-accounts/${encodeURIComponent(agentId)}/mandates/${encodeURIComponent(mandateId)}/ap2`);
+    return this.call(
+      `/v1/agent-accounts/${encodeURIComponent(agentId)}/mandates/${encodeURIComponent(mandateId)}/ap2`,
+    );
   }
-  private controlAgent(agentId: string, command: "pause" | "resume" | "kill", reason?: string): Promise<AgentControlResult> {
-    return this.call<Record<string, unknown>>(`/v1/agent-accounts/${encodeURIComponent(agentId)}/control`, { method: "POST", body: { command, ...(reason ? { reason } : {}) } }).then((item) => ({
-      ...item, accountId: String(item.accountId ?? item.agentId), status: item.status as AgentControlResult["status"],
-      revokedConnections: Number(item.revokedConnections ?? 0), rejectedProposals: Number(item.rejectedProposals ?? 0),
+  private controlAgent(
+    agentId: string,
+    command: "pause" | "resume" | "kill",
+    reason?: string,
+  ): Promise<AgentControlResult> {
+    return this.call<Record<string, unknown>>(
+      `/v1/agent-accounts/${encodeURIComponent(agentId)}/control`,
+      { method: "POST", body: { command, ...(reason ? { reason } : {}) } },
+    ).then((item) => ({
+      ...item,
+      accountId: String(item.accountId ?? item.agentId),
+      status: item.status as AgentControlResult["status"],
+      revokedConnections: Number(item.revokedConnections ?? 0),
+      rejectedProposals: Number(item.rejectedProposals ?? 0),
     }));
   }
 
@@ -184,41 +387,76 @@ export class LiegeClient {
     const env = input.env ?? {};
     const files = input.files ?? {};
     const digest = async (value: Record<string, unknown>) => {
-      const canonical = JSON.stringify(Object.keys(value).sort().reduce((out, key) => ({ ...out, [key]: value[key] }), {}));
-      const bytes = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
-      return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
+      const canonical = JSON.stringify(
+        Object.keys(value)
+          .sort()
+          .reduce((out, key) => ({ ...out, [key]: value[key] }), {}),
+      );
+      const bytes = await globalThis.crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(canonical),
+      );
+      return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join(
+        "",
+      );
     };
-    return { action: "runner.execute", details: {
-      command: input.command, args: input.args ?? [], jobId: input.jobId ?? null,
-      timeoutMs: input.timeoutMs ?? 30_000, maxOutputBytes: input.maxOutputBytes ?? 256_000,
-      envDigest: await digest(env), filesDigest: await digest(files),
-    } };
+    return {
+      action: "runner.execute",
+      details: {
+        command: input.command,
+        args: input.args ?? [],
+        jobId: input.jobId ?? null,
+        timeoutMs: input.timeoutMs ?? 30_000,
+        maxOutputBytes: input.maxOutputBytes ?? 256_000,
+        envDigest: await digest(env),
+        filesDigest: await digest(files),
+      },
+    };
   }
   async simulateRunnerAction(agentId: string, input: RunnerInput): Promise<AgentActionSimulation> {
     return this.simulateAction(agentId, await this.runnerAction(input));
   }
-  async authorizeRunnerAction(agentId: string, input: RunnerInput): Promise<AgentActionAuthorization> {
+  async authorizeRunnerAction(
+    agentId: string,
+    input: RunnerInput,
+  ): Promise<AgentActionAuthorization> {
     return this.authorizeAction(agentId, await this.runnerAction(input));
   }
-  executeApprovedRunnerAction(input: RunnerInput & { actionId: string; simulationId: string }): Promise<RunnerResult> {
-    if (!input.actionId || !input.simulationId) throw new Error("actionId and simulationId are required for approved runner execution");
-    return this.call<Record<string, unknown>>("/v1/runners", { method: "POST", body: input }).then((value) => this.mapRunner(value));
+  executeApprovedRunnerAction(
+    input: RunnerInput & { actionId: string; simulationId: string },
+  ): Promise<RunnerResult> {
+    if (!input.actionId || !input.simulationId)
+      throw new Error("actionId and simulationId are required for approved runner execution");
+    return this.call<Record<string, unknown>>("/v1/runners", { method: "POST", body: input }).then(
+      (value) => this.mapRunner(value),
+    );
   }
   getRunner(id: string): Promise<RunnerResult> {
-    return this.call<Record<string, unknown>>(`/v1/runners/${encodeURIComponent(id)}`).then((value) => this.mapRunner(value));
+    return this.call<Record<string, unknown>>(`/v1/runners/${encodeURIComponent(id)}`).then(
+      (value) => this.mapRunner(value),
+    );
   }
   getRunnerArtifact(runId: string, artifactId: string): Promise<RunnerArtifact> {
-    return this.call<Record<string, unknown>>(`/v1/runners/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(artifactId)}`).then((value) => ({
-      ...value, name: String(value.name), sha256: String(value.sha256), contentBase64: String(value.contentBase64 ?? ""),
+    return this.call<Record<string, unknown>>(
+      `/v1/runners/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(artifactId)}`,
+    ).then((value) => ({
+      ...value,
+      name: String(value.name),
+      sha256: String(value.sha256),
+      contentBase64: String(value.contentBase64 ?? ""),
     }));
   }
 
   getMcpPresets(connectionId: string, token?: string): Promise<McpHarnessPresetsResponse> {
     const query = token ? `?token=${encodeURIComponent(token)}` : "";
-    return this.call<McpHarnessPresetsResponse>(`/v1/mcp/connections/${encodeURIComponent(connectionId)}/presets${query}`);
+    return this.call<McpHarnessPresetsResponse>(
+      `/v1/mcp/connections/${encodeURIComponent(connectionId)}/presets${query}`,
+    );
   }
 
-  getGeneralMcpPresets(options: { name?: string; agentId?: string; token?: string } = {}): Promise<{ serverUrl: string; presets: Record<McpHarnessTarget, McpHarnessPreset> }> {
+  getGeneralMcpPresets(
+    options: { name?: string; agentId?: string; token?: string } = {},
+  ): Promise<{ serverUrl: string; presets: Record<McpHarnessTarget, McpHarnessPreset> }> {
     const params = new URLSearchParams();
     if (options.name) params.set("name", options.name);
     if (options.agentId) params.set("agentId", options.agentId);
@@ -227,13 +465,22 @@ export class LiegeClient {
     return this.call(`/v1/mcp/presets${qs ? `?${qs}` : ""}`);
   }
 
-
   /** Fetch an x402 resource, asking the application-provided signer to approve a 402 challenge. */
-  async requestX402(input: string | URL, signer: X402Signer, init: RequestInit = {}): Promise<Response> {
+  async requestX402(
+    input: string | URL,
+    signer: X402Signer,
+    init: RequestInit = {},
+  ): Promise<Response> {
     const first = await this.fetcher(input, init);
     if (first.status !== 402) return first;
-    const encoded = first.headers.get("PAYMENT-REQUIRED") ?? first.headers.get("X-PAYMENT-REQUIRED");
-    if (!encoded) throw new LiegeAPIError("The x402 response did not include PAYMENT-REQUIRED", 502, "x402_invalid_challenge");
+    const encoded =
+      first.headers.get("PAYMENT-REQUIRED") ?? first.headers.get("X-PAYMENT-REQUIRED");
+    if (!encoded)
+      throw new LiegeAPIError(
+        "The x402 response did not include PAYMENT-REQUIRED",
+        502,
+        "x402_invalid_challenge",
+      );
     const challenge = decodeX402PaymentRequired(encoded);
     const signed = await signer(challenge);
     const paymentSignature = typeof signed === "string" ? signed : encodeX402Json(signed);
@@ -242,8 +489,12 @@ export class LiegeClient {
     return this.fetcher(input, { ...init, headers });
   }
 
-  async *iterEvents(agentId: string, sinceOrOptions?: Date | EventStreamOptions): AsyncGenerator<JobEvent> {
-    const options = sinceOrOptions instanceof Date ? { since: sinceOrOptions } : (sinceOrOptions ?? {});
+  async *iterEvents(
+    agentId: string,
+    sinceOrOptions?: Date | EventStreamOptions,
+  ): AsyncGenerator<JobEvent> {
+    const options =
+      sinceOrOptions instanceof Date ? { since: sinceOrOptions } : (sinceOrOptions ?? {});
     yield* this.readEvents(agentId, options);
   }
 
@@ -253,7 +504,11 @@ export class LiegeClient {
     const seen = new Set<string>();
     for (;;) {
       try {
-        for await (const event of this.readEvents(agentId, { ...options, after: cursor, since: cursor ? undefined : options.since })) {
+        for await (const event of this.readEvents(agentId, {
+          ...options,
+          after: cursor,
+          since: cursor ? undefined : options.since,
+        })) {
           if (event.id && seen.has(event.id)) continue;
           if (event.id) {
             seen.add(event.id);
@@ -269,27 +524,75 @@ export class LiegeClient {
         if (options.maxRetries !== undefined && retries >= options.maxRetries) throw error;
       }
       retries++;
-      await new Promise((resolve) => setTimeout(resolve, Math.min(30_000, (options.backoffMs ?? 1_000) * 2 ** Math.min(retries - 1, 5))));
+      await new Promise((resolve) =>
+        setTimeout(
+          resolve,
+          Math.min(30_000, (options.backoffMs ?? 1_000) * 2 ** Math.min(retries - 1, 5)),
+        ),
+      );
     }
   }
 
-  private async *readEvents(agentId: string, options: Pick<EventStreamOptions, "after" | "since">): AsyncGenerator<JobEvent> {
+  private async *readEvents(
+    agentId: string,
+    options: Pick<EventStreamOptions, "after" | "since">,
+  ): AsyncGenerator<JobEvent> {
     const url = new URL(`/v1/webhooks/stream/${encodeURIComponent(agentId)}`, this.baseUrl);
     if (options.after) url.searchParams.set("after", options.after);
     else if (options.since) url.searchParams.set("since", options.since.toISOString());
     const headers = new Headers(this.headers());
     if (options.after) headers.set("Last-Event-ID", options.after);
     const response = await this.fetcher(url, { headers });
-    if (!response.ok || !response.body) throw new LiegeAPIError("Unable to open the event stream", response.status);
-    const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ""; let id = ""; let event = "message"; let data: string[] = [];
-    const processLine = (raw: string): JobEvent | undefined => { const line = raw.replace(/\r$/, ""); if (!line.trim()) { if (!data.length) return; const parsed = { id, event, data: JSON.parse(data.join("\n")) }; id = ""; event = "message"; data = []; return parsed; } const [field, ...rest] = line.split(":"); const value = rest.join(":").trimStart(); if (field === "id") id = value; else if (field === "event") event = value; else if (field === "data") data.push(value); };
+    if (!response.ok || !response.body)
+      throw new LiegeAPIError("Unable to open the event stream", response.status);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let id = "";
+    let event = "message";
+    let data: string[] = [];
+    const processLine = (raw: string): JobEvent | undefined => {
+      const line = raw.replace(/\r$/, "");
+      if (!line.trim()) {
+        if (!data.length) return;
+        const parsed = { id, event, data: JSON.parse(data.join("\n")) };
+        id = "";
+        event = "message";
+        data = [];
+        return parsed;
+      }
+      const [field, ...rest] = line.split(":");
+      const value = rest.join(":").trimStart();
+      if (field === "id") id = value;
+      else if (field === "event") event = value;
+      else if (field === "data") data.push(value);
+    };
     try {
-      for (;;) { const chunk = await reader.read(); if (chunk.done) break; buffer += decoder.decode(chunk.value, { stream: true }); const lines = buffer.split("\n"); buffer = lines.pop() ?? ""; for (const line of lines) { const parsed = processLine(line); if (parsed) yield parsed; } }
-      buffer += decoder.decode(); if (buffer) buffer += "\n\n"; for (const line of buffer.split("\n")) { const parsed = processLine(line); if (parsed) yield parsed; }
-    } finally { await reader.cancel().catch(() => undefined); }
+      for (;;) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        buffer += decoder.decode(chunk.value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          const parsed = processLine(line);
+          if (parsed) yield parsed;
+        }
+      }
+      buffer += decoder.decode();
+      if (buffer) buffer += "\n\n";
+      for (const line of buffer.split("\n")) {
+        const parsed = processLine(line);
+        if (parsed) yield parsed;
+      }
+    } finally {
+      await reader.cancel().catch(() => undefined);
+    }
   }
 
-  private headers(): HeadersInit { return this.token ? { Authorization: `Bearer ${this.token}` } : {}; }
+  private headers(): HeadersInit {
+    return this.token ? { Authorization: `Bearer ${this.token}` } : {};
+  }
   private mapService(value: Record<string, unknown>): Service {
     return {
       ...value,
@@ -299,31 +602,94 @@ export class LiegeClient {
       name: String(value.name),
       description: String(value.description),
       serviceType: (value.serviceType ?? value.service_type) as Service["serviceType"],
-      executionMode: (value.executionMode ?? value.execution_mode ?? "manual") as Service["executionMode"],
+      executionMode: (value.executionMode ??
+        value.execution_mode ??
+        "manual") as Service["executionMode"],
       priceUsd: Number(value.priceUsd ?? value.price_usd),
       slaMinutes: Number(value.slaMinutes ?? value.sla_minutes),
-      requirementsSchema: (value.requirementsSchema ?? value.requirements_schema ?? {}) as Record<string, unknown>,
-      deliverableSchema: (value.deliverableSchema ?? value.deliverable_schema ?? {}) as Record<string, unknown>,
-      settlementAssets: (value.settlementAssets ?? value.settlement_assets ?? []) as Service["settlementAssets"],
+      requirementsSchema: (value.requirementsSchema ?? value.requirements_schema ?? {}) as Record<
+        string,
+        unknown
+      >,
+      deliverableSchema: (value.deliverableSchema ?? value.deliverable_schema ?? {}) as Record<
+        string,
+        unknown
+      >,
+      settlementAssets: (value.settlementAssets ??
+        value.settlement_assets ??
+        []) as Service["settlementAssets"],
     };
   }
   private mapWebhook(value: Record<string, unknown>): WebhookSubscription {
-    return { ...value, id: String(value.id), agentId: String(value.agentId ?? value.agent_id), url: String(value.url), eventTypes: (value.eventTypes ?? value.event_types ?? []) as WebhookEventType[], active: Boolean(value.active), createdAt: (value.createdAt ?? value.created_at) as string | undefined, updatedAt: (value.updatedAt ?? value.updated_at) as string | undefined };
+    return {
+      ...value,
+      id: String(value.id),
+      agentId: String(value.agentId ?? value.agent_id),
+      url: String(value.url),
+      eventTypes: (value.eventTypes ?? value.event_types ?? []) as WebhookEventType[],
+      active: Boolean(value.active),
+      createdAt: (value.createdAt ?? value.created_at) as string | undefined,
+      updatedAt: (value.updatedAt ?? value.updated_at) as string | undefined,
+    };
   }
   private mapAccount(value: Record<string, unknown>): AgentAccount {
     const policy = value.policy as Record<string, unknown> | null | undefined;
-    return { ...value, accountId: String(value.accountId ?? value.agentId), agentId: String(value.agentId), status: value.status as AgentAccount["status"], policy: policy ? {
-      ...policy, version: Number(policy.version), maxActionAmount: policy.maxActionAmount == null ? null : String(policy.maxActionAmount), dailyBudget: policy.dailyBudget == null ? null : String(policy.dailyBudget), monthlyBudget: policy.monthlyBudget == null ? null : String(policy.monthlyBudget), requireHumanAbove: policy.requireHumanAbove == null ? null : String(policy.requireHumanAbove),
-    } as AgentAccount["policy"] : null };
+    return {
+      ...value,
+      accountId: String(value.accountId ?? value.agentId),
+      agentId: String(value.agentId),
+      status: value.status as AgentAccount["status"],
+      policy: policy
+        ? ({
+            ...policy,
+            version: Number(policy.version),
+            maxActionAmount: policy.maxActionAmount == null ? null : String(policy.maxActionAmount),
+            dailyBudget: policy.dailyBudget == null ? null : String(policy.dailyBudget),
+            monthlyBudget: policy.monthlyBudget == null ? null : String(policy.monthlyBudget),
+            requireHumanAbove:
+              policy.requireHumanAbove == null ? null : String(policy.requireHumanAbove),
+          } as AgentAccount["policy"])
+        : null,
+    };
   }
   private mapSimulation(value: Record<string, unknown>): AgentActionSimulation {
-    return { ...value, id: String(value.id), actionDigest: String(value.actionDigest ?? value.action_digest ?? ""), action: (value.action ?? {}) as Record<string, unknown>, result: (value.result ?? {}) as Record<string, unknown>, policyVersion: Number(value.policyVersion ?? value.policy_version), expiresAt: String(value.expiresAt ?? value.expires_at ?? ""), createdAt: String(value.createdAt ?? value.created_at ?? "") };
+    return {
+      ...value,
+      id: String(value.id),
+      actionDigest: String(value.actionDigest ?? value.action_digest ?? ""),
+      action: (value.action ?? {}) as Record<string, unknown>,
+      result: (value.result ?? {}) as Record<string, unknown>,
+      policyVersion: Number(value.policyVersion ?? value.policy_version),
+      expiresAt: String(value.expiresAt ?? value.expires_at ?? ""),
+      createdAt: String(value.createdAt ?? value.created_at ?? ""),
+    };
   }
   private mapAuthorization(value: Record<string, unknown>): AgentActionAuthorization {
-    return { ...value, actionId: String(value.actionId ?? value.id), accountId: String(value.accountId ?? value.agentId), decision: String(value.decision), reasons: (value.reasons ?? []) as string[], policyVersion: Number(value.policyVersion ?? value.policy_version), simulationDigest: (value.simulationDigest ?? value.simulation_digest ?? null) as string | null, createdAt: String(value.createdAt ?? value.created_at ?? "") };
+    return {
+      ...value,
+      actionId: String(value.actionId ?? value.id),
+      accountId: String(value.accountId ?? value.agentId),
+      decision: String(value.decision),
+      reasons: (value.reasons ?? []) as string[],
+      policyVersion: Number(value.policyVersion ?? value.policy_version),
+      simulationDigest: (value.simulationDigest ?? value.simulation_digest ?? null) as
+        string | null,
+      createdAt: String(value.createdAt ?? value.created_at ?? ""),
+    };
   }
   private mapRunner(value: Record<string, unknown>): RunnerResult {
-    return { ...value, id: String(value.id), status: String(value.status), artifacts: Array.isArray(value.artifacts) ? value.artifacts.map((item) => ({ ...(item as Record<string, unknown>), name: String((item as Record<string, unknown>).name), sha256: String((item as Record<string, unknown>).sha256) })) as RunnerArtifact[] : [] } as RunnerResult;
+    return {
+      ...value,
+      id: String(value.id),
+      status: String(value.status),
+      artifacts: Array.isArray(value.artifacts)
+        ? (value.artifacts.map((item) => ({
+            ...(item as Record<string, unknown>),
+            name: String((item as Record<string, unknown>).name),
+            sha256: String((item as Record<string, unknown>).sha256),
+          })) as RunnerArtifact[])
+        : [],
+    } as RunnerResult;
   }
   private async call<T>(path: string, options: LiegeRequestOptions = {}): Promise<T> {
     const method = options.method ?? "GET";
@@ -337,25 +703,69 @@ export class LiegeClient {
         const timer = setTimeout(() => controller.abort(), timeoutMs);
         let response: Response;
         try {
-          response = await this.fetcher(`${this.baseUrl}${path}`, { method, headers: { ...this.headers(), ...(options.body ? { "content-type": "application/json" } : {}) }, body: options.body ? JSON.stringify(options.body) : undefined, signal: controller.signal });
-        } finally { clearTimeout(timer); options.signal?.removeEventListener("abort", abort); }
+          response = await this.fetcher(`${this.baseUrl}${path}`, {
+            method,
+            headers: {
+              ...this.headers(),
+              ...(options.body ? { "content-type": "application/json" } : {}),
+            },
+            body: options.body ? JSON.stringify(options.body) : undefined,
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(timer);
+          options.signal?.removeEventListener("abort", abort);
+        }
         const body = await response.json().catch(() => ({}));
         if (!response.ok) {
           const error = body?.error ?? {};
           const requestId = response.headers.get("x-request-id") ?? error.requestId;
-          if (method === "GET" && attempt + 1 < attempts && (response.status === 408 || response.status === 429 || response.status >= 500)) { await new Promise((resolve) => setTimeout(resolve, this.retryBackoffMs * 2 ** attempt)); continue; }
-          throw new LiegeAPIError(error.message ?? response.statusText, response.status, error.code, requestId, response.status >= 500 || response.status === 429);
+          if (
+            method === "GET" &&
+            attempt + 1 < attempts &&
+            (response.status === 408 || response.status === 429 || response.status >= 500)
+          ) {
+            await new Promise((resolve) => setTimeout(resolve, this.retryBackoffMs * 2 ** attempt));
+            continue;
+          }
+          throw new LiegeAPIError(
+            error.message ?? response.statusText,
+            response.status,
+            error.code,
+            requestId,
+            response.status >= 500 || response.status === 429,
+          );
         }
         return body?.data ?? body;
       } catch (error) {
         if (error instanceof LiegeAPIError) throw error;
-        if (method === "GET" && attempt + 1 < attempts) { await new Promise((resolve) => setTimeout(resolve, this.retryBackoffMs * 2 ** attempt)); continue; }
-        throw new LiegeAPIError(error instanceof Error && error.name === "AbortError" ? "Request aborted or timed out" : "Network request failed", 408, error instanceof Error && error.name === "AbortError" ? "request_aborted" : "network", undefined, true);
+        if (method === "GET" && attempt + 1 < attempts) {
+          await new Promise((resolve) => setTimeout(resolve, this.retryBackoffMs * 2 ** attempt));
+          continue;
+        }
+        throw new LiegeAPIError(
+          error instanceof Error && error.name === "AbortError"
+            ? "Request aborted or timed out"
+            : "Network request failed",
+          408,
+          error instanceof Error && error.name === "AbortError" ? "request_aborted" : "network",
+          undefined,
+          true,
+        );
       }
     }
   }
-  request<T>(path: string, options: LiegeRequestOptions = {}): Promise<T> { return this.call<T>(path, options); }
-  private page<T>(path: string): Promise<Page<T>> { return this.call<T[] | { items?: T[]; nextCursor?: string | null; total?: number }>(path).then((value) => Array.isArray(value) ? { items: value, nextCursor: null } : { items: value.items ?? [], nextCursor: value.nextCursor ?? null, total: value.total }); }
+  request<T>(path: string, options: LiegeRequestOptions = {}): Promise<T> {
+    return this.call<T>(path, options);
+  }
+  private page<T>(path: string): Promise<Page<T>> {
+    return this.call<T[] | { items?: T[]; nextCursor?: string | null; total?: number }>(path).then(
+      (value) =>
+        Array.isArray(value)
+          ? { items: value, nextCursor: null }
+          : { items: value.items ?? [], nextCursor: value.nextCursor ?? null, total: value.total },
+    );
+  }
 }
 
 export function encodeX402Json(value: X402PaymentPayload): string {
@@ -365,21 +775,36 @@ export function encodeX402Json(value: X402PaymentPayload): string {
 
 export function decodeX402PaymentRequired(value: string): X402PaymentRequired {
   try {
-    const json = typeof atob === "function" ? atob(value) : Buffer.from(value, "base64").toString("utf8");
+    const json =
+      typeof atob === "function" ? atob(value) : Buffer.from(value, "base64").toString("utf8");
     const parsed = JSON.parse(json) as X402PaymentRequired;
-    if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.accepts) || parsed.accepts.length === 0)
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      !Array.isArray(parsed.accepts) ||
+      parsed.accepts.length === 0
+    )
       throw new Error("invalid challenge");
     return parsed;
   } catch {
-    throw new LiegeAPIError("The x402 PAYMENT-REQUIRED header is invalid", 502, "x402_invalid_challenge");
+    throw new LiegeAPIError(
+      "The x402 PAYMENT-REQUIRED header is invalid",
+      502,
+      "x402_invalid_challenge",
+    );
   }
 }
 
 export function decodeX402PaymentResponse(value: string): Record<string, unknown> {
   try {
-    const json = typeof atob === "function" ? atob(value) : Buffer.from(value, "base64").toString("utf8");
+    const json =
+      typeof atob === "function" ? atob(value) : Buffer.from(value, "base64").toString("utf8");
     return JSON.parse(json) as Record<string, unknown>;
   } catch {
-    throw new LiegeAPIError("The x402 PAYMENT-RESPONSE header is invalid", 502, "x402_invalid_response");
+    throw new LiegeAPIError(
+      "The x402 PAYMENT-RESPONSE header is invalid",
+      502,
+      "x402_invalid_response",
+    );
   }
 }

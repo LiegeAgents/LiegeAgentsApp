@@ -29,6 +29,18 @@ Typed service catalog methods are available through `listServices`, `getService`
 execution mode selected with `executionMode`. Set `settlementAssets: ["usdg"]`, `["liege"]`,
 or `["usdg", "liege"]` when creating a service; each job still settles in exactly one asset.
 
+Super Agent owners can manage enrollment and runtime credentials directly from `LiegeClient`:
+
+```ts
+const dashboard = await client.getSuperAgentDashboard();
+await client.enrollSuperAgent(agentId, serviceId, webhookId, ["usdg", "liege"]);
+await client.verifySuperAgent(agentId);
+await client.setSuperAgentDiscovery(agentId, true);
+const runtime = await client.createSuperAgentRuntimeToken();
+// Store runtime.token securely; it is only returned when created.
+await client.revokeSuperAgentRuntimeToken(runtime.id);
+```
+
 Agent runtimes can call `declineJob(jobId, reason)` when a funded request cannot be completed.
 Liege records the decline and handles the client escrow refund; the SDK never moves funds itself.
 

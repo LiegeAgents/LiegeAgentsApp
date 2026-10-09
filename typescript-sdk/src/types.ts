@@ -12,9 +12,47 @@ export type X402Signer = (
   challenge: X402PaymentRequired,
 ) => Promise<string | X402PaymentPayload> | string | X402PaymentPayload;
 
-export interface Session { token: string; userId: string; walletAddress: string; expiresAt?: string; }
-export interface Job { id: string; status: string; [key: string]: unknown; }
-export interface Page<T> { items: T[]; nextCursor?: string | null; total?: number; }
+export interface Session {
+  token: string;
+  userId: string;
+  walletAddress: string;
+  expiresAt?: string;
+}
+export interface SuperAgentEnrollment {
+  agentId: string;
+  serviceId?: string | null;
+  webhookId?: string | null;
+  settlementAssets: SettlementAsset[];
+  enabled: boolean;
+  verifiedAt?: string | null;
+  [key: string]: unknown;
+}
+export interface SuperAgentRuntimeToken {
+  id: string;
+  token?: string;
+  agentIds: string[];
+  scopes: string[];
+  createdAt: string;
+  lastUsedAt?: string | null;
+  revokedAt?: string | null;
+  [key: string]: unknown;
+}
+export interface SuperAgentDashboard {
+  identity: Record<string, unknown> | null;
+  proposals: Record<string, unknown>[];
+  jobs: Record<string, unknown>[];
+  agents: Record<string, unknown>[];
+}
+export interface Job {
+  id: string;
+  status: string;
+  [key: string]: unknown;
+}
+export interface Page<T> {
+  items: T[];
+  nextCursor?: string | null;
+  total?: number;
+}
 export type InvoiceAsset = "usdg" | "liege";
 export type SettlementAsset = InvoiceAsset;
 export interface Invoice {
@@ -53,63 +91,210 @@ export interface RefundInvoiceInput {
 export type ServiceType = "tool" | "data" | "skill";
 export type ServiceExecutionMode = "manual" | "sandboxed_runner";
 export interface Service {
-  id: string; agentId: string; slug: string; name: string; description: string;
-  serviceType: ServiceType; executionMode: ServiceExecutionMode; priceUsd: number;
-  slaMinutes: number; requirementsSchema: Record<string, unknown>; deliverableSchema: Record<string, unknown>;
+  id: string;
+  agentId: string;
+  slug: string;
+  name: string;
+  description: string;
+  serviceType: ServiceType;
+  executionMode: ServiceExecutionMode;
+  priceUsd: number;
+  slaMinutes: number;
+  requirementsSchema: Record<string, unknown>;
+  deliverableSchema: Record<string, unknown>;
   settlementAssets: SettlementAsset[];
   [key: string]: unknown;
 }
 export type AgentStatus = "active" | "paused" | "killed";
 export type ApprovalMode = "always" | "within_policy";
 export interface AgentPolicy {
-  version: number; maxActionAmount: string | null; dailyBudget: string | null; monthlyBudget: string | null;
-  allowedAssets: string[]; allowedVenues: string[]; approvedCounterparties: string[]; allowedActions: string[];
-  approvalMode: ApprovalMode; simulationRequired: boolean; requireHumanAbove: string | null;
-  activeHours: { start: number; end: number } | null; activeDays: number[]; timezone: string;
+  version: number;
+  maxActionAmount: string | null;
+  dailyBudget: string | null;
+  monthlyBudget: string | null;
+  allowedAssets: string[];
+  allowedVenues: string[];
+  approvedCounterparties: string[];
+  allowedActions: string[];
+  approvalMode: ApprovalMode;
+  simulationRequired: boolean;
+  requireHumanAbove: string | null;
+  activeHours: { start: number; end: number } | null;
+  activeDays: number[];
+  timezone: string;
 }
-export interface AgentAccount { accountId: string; agentId: string; status: AgentStatus; killReason?: string | null; pausedAt?: string | null; policy: AgentPolicy | null; [key: string]: unknown; }
+export interface AgentAccount {
+  accountId: string;
+  agentId: string;
+  status: AgentStatus;
+  killReason?: string | null;
+  pausedAt?: string | null;
+  policy: AgentPolicy | null;
+  [key: string]: unknown;
+}
 export interface AgentPolicyInput {
-  maxActionAmount?: string | number | null; dailyBudget?: string | number | null; monthlyBudget?: string | number | null;
-  allowedAssets?: string[]; allowedVenues?: string[]; approvedCounterparties?: string[]; allowedActions?: string[];
-  approvalMode?: ApprovalMode; simulationRequired?: boolean; requireHumanAbove?: string | number | null;
-  activeHours?: { start: number; end: number } | null; activeDays?: number[]; timezone?: string;
+  maxActionAmount?: string | number | null;
+  dailyBudget?: string | number | null;
+  monthlyBudget?: string | number | null;
+  allowedAssets?: string[];
+  allowedVenues?: string[];
+  approvedCounterparties?: string[];
+  allowedActions?: string[];
+  approvalMode?: ApprovalMode;
+  simulationRequired?: boolean;
+  requireHumanAbove?: string | number | null;
+  activeHours?: { start: number; end: number } | null;
+  activeDays?: number[];
+  timezone?: string;
 }
 export interface AgentActionInput {
-  action: string; amount?: string | number; asset?: string; venue?: string; counterparty?: string;
-  details?: Record<string, unknown>; simulationId?: string; simulationDigest?: string; simulate?: boolean;
+  action: string;
+  amount?: string | number;
+  asset?: string;
+  venue?: string;
+  counterparty?: string;
+  details?: Record<string, unknown>;
+  simulationId?: string;
+  simulationDigest?: string;
+  simulate?: boolean;
 }
-export interface AgentActionSimulation { id: string; actionDigest: string; action: Record<string, unknown>; result: Record<string, unknown>; policyVersion: number; expiresAt: string; createdAt: string; [key: string]: unknown; }
-export interface AgentActionAuthorization { actionId: string; accountId: string; decision: string; reasons: string[]; policyVersion: number; simulationDigest: string | null; createdAt: string; [key: string]: unknown; }
-export interface AgentControlResult { accountId: string; status: AgentStatus; killReason?: string | null; revokedConnections: number; rejectedProposals: number; [key: string]: unknown; }
+export interface AgentActionSimulation {
+  id: string;
+  actionDigest: string;
+  action: Record<string, unknown>;
+  result: Record<string, unknown>;
+  policyVersion: number;
+  expiresAt: string;
+  createdAt: string;
+  [key: string]: unknown;
+}
+export interface AgentActionAuthorization {
+  actionId: string;
+  accountId: string;
+  decision: string;
+  reasons: string[];
+  policyVersion: number;
+  simulationDigest: string | null;
+  createdAt: string;
+  [key: string]: unknown;
+}
+export interface AgentControlResult {
+  accountId: string;
+  status: AgentStatus;
+  killReason?: string | null;
+  revokedConnections: number;
+  rejectedProposals: number;
+  [key: string]: unknown;
+}
 export type RunnerCommand = "node" | "bun" | "python" | "python3";
 export interface RunnerInput {
-  agentId: string; jobId?: string; command: RunnerCommand; args?: string[];
-  env?: Record<string, string>; files?: Record<string, string>; artifactPaths?: string[];
-  timeoutMs?: number; maxOutputBytes?: number; actionId?: string; simulationId?: string;
+  agentId: string;
+  jobId?: string;
+  command: RunnerCommand;
+  args?: string[];
+  env?: Record<string, string>;
+  files?: Record<string, string>;
+  artifactPaths?: string[];
+  timeoutMs?: number;
+  maxOutputBytes?: number;
+  actionId?: string;
+  simulationId?: string;
 }
-export interface RunnerArtifact { id?: string; name: string; sizeBytes?: number; sha256: string; createdAt?: string; contentBase64?: string; [key: string]: unknown; }
+export interface RunnerArtifact {
+  id?: string;
+  name: string;
+  sizeBytes?: number;
+  sha256: string;
+  createdAt?: string;
+  contentBase64?: string;
+  [key: string]: unknown;
+}
 export interface RunnerResult {
-  id: string; agentId?: string; jobId?: string | null; command?: RunnerCommand; args?: string[];
-  status: string; exitCode?: number | null; stdout?: string | null; stderr?: string | null;
-  error?: string | null; timeoutMs?: number; maxOutputBytes?: number; startedAt?: string;
-  finishedAt?: string | null; createdAt?: string; artifacts: RunnerArtifact[]; [key: string]: unknown;
+  id: string;
+  agentId?: string;
+  jobId?: string | null;
+  command?: RunnerCommand;
+  args?: string[];
+  status: string;
+  exitCode?: number | null;
+  stdout?: string | null;
+  stderr?: string | null;
+  error?: string | null;
+  timeoutMs?: number;
+  maxOutputBytes?: number;
+  startedAt?: string;
+  finishedAt?: string | null;
+  createdAt?: string;
+  artifacts: RunnerArtifact[];
+  [key: string]: unknown;
 }
-export interface JobEvent { id: string; event: string; data: unknown; }
-export type WebhookEventType = "job.funded" | "job.submitted" | "job.completed" | "job.rejected" | "job.expired" | "job.settled" | "invoice.created" | "invoice.paid" | "invoice.refunded" | "invoice.partially_refunded" | "invoice.cancelled" | "invoice.expired";
-export interface WebhookSubscription { id: string; agentId: string; url: string; eventTypes: WebhookEventType[]; active: boolean; createdAt?: string; updatedAt?: string; [key: string]: unknown; }
-export interface WebhookCreateInput { agentId: string; url: string; eventTypes?: WebhookEventType[]; }
-export interface WebhookCreated extends WebhookSubscription { secret: string; }
+export interface JobEvent {
+  id: string;
+  event: string;
+  data: unknown;
+}
+export type WebhookEventType =
+  | "job.funded"
+  | "job.submitted"
+  | "job.completed"
+  | "job.rejected"
+  | "job.expired"
+  | "job.settled"
+  | "invoice.created"
+  | "invoice.paid"
+  | "invoice.refunded"
+  | "invoice.partially_refunded"
+  | "invoice.cancelled"
+  | "invoice.expired";
+export interface WebhookSubscription {
+  id: string;
+  agentId: string;
+  url: string;
+  eventTypes: WebhookEventType[];
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  [key: string]: unknown;
+}
+export interface WebhookCreateInput {
+  agentId: string;
+  url: string;
+  eventTypes?: WebhookEventType[];
+}
+export interface WebhookCreated extends WebhookSubscription {
+  secret: string;
+}
 export interface EventStreamOptions {
   after?: string;
   since?: Date;
   maxRetries?: number;
   backoffMs?: number;
 }
-export interface McpProposal { id: string; status: string; [key: string]: unknown; }
-export interface McpExecutionGrant { grantToken: string; jobId: string; expiresAt: string; }
-export interface McpEvent { id: string; cursor: string; eventType: string; payload: Record<string, unknown>; }
-export interface McpEventPage { items: McpEvent[]; nextCursor: string | null; }
-export interface McpEventWait { event: McpEvent | null; timedOut: boolean; cursor?: string; }
+export interface McpProposal {
+  id: string;
+  status: string;
+  [key: string]: unknown;
+}
+export interface McpExecutionGrant {
+  grantToken: string;
+  jobId: string;
+  expiresAt: string;
+}
+export interface McpEvent {
+  id: string;
+  cursor: string;
+  eventType: string;
+  payload: Record<string, unknown>;
+}
+export interface McpEventPage {
+  items: McpEvent[];
+  nextCursor: string | null;
+}
+export interface McpEventWait {
+  event: McpEvent | null;
+  timedOut: boolean;
+  cursor?: string;
+}
 
 export interface ReceiptSubject {
   type: "job" | "invoice";
@@ -316,7 +501,14 @@ export interface AgentReputationAudit {
 }
 
 export class LiegeAPIError extends Error {
-  constructor(message: string, readonly status: number, readonly code?: string, readonly requestId?: string, readonly retryable = false) {
-    super(message); this.name = "LiegeAPIError";
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+    readonly requestId?: string,
+    readonly retryable = false,
+  ) {
+    super(message);
+    this.name = "LiegeAPIError";
   }
 }
