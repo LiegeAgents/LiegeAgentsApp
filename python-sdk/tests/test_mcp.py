@@ -39,6 +39,7 @@ def test_harness_presets():
 
 def test_cursor_events_and_bounded_wait():
     calls = []
+    arguments = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
         import json
@@ -51,16 +52,24 @@ def test_cursor_events_and_bounded_wait():
                 if name == "list_job_events"
                 else {"event": None, "timedOut": True, "cursor": "42"}
             )
+            arguments[name] = payload["params"].get("arguments", {})
             return httpx.Response(200, json={"result": {"content": [{"type": "text", "text": json.dumps(value)}]}})
         return httpx.Response(200, json={"result": {}})
 
     with McpClient("lmp_test", "https://mcp.test", httpx.Client(transport=httpx.MockTransport(handler))) as client:
-        page = client.list_job_events(after="41", limit=10)
+        page = client.list_job_events(after="41", limit=10, job_id="job-1", event_type="job.funded")
         assert page.items[0].event_type == "job.funded"
         assert page.next_cursor == "42"
-        waited = client.wait_for_job_event("42", timeout_ms=500)
+        waited = client.wait_for_job_event("42", timeout_ms=500, job_id="job-1")
         assert waited.timed_out is True
         assert calls == ["initialize", "notifications/initialized", "tools/call", "tools/call"]
+        assert arguments["list_job_events"] == {
+            "limit": 10,
+            "after": "41",
+            "jobId": "job-1",
+            "eventType": "job.funded",
+        }
+        assert arguments["wait_for_job_event"]["jobId"] == "job-1"
 
 
 def test_execution_grant_helpers():

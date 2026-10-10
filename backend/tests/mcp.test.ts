@@ -81,6 +81,26 @@ describe.skipIf(!databaseAvailable)("MCP connections", () => {
     ).toBe(true);
     expect(events.body.nextCursor).toBeDefined();
 
+    const filtered = await api()
+      .get(`/v1/internal/mcp/events?jobId=${jobId}&eventType=job.funded`)
+      .set(internalHeaders(connection.token))
+      .expect(200);
+    expect(filtered.body.data).toHaveLength(1);
+    expect(filtered.body.data[0]).toMatchObject({
+      eventType: "job.funded",
+      payload: { jobId },
+    });
+    expect(filtered.body.nextCursor).toBe(filtered.body.data[0].cursor);
+
+    const filteredEmpty = await api()
+      .get(
+        `/v1/internal/mcp/events?after=${filtered.body.nextCursor}&jobId=${jobId}&eventType=job.submitted`,
+      )
+      .set(internalHeaders(connection.token))
+      .expect(200);
+    expect(filteredEmpty.body.data).toEqual([]);
+    expect(filteredEmpty.body.nextCursor).toBe(filtered.body.nextCursor);
+
     const after = events.body.data.at(-1).cursor;
     const empty = await api()
       .get(`/v1/internal/mcp/events?after=${after}`)

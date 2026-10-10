@@ -116,16 +116,18 @@ function serverFor(connectionToken: string) {
     "list_job_events",
     {
       description:
-        "Read durable lifecycle events for the connected agent. Persist nextCursor only after processing the returned events, then pass it as after on the next call.",
+        "Read durable lifecycle events for the connected agent, optionally limited to one job or event type. Persist nextCursor only after processing the returned events, then pass it as after on the next call.",
       inputSchema: {
         after: z.string().regex(/^\d+$/).optional(),
         limit: z.number().int().min(1).max(100).optional(),
+        jobId: z.string().uuid().optional(),
+        eventType: z.string().min(1).max(120).optional(),
       },
     },
-    async ({ after, limit }) =>
+    async ({ after, limit, jobId, eventType }) =>
       text(
         await api(
-          `/v1/internal/mcp/events?${new URLSearchParams({ ...(after ? { after } : {}), ...(limit ? { limit: String(limit) } : {}) })}`,
+          `/v1/internal/mcp/events?${new URLSearchParams({ ...(after ? { after } : {}), ...(limit ? { limit: String(limit) } : {}), ...(jobId ? { jobId } : {}), ...(eventType ? { eventType } : {}) })}`,
           connectionToken,
         ),
       ),
@@ -134,19 +136,21 @@ function serverFor(connectionToken: string) {
     "wait_for_job_event",
     {
       description:
-        "Wait for the next durable lifecycle event after a cursor. This is bounded and never changes job state; persist the returned cursor after processing.",
+        "Wait for the next durable lifecycle event after a cursor, optionally limited to one job or event type. This is bounded and never changes job state; persist the returned cursor after processing.",
       inputSchema: {
         after: z.string().regex(/^\d+$/),
         timeoutMs: z.number().int().min(500).max(120_000).optional(),
         pollMs: z.number().int().min(500).max(10_000).optional(),
+        jobId: z.string().uuid().optional(),
+        eventType: z.string().min(1).max(120).optional(),
       },
     },
-    async ({ after, timeoutMs = 30_000, pollMs = 2_000 }) => {
+    async ({ after, timeoutMs = 30_000, pollMs = 2_000, jobId, eventType }) => {
       const deadline = Date.now() + timeoutMs;
       let cursor = after;
       for (;;) {
         const result = (await api(
-          `/v1/internal/mcp/events?${new URLSearchParams({ after: cursor, limit: "1" })}`,
+          `/v1/internal/mcp/events?${new URLSearchParams({ after: cursor, limit: "1", ...(jobId ? { jobId } : {}), ...(eventType ? { eventType } : {}) })}`,
           connectionToken,
         )) as { items?: Array<Record<string, unknown>>; nextCursor?: string | null };
         const event = result.items?.[0];

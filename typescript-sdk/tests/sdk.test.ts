@@ -4,25 +4,50 @@ import { LiegeAPIError, LiegeClient, McpClient, decodeX402PaymentRequired } from
 describe("LiegeClient", () => {
   test("retries transient GETs and preserves request ids on terminal errors", async () => {
     let calls = 0;
-    const client = new LiegeClient({ retryBackoffMs: 0, maxRetries: 1, fetch: async () => {
-      calls++;
-      return new Response(JSON.stringify({ error: { message: "upstream", code: "UPSTREAM" } }), { status: 503, headers: { "x-request-id": "req-42" } });
-    } });
-    await expect(client.listJobs()).rejects.toMatchObject({ status: 503, code: "UPSTREAM", requestId: "req-42", retryable: true });
+    const client = new LiegeClient({
+      retryBackoffMs: 0,
+      maxRetries: 1,
+      fetch: async () => {
+        calls++;
+        return new Response(JSON.stringify({ error: { message: "upstream", code: "UPSTREAM" } }), {
+          status: 503,
+          headers: { "x-request-id": "req-42" },
+        });
+      },
+    });
+    await expect(client.listJobs()).rejects.toMatchObject({
+      status: 503,
+      code: "UPSTREAM",
+      requestId: "req-42",
+      retryable: true,
+    });
     expect(calls).toBe(2);
   });
 
   test("supports typed pages and caller cancellation", async () => {
-    const client = new LiegeClient({ fetch: async (_input, init) => {
-      expect(init?.signal).toBeDefined();
-      return new Response(JSON.stringify({ data: { items: [{ id: "job-1", status: "open" }], nextCursor: "cursor-2", total: 1 } }));
-    } });
+    const client = new LiegeClient({
+      fetch: async (_input, init) => {
+        expect(init?.signal).toBeDefined();
+        return new Response(
+          JSON.stringify({
+            data: { items: [{ id: "job-1", status: "open" }], nextCursor: "cursor-2", total: 1 },
+          }),
+        );
+      },
+    });
     const page = await client.listJobsPage();
-    expect(page).toEqual({ items: [{ id: "job-1", status: "open" }], nextCursor: "cursor-2", total: 1 });
+    expect(page).toEqual({
+      items: [{ id: "job-1", status: "open" }],
+      nextCursor: "cursor-2",
+      total: 1,
+    });
   });
 
   test("lists jobs and unwraps API data", async () => {
-    const client = new LiegeClient({ fetch: async () => new Response(JSON.stringify({ data: [{ id: "job-1", status: "open" }] }), { status: 200 }) });
+    const client = new LiegeClient({
+      fetch: async () =>
+        new Response(JSON.stringify({ data: [{ id: "job-1", status: "open" }] }), { status: 200 }),
+    });
     expect(await client.listJobs()).toEqual([{ id: "job-1", status: "open" }]);
   });
 
@@ -37,48 +62,74 @@ describe("LiegeClient", () => {
   });
 
   test("declines a funded job with a refund reason", async () => {
-    const client = new LiegeClient({ fetch: async (_input, init) => {
-      expect(init?.method).toBe("POST");
-      expect(String(init?.body)).toContain("deadline");
-      return new Response(JSON.stringify({ data: { id: "job-1", status: "rejected", title: "Research" } }));
-    } });
-    await expect(client.declineJob("job-1", "The delivery deadline is too short.")).resolves.toMatchObject({ status: "rejected" });
+    const client = new LiegeClient({
+      fetch: async (_input, init) => {
+        expect(init?.method).toBe("POST");
+        expect(String(init?.body)).toContain("deadline");
+        return new Response(
+          JSON.stringify({ data: { id: "job-1", status: "rejected", title: "Research" } }),
+        );
+      },
+    });
+    await expect(
+      client.declineJob("job-1", "The delivery deadline is too short."),
+    ).resolves.toMatchObject({ status: "rejected" });
   });
 
   test("authenticates with an application-provided signer", async () => {
-    const client = new LiegeClient({ fetch: async (_input, init) => {
-      const path = new URL(String(_input)).pathname;
-      if (path.endsWith("/nonce")) return new Response(JSON.stringify({ data: { nonce: "n1", message: "sign me" } }));
-      return new Response(JSON.stringify({ data: { token: "session", userId: "u1", walletAddress: "0xabc" } }));
-    } });
+    const client = new LiegeClient({
+      fetch: async (_input, init) => {
+        const path = new URL(String(_input)).pathname;
+        if (path.endsWith("/nonce"))
+          return new Response(JSON.stringify({ data: { nonce: "n1", message: "sign me" } }));
+        return new Response(
+          JSON.stringify({ data: { token: "session", userId: "u1", walletAddress: "0xabc" } }),
+        );
+      },
+    });
     const session = await client.authenticate("0xabc", (message) => `sig:${message}`);
     expect(session.token).toBe("session");
   });
 
   test("surfaces structured API errors", async () => {
-    const client = new LiegeClient({ fetch: async () => new Response(JSON.stringify({ error: { message: "Denied", code: "POLICY" } }), { status: 403 }) });
+    const client = new LiegeClient({
+      fetch: async () =>
+        new Response(JSON.stringify({ error: { message: "Denied", code: "POLICY" } }), {
+          status: 403,
+        }),
+    });
     await expect(client.listJobs()).rejects.toBeInstanceOf(LiegeAPIError);
   });
 
   test("keeps the final SSE event when the stream has no blank terminator", async () => {
-    const stream = new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode('id: 1\nevent: job\ndata: {"id":"job-1"}\n')); controller.close(); } });
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('id: 1\nevent: job\ndata: {"id":"job-1"}\n'));
+        controller.close();
+      },
+    });
     const client = new LiegeClient({ token: "session", fetch: async () => new Response(stream) });
-    const events = []; for await (const event of client.iterEvents("agent-1")) events.push(event);
+    const events = [];
+    for await (const event of client.iterEvents("agent-1")) events.push(event);
     expect(events).toEqual([{ id: "1", event: "job", data: { id: "job-1" } }]);
   });
 
   test("reconnects with Last-Event-ID and deduplicates replayed events", async () => {
     let calls = 0;
-    const client = new LiegeClient({ fetch: async (input, init) => {
-      calls++;
-      const url = new URL(String(input));
-      if (calls === 1) {
-        expect(url.searchParams.get("after")).toBe("1");
-        expect(new Headers(init?.headers).get("Last-Event-ID")).toBe("1");
-        return new Response('id: 1\nevent: job.funded\ndata: {"jobId":"j1"}\n\n');
-      }
-      return new Response('id: 1\nevent: job.funded\ndata: {"jobId":"j1"}\n\nid: 2\nevent: job.completed\ndata: {"jobId":"j1"}\n\n');
-    } });
+    const client = new LiegeClient({
+      fetch: async (input, init) => {
+        calls++;
+        const url = new URL(String(input));
+        if (calls === 1) {
+          expect(url.searchParams.get("after")).toBe("1");
+          expect(new Headers(init?.headers).get("Last-Event-ID")).toBe("1");
+          return new Response('id: 1\nevent: job.funded\ndata: {"jobId":"j1"}\n\n');
+        }
+        return new Response(
+          'id: 1\nevent: job.funded\ndata: {"jobId":"j1"}\n\nid: 2\nevent: job.completed\ndata: {"jobId":"j1"}\n\n',
+        );
+      },
+    });
     const stream = client.streamEvents("agent-1", { after: "1", maxRetries: 1, backoffMs: 0 });
     const first = await stream.next();
     const second = await stream.next();
@@ -88,32 +139,117 @@ describe("LiegeClient", () => {
   });
 
   test("creates an invoice through the authenticated API client", async () => {
-    const client = new LiegeClient({ token: "session", fetch: async (_input, init) => {
-      expect(init?.headers).toMatchObject({ Authorization: "Bearer session" });
-      const body = JSON.parse(String(init?.body));
-      if (body.asset === "liege") {
-        return new Response(JSON.stringify({ data: { id: "invoice-2", invoiceId: "invoice-2", publicId: "INV-2", amount: 100, amountUsdg: 100, asset: "liege", status: "issued" } }));
-      }
-      return new Response(JSON.stringify({ data: { id: "invoice-1", invoiceId: "invoice-1", publicId: "INV-1", amountUsdg: 12.5, asset: "usdg", status: "issued" } }));
-    } });
-    await expect(client.createInvoice({ agentId: "agent-1", description: "Research", amountUsdg: 12.5, expiresAt: "2030-01-01T00:00:00.000Z" })).resolves.toMatchObject({ id: "invoice-1", status: "issued" });
-    await expect(client.createInvoice({ agentId: "agent-1", description: "Audit", amount: 100, asset: "liege", expiresAt: "2030-01-01T00:00:00.000Z" })).resolves.toMatchObject({ id: "invoice-2", asset: "liege" });
+    const client = new LiegeClient({
+      token: "session",
+      fetch: async (_input, init) => {
+        expect(init?.headers).toMatchObject({ Authorization: "Bearer session" });
+        const body = JSON.parse(String(init?.body));
+        if (body.asset === "liege") {
+          return new Response(
+            JSON.stringify({
+              data: {
+                id: "invoice-2",
+                invoiceId: "invoice-2",
+                publicId: "INV-2",
+                amount: 100,
+                amountUsdg: 100,
+                asset: "liege",
+                status: "issued",
+              },
+            }),
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            data: {
+              id: "invoice-1",
+              invoiceId: "invoice-1",
+              publicId: "INV-1",
+              amountUsdg: 12.5,
+              asset: "usdg",
+              status: "issued",
+            },
+          }),
+        );
+      },
+    });
+    await expect(
+      client.createInvoice({
+        agentId: "agent-1",
+        description: "Research",
+        amountUsdg: 12.5,
+        expiresAt: "2030-01-01T00:00:00.000Z",
+      }),
+    ).resolves.toMatchObject({ id: "invoice-1", status: "issued" });
+    await expect(
+      client.createInvoice({
+        agentId: "agent-1",
+        description: "Audit",
+        amount: 100,
+        asset: "liege",
+        expiresAt: "2030-01-01T00:00:00.000Z",
+      }),
+    ).resolves.toMatchObject({ id: "invoice-2", asset: "liege" });
   });
 
   test("supports partial refunds bound to jobId and reason and lists refunds", async () => {
-    const client = new LiegeClient({ token: "session", fetch: async (input, init) => {
-      const url = String(input);
-      if (url.endsWith("/v1/invoices/inv-1/refund")) {
-        const body = JSON.parse(String(init?.body));
-        expect(body).toEqual({ amount: 5, jobId: "00000000-0000-0000-0000-000000000001", reason: "Scope adjusted" });
-        return new Response(JSON.stringify({ data: { id: "inv-1", invoiceId: "inv-1", publicId: "INV-1", amount: 10, amountUsdg: 10, refundedAmount: 5, refundedAmountUsdg: 5, remainingAmount: 5, asset: "usdg", status: "partially_refunded" } }));
-      }
-      if (url.endsWith("/v1/invoices/inv-1/refunds")) {
-        return new Response(JSON.stringify({ data: [{ id: "ref-1", invoiceId: "inv-1", payerId: "payer-1", issuerId: "issuer-1", amount: 5, amountUsdg: 5, asset: "usdg", jobId: "00000000-0000-0000-0000-000000000001", reason: "Scope adjusted", refundedAt: "2026-10-02T12:00:00Z", ledgerTransactionId: "tx-1" }] }));
-      }
-      return new Response("not found", { status: 404 });
-    } });
-    const refunded = await client.refundInvoice("inv-1", { amount: 5, jobId: "00000000-0000-0000-0000-000000000001", reason: "Scope adjusted" });
+    const client = new LiegeClient({
+      token: "session",
+      fetch: async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/v1/invoices/inv-1/refund")) {
+          const body = JSON.parse(String(init?.body));
+          expect(body).toEqual({
+            amount: 5,
+            jobId: "00000000-0000-0000-0000-000000000001",
+            reason: "Scope adjusted",
+          });
+          return new Response(
+            JSON.stringify({
+              data: {
+                id: "inv-1",
+                invoiceId: "inv-1",
+                publicId: "INV-1",
+                amount: 10,
+                amountUsdg: 10,
+                refundedAmount: 5,
+                refundedAmountUsdg: 5,
+                remainingAmount: 5,
+                asset: "usdg",
+                status: "partially_refunded",
+              },
+            }),
+          );
+        }
+        if (url.endsWith("/v1/invoices/inv-1/refunds")) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: "ref-1",
+                  invoiceId: "inv-1",
+                  payerId: "payer-1",
+                  issuerId: "issuer-1",
+                  amount: 5,
+                  amountUsdg: 5,
+                  asset: "usdg",
+                  jobId: "00000000-0000-0000-0000-000000000001",
+                  reason: "Scope adjusted",
+                  refundedAt: "2026-10-02T12:00:00Z",
+                  ledgerTransactionId: "tx-1",
+                },
+              ],
+            }),
+          );
+        }
+        return new Response("not found", { status: 404 });
+      },
+    });
+    const refunded = await client.refundInvoice("inv-1", {
+      amount: 5,
+      jobId: "00000000-0000-0000-0000-000000000001",
+      reason: "Scope adjusted",
+    });
     expect(refunded.status).toBe("partially_refunded");
     expect(refunded.refundedAmount).toBe(5);
     expect(refunded.remainingAmount).toBe(5);
@@ -124,39 +260,62 @@ describe("LiegeClient", () => {
   });
 
   test("lists receipts and exports OpenTelemetry compliant spans", async () => {
-    const client = new LiegeClient({ token: "session", fetch: async (input) => {
-      const url = String(input);
-      if (url.includes("/v1/receipts?limit=500&format=otel")) {
-        return new Response(JSON.stringify({
-          resourceSpans: [{
-            resource: { attributes: [{ key: "service.name", value: { stringValue: "liege" } }] },
-            scopeSpans: [{
-              scope: { name: "liege.ledger", version: "1.0.0" },
-              spans: [{
-                traceId: "00000000000000000000000000000001",
-                spanId: "0000000000000001",
-                name: "ledger.invoice_payment",
-                kind: "SPAN_KIND_INTERNAL",
-                startTimeUnixNano: "1727870400000000000",
-                endTimeUnixNano: "1727870400000000000",
-                attributes: [{ key: "ledger.asset", value: { stringValue: "usdg" } }],
-                status: { code: "STATUS_CODE_OK" },
-              }],
-            }],
-          }],
-          digest: "a".repeat(64),
-          generatedAt: "2026-10-02T12:00:00Z",
-        }));
-      }
-      if (url.includes("/v1/receipts?limit=500")) {
-        return new Response(JSON.stringify({
-          data: [{ receiptId: "rec-1", type: "invoice_payment", reference: "ref-1", subject: null, createdAt: "2026-10-02T12:00:00Z" }],
-          digest: "a".repeat(64),
-          generatedAt: "2026-10-02T12:00:00Z",
-        }));
-      }
-      return new Response("not found", { status: 404 });
-    } });
+    const client = new LiegeClient({
+      token: "session",
+      fetch: async (input) => {
+        const url = String(input);
+        if (url.includes("/v1/receipts?limit=500&format=otel")) {
+          return new Response(
+            JSON.stringify({
+              resourceSpans: [
+                {
+                  resource: {
+                    attributes: [{ key: "service.name", value: { stringValue: "liege" } }],
+                  },
+                  scopeSpans: [
+                    {
+                      scope: { name: "liege.ledger", version: "1.0.0" },
+                      spans: [
+                        {
+                          traceId: "00000000000000000000000000000001",
+                          spanId: "0000000000000001",
+                          name: "ledger.invoice_payment",
+                          kind: "SPAN_KIND_INTERNAL",
+                          startTimeUnixNano: "1727870400000000000",
+                          endTimeUnixNano: "1727870400000000000",
+                          attributes: [{ key: "ledger.asset", value: { stringValue: "usdg" } }],
+                          status: { code: "STATUS_CODE_OK" },
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+              digest: "a".repeat(64),
+              generatedAt: "2026-10-02T12:00:00Z",
+            }),
+          );
+        }
+        if (url.includes("/v1/receipts?limit=500")) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  receiptId: "rec-1",
+                  type: "invoice_payment",
+                  reference: "ref-1",
+                  subject: null,
+                  createdAt: "2026-10-02T12:00:00Z",
+                },
+              ],
+              digest: "a".repeat(64),
+              generatedAt: "2026-10-02T12:00:00Z",
+            }),
+          );
+        }
+        return new Response("not found", { status: 404 });
+      },
+    });
 
     const statement = await client.listReceipts();
     expect(statement).toHaveLength(1);
@@ -169,19 +328,72 @@ describe("LiegeClient", () => {
 
   test("lists and creates typed catalog services", async () => {
     let calls = 0;
-    const client = new LiegeClient({ token: "session", fetch: async (input, init) => {
-      calls++;
-      if (calls === 1) {
-        expect(new URL(String(input)).searchParams.get("type")).toBe("skill");
-        return new Response(JSON.stringify({ data: [{ id: "svc-1", agent_id: "agent-1", slug: "research", name: "Research", description: "A research service for agents.", service_type: "skill", execution_mode: "sandboxed_runner", price_usd: "2.50", sla_minutes: 30, requirements_schema: {}, deliverable_schema: {}, settlement_assets: ["liege"] }] }));
-      }
-      expect(init?.method).toBe("POST");
-      expect(String(init?.body)).toContain('"settlementAssets":["liege"]');
-      return new Response(JSON.stringify({ data: { id: "svc-2", agentId: "agent-1", slug: "lookup", name: "Lookup", description: "A lookup service for agents.", serviceType: "tool", executionMode: "manual", priceUsd: 1, slaMinutes: 15, requirementsSchema: {}, deliverableSchema: {}, settlementAssets: ["liege"] } }));
-    } });
+    const client = new LiegeClient({
+      token: "session",
+      fetch: async (input, init) => {
+        calls++;
+        if (calls === 1) {
+          expect(new URL(String(input)).searchParams.get("type")).toBe("skill");
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: "svc-1",
+                  agent_id: "agent-1",
+                  slug: "research",
+                  name: "Research",
+                  description: "A research service for agents.",
+                  service_type: "skill",
+                  execution_mode: "sandboxed_runner",
+                  price_usd: "2.50",
+                  sla_minutes: 30,
+                  requirements_schema: {},
+                  deliverable_schema: {},
+                  settlement_assets: ["liege"],
+                },
+              ],
+            }),
+          );
+        }
+        expect(init?.method).toBe("POST");
+        expect(String(init?.body)).toContain('"settlementAssets":["liege"]');
+        return new Response(
+          JSON.stringify({
+            data: {
+              id: "svc-2",
+              agentId: "agent-1",
+              slug: "lookup",
+              name: "Lookup",
+              description: "A lookup service for agents.",
+              serviceType: "tool",
+              executionMode: "manual",
+              priceUsd: 1,
+              slaMinutes: 15,
+              requirementsSchema: {},
+              deliverableSchema: {},
+              settlementAssets: ["liege"],
+            },
+          }),
+        );
+      },
+    });
     const [service] = await client.listServices({ type: "skill" });
-    const created = await client.createService({ agentId: "agent-1", slug: "lookup", name: "Lookup", description: "A lookup service for agents.", serviceType: "tool", priceUsd: 1, slaMinutes: 15, settlementAssets: ["liege"] });
-    expect(service).toMatchObject({ agentId: "agent-1", serviceType: "skill", executionMode: "sandboxed_runner", priceUsd: 2.5 });
+    const created = await client.createService({
+      agentId: "agent-1",
+      slug: "lookup",
+      name: "Lookup",
+      description: "A lookup service for agents.",
+      serviceType: "tool",
+      priceUsd: 1,
+      slaMinutes: 15,
+      settlementAssets: ["liege"],
+    });
+    expect(service).toMatchObject({
+      agentId: "agent-1",
+      serviceType: "skill",
+      executionMode: "sandboxed_runner",
+      priceUsd: 2.5,
+    });
     expect(service.settlementAssets).toEqual(["liege"]);
     expect(created.serviceType).toBe("tool");
   });
@@ -256,16 +468,49 @@ describe("LiegeClient", () => {
 
   test("simulates and authorizes an agent action", async () => {
     let calls = 0;
-    const client = new LiegeClient({ token: "session", fetch: async (input, init) => {
-      calls++;
-      const path = new URL(String(input)).pathname;
-      if (path.endsWith("/actions/simulate")) return new Response(JSON.stringify({ data: { id: "sim-1", action_digest: "digest-1234", action: { action: "run" }, result: { eligible: true }, policy_version: 2, expires_at: "2030-01-01T00:00:00Z", created_at: "2030-01-01T00:00:00Z" } }), { status: 201 });
-      expect(path.endsWith("/actions/authorize")).toBe(true);
-      expect(init?.method).toBe("POST");
-      return new Response(JSON.stringify({ data: { actionId: "action-1", accountId: "agent-1", decision: "approval_required", reasons: [], policyVersion: 2, simulationDigest: "digest-1234", createdAt: "2030-01-01T00:00:00Z" } }));
-    } });
+    const client = new LiegeClient({
+      token: "session",
+      fetch: async (input, init) => {
+        calls++;
+        const path = new URL(String(input)).pathname;
+        if (path.endsWith("/actions/simulate"))
+          return new Response(
+            JSON.stringify({
+              data: {
+                id: "sim-1",
+                action_digest: "digest-1234",
+                action: { action: "run" },
+                result: { eligible: true },
+                policy_version: 2,
+                expires_at: "2030-01-01T00:00:00Z",
+                created_at: "2030-01-01T00:00:00Z",
+              },
+            }),
+            { status: 201 },
+          );
+        expect(path.endsWith("/actions/authorize")).toBe(true);
+        expect(init?.method).toBe("POST");
+        return new Response(
+          JSON.stringify({
+            data: {
+              actionId: "action-1",
+              accountId: "agent-1",
+              decision: "approval_required",
+              reasons: [],
+              policyVersion: 2,
+              simulationDigest: "digest-1234",
+              createdAt: "2030-01-01T00:00:00Z",
+            },
+          }),
+        );
+      },
+    });
     const simulation = await client.simulateAction("agent-1", { action: "run", amount: 1 });
-    const authorization = await client.authorizeAction("agent-1", { action: "run", amount: 1, simulationId: simulation.id });
+    const authorization = await client.authorizeAction("agent-1", {
+      action: "run",
+      amount: 1,
+      simulationId: simulation.id,
+    });
     expect(simulation.actionDigest).toBe("digest-1234");
     expect(authorization.decision).toBe("approval_required");
     expect(calls).toBe(2);
@@ -273,31 +518,85 @@ describe("LiegeClient", () => {
 
   test("builds runner approval actions and executes only with both approvals", async () => {
     const requests: RequestInit[] = [];
-    const client = new LiegeClient({ token: "session", fetch: async (input, init) => {
-      requests.push(init ?? {});
-      const path = new URL(String(input)).pathname;
-      if (path.endsWith("/actions/simulate")) return new Response(JSON.stringify({ data: { id: "sim-1", action_digest: "d", action: {}, result: { eligible: true }, policy_version: 1, expires_at: "2030-01-01", created_at: "2030-01-01" } }), { status: 201 });
-      if (path.endsWith("/actions/authorize")) return new Response(JSON.stringify({ data: { actionId: "act-1", accountId: "agent-1", decision: "approved", reasons: [], policyVersion: 1, createdAt: "2030-01-01" } }));
-      return new Response(JSON.stringify({ data: { id: "run-1", status: "succeeded", artifacts: [] } }), { status: 201 });
-    } });
-    const input = { agentId: "agent-1", command: "python" as const, files: { "main.py": "print(1)" } };
+    const client = new LiegeClient({
+      token: "session",
+      fetch: async (input, init) => {
+        requests.push(init ?? {});
+        const path = new URL(String(input)).pathname;
+        if (path.endsWith("/actions/simulate"))
+          return new Response(
+            JSON.stringify({
+              data: {
+                id: "sim-1",
+                action_digest: "d",
+                action: {},
+                result: { eligible: true },
+                policy_version: 1,
+                expires_at: "2030-01-01",
+                created_at: "2030-01-01",
+              },
+            }),
+            { status: 201 },
+          );
+        if (path.endsWith("/actions/authorize"))
+          return new Response(
+            JSON.stringify({
+              data: {
+                actionId: "act-1",
+                accountId: "agent-1",
+                decision: "approved",
+                reasons: [],
+                policyVersion: 1,
+                createdAt: "2030-01-01",
+              },
+            }),
+          );
+        return new Response(
+          JSON.stringify({ data: { id: "run-1", status: "succeeded", artifacts: [] } }),
+          { status: 201 },
+        );
+      },
+    });
+    const input = {
+      agentId: "agent-1",
+      command: "python" as const,
+      files: { "main.py": "print(1)" },
+    };
     const simulation = await client.simulateRunnerAction("agent-1", input);
     await client.authorizeRunnerAction("agent-1", input);
-    const run = await client.executeApprovedRunnerAction({ ...input, actionId: "act-1", simulationId: simulation.id });
+    const run = await client.executeApprovedRunnerAction({
+      ...input,
+      actionId: "act-1",
+      simulationId: simulation.id,
+    });
     expect(run).toMatchObject({ id: "run-1", status: "succeeded" });
     expect(JSON.parse(String(requests[0].body))).toMatchObject({ action: "runner.execute" });
-    expect(JSON.parse(String(requests[2].body))).toMatchObject({ actionId: "act-1", simulationId: "sim-1" });
+    expect(JSON.parse(String(requests[2].body))).toMatchObject({
+      actionId: "act-1",
+      simulationId: "sim-1",
+    });
   });
 
   test("completes an x402 challenge with an application-provided signer", async () => {
     let attempts = 0;
     const challenge = { x402Version: 2, accepts: [{ scheme: "exact", network: "eip155:4663" }] };
-    const client = new LiegeClient({ fetch: async (_input, init) => {
-      attempts++;
-      if (attempts === 1) return new Response("pay", { status: 402, headers: { "PAYMENT-REQUIRED": btoa(JSON.stringify(challenge)) } });
-      expect(new Headers(init?.headers).get("PAYMENT-SIGNATURE")).toBe(btoa(JSON.stringify({ payload: "signed" })));
-      return new Response(JSON.stringify({ paid: true }), { status: 200, headers: { "PAYMENT-RESPONSE": btoa(JSON.stringify({ success: true })) } });
-    } });
+    const client = new LiegeClient({
+      fetch: async (_input, init) => {
+        attempts++;
+        if (attempts === 1)
+          return new Response("pay", {
+            status: 402,
+            headers: { "PAYMENT-REQUIRED": btoa(JSON.stringify(challenge)) },
+          });
+        expect(new Headers(init?.headers).get("PAYMENT-SIGNATURE")).toBe(
+          btoa(JSON.stringify({ payload: "signed" })),
+        );
+        return new Response(JSON.stringify({ paid: true }), {
+          status: 200,
+          headers: { "PAYMENT-RESPONSE": btoa(JSON.stringify({ success: true })) },
+        });
+      },
+    });
     const response = await client.requestX402("https://api.test/resource", (value) => {
       expect(value).toEqual(decodeX402PaymentRequired(btoa(JSON.stringify(challenge))));
       return { payload: "signed" };
@@ -307,13 +606,46 @@ describe("LiegeClient", () => {
   });
 
   test("manages webhook subscriptions and verifies signed payloads", async () => {
-    const client = new LiegeClient({ token: "session", fetch: async (input, init) => {
-      const path = new URL(String(input)).pathname;
-      if (path === "/v1/webhooks" && init?.method === "POST") return new Response(JSON.stringify({ data: { id: "wh-1", agent_id: "agent-1", url: "https://example.test/hook", event_types: ["job.completed"], active: true, secret: "whsec_test" } }), { status: 201 });
-      if (path === "/v1/webhooks") return new Response(JSON.stringify({ data: [{ id: "wh-1", agent_id: "agent-1", url: "https://example.test/hook", event_types: ["job.completed"], active: true }] }));
-      return new Response(null, { status: 204 });
-    } });
-    const created = await client.createWebhook({ agentId: "agent-1", url: "https://example.test/hook", eventTypes: ["job.completed"] });
+    const client = new LiegeClient({
+      token: "session",
+      fetch: async (input, init) => {
+        const path = new URL(String(input)).pathname;
+        if (path === "/v1/webhooks" && init?.method === "POST")
+          return new Response(
+            JSON.stringify({
+              data: {
+                id: "wh-1",
+                agent_id: "agent-1",
+                url: "https://example.test/hook",
+                event_types: ["job.completed"],
+                active: true,
+                secret: "whsec_test",
+              },
+            }),
+            { status: 201 },
+          );
+        if (path === "/v1/webhooks")
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: "wh-1",
+                  agent_id: "agent-1",
+                  url: "https://example.test/hook",
+                  event_types: ["job.completed"],
+                  active: true,
+                },
+              ],
+            }),
+          );
+        return new Response(null, { status: 204 });
+      },
+    });
+    const created = await client.createWebhook({
+      agentId: "agent-1",
+      url: "https://example.test/hook",
+      eventTypes: ["job.completed"],
+    });
     expect(created.secret).toBe("whsec_test");
     expect((await client.listWebhooks())[0].agentId).toBe("agent-1");
     await client.deleteWebhook("wh-1");
@@ -329,30 +661,51 @@ describe("McpClient", () => {
     const client = new McpClient("lmp_test", "https://mcp.test", async (_input, init) => {
       const request = JSON.parse(String(init?.body)) as { method: string };
       methods.push(request.method);
-      const result = request.method === "tools/call"
-        ? { content: [{ type: "text", text: JSON.stringify({ id: "proposal-1", status: "pending" }) }] }
-        : {};
+      const result =
+        request.method === "tools/call"
+          ? {
+              content: [
+                { type: "text", text: JSON.stringify({ id: "proposal-1", status: "pending" }) },
+              ],
+            }
+          : {};
       return new Response(JSON.stringify({ result }), { status: 200 });
     });
-    expect(await client.propose("submit_deliverable", { jobId: "job-1" })).toMatchObject({ id: "proposal-1", status: "pending" });
+    expect(await client.propose("submit_deliverable", { jobId: "job-1" })).toMatchObject({
+      id: "proposal-1",
+      status: "pending",
+    });
     expect(methods).toEqual(["initialize", "notifications/initialized", "tools/call"]);
   });
 
   test("interacts with account status, simulation, authorization, and services", async () => {
     const toolCalls: string[] = [];
     const client = new McpClient("lmp_test", "https://mcp.test", async (_input, init) => {
-      const request = JSON.parse(String(init?.body)) as { method: string; params?: { name?: string } };
+      const request = JSON.parse(String(init?.body)) as {
+        method: string;
+        params?: { name?: string };
+      };
       if (request.method === "tools/call") {
         toolCalls.push(request.params?.name ?? "");
         const responses: Record<string, unknown> = {
-          liege_account_status: { accountId: "agent-1", status: "active", budgetUsage: { dailySpent: 0 } },
-          liege_account_simulate: { simulationId: "sim-1", actionDigest: "dig-1", result: { eligible: true } },
+          liege_account_status: {
+            accountId: "agent-1",
+            status: "active",
+            budgetUsage: { dailySpent: 0 },
+          },
+          liege_account_simulate: {
+            simulationId: "sim-1",
+            actionDigest: "dig-1",
+            result: { eligible: true },
+          },
           liege_account_authorize: { actionId: "act-1", decision: "approved" },
           liege_account_mandates: [{ id: "man-1", nonce: "nonce-1" }],
           list_services: [{ id: "srv-1", name: "Market Data" }],
         };
         const text = JSON.stringify(responses[request.params?.name ?? ""] ?? {});
-        return new Response(JSON.stringify({ result: { content: [{ type: "text", text }] } }), { status: 200 });
+        return new Response(JSON.stringify({ result: { content: [{ type: "text", text }] } }), {
+          status: 200,
+        });
       }
       return new Response(JSON.stringify({ result: {} }), { status: 200 });
     });
@@ -363,7 +716,11 @@ describe("McpClient", () => {
     const sim = await client.accountSimulate({ action: "transfer", amount: 10 });
     expect(sim).toMatchObject({ simulationId: "sim-1", actionDigest: "dig-1" });
 
-    const auth = await client.accountAuthorize({ action: "transfer", amount: 10, simulationId: "sim-1" });
+    const auth = await client.accountAuthorize({
+      action: "transfer",
+      amount: 10,
+      simulationId: "sim-1",
+    });
     expect(auth).toMatchObject({ actionId: "act-1", decision: "approved" });
 
     const mandates = await client.accountMandates();
@@ -385,24 +742,55 @@ describe("McpClient", () => {
 
   test("reads cursor-based MCP events and bounded waits", async () => {
     const toolCalls: string[] = [];
+    const toolArguments: Record<string, Record<string, unknown>> = {};
     const client = new McpClient("lmp_test", "https://mcp.test", async (_input, init) => {
-      const request = JSON.parse(String(init?.body)) as { method: string; params?: { name?: string } };
+      const request = JSON.parse(String(init?.body)) as {
+        method: string;
+        params?: { name?: string; arguments?: Record<string, unknown> };
+      };
       if (request.method === "tools/call") {
         const name = request.params?.name ?? "";
         toolCalls.push(name);
-        const value = name === "list_job_events"
-          ? { items: [{ id: "evt-1", cursor: "42", eventType: "job.funded", payload: { jobId: "job-1" } }], nextCursor: "42" }
-          : { event: null, timedOut: true, cursor: "42" };
-        return new Response(JSON.stringify({ result: { content: [{ type: "text", text: JSON.stringify(value) }] } }), { status: 200 });
+        toolArguments[name] = request.params?.arguments ?? {};
+        const value =
+          name === "list_job_events"
+            ? {
+                items: [
+                  {
+                    id: "evt-1",
+                    cursor: "42",
+                    eventType: "job.funded",
+                    payload: { jobId: "job-1" },
+                  },
+                ],
+                nextCursor: "42",
+              }
+            : { event: null, timedOut: true, cursor: "42" };
+        return new Response(
+          JSON.stringify({ result: { content: [{ type: "text", text: JSON.stringify(value) }] } }),
+          { status: 200 },
+        );
       }
       return new Response(JSON.stringify({ result: {} }), { status: 200 });
     });
 
-    const page = await client.listJobEvents({ after: "41", limit: 10 });
+    const page = await client.listJobEvents({
+      after: "41",
+      limit: 10,
+      jobId: "job-1",
+      eventType: "job.funded",
+    });
     expect(page.items[0]).toMatchObject({ id: "evt-1", cursor: "42", eventType: "job.funded" });
     expect(page.nextCursor).toBe("42");
-    await expect(client.waitForJobEvent("42", { timeoutMs: 500 })).resolves.toMatchObject({ timedOut: true });
+    await expect(
+      client.waitForJobEvent("42", { timeoutMs: 500, jobId: "job-1" }),
+    ).resolves.toMatchObject({ timedOut: true });
     expect(toolCalls).toEqual(["list_job_events", "wait_for_job_event"]);
+    expect(toolArguments.list_job_events).toMatchObject({
+      jobId: "job-1",
+      eventType: "job.funded",
+    });
+    expect(toolArguments.wait_for_job_event).toMatchObject({ jobId: "job-1" });
   });
 
   test("exports an owner mandate in AP2 format", async () => {
@@ -500,9 +888,9 @@ describe("McpClient", () => {
     ).toBe("Bearer lmp_sample_token_xyz");
 
     expect(presets.cursor.filename).toBe(".cursor/mcp.json");
-    expect(
-      (presets.cursor.config as any).mcpServers["arbitrage-bot"].url,
-    ).toBe("https://mcp.custom.org/mcp");
+    expect((presets.cursor.config as any).mcpServers["arbitrage-bot"].url).toBe(
+      "https://mcp.custom.org/mcp",
+    );
 
     expect(presets.elizaos.filename).toBe("character.json");
     expect(
@@ -510,14 +898,14 @@ describe("McpClient", () => {
     ).toBe("Bearer lmp_sample_token_xyz");
 
     expect(presets.hermes.filename).toBe("hermes.json");
-    expect(
-      (presets.hermes.config as any).mcpServers["arbitrage-bot"].headers.Authorization,
-    ).toBe("Bearer lmp_sample_token_xyz");
+    expect((presets.hermes.config as any).mcpServers["arbitrage-bot"].headers.Authorization).toBe(
+      "Bearer lmp_sample_token_xyz",
+    );
 
     expect(presets.openclaw.filename).toBe("openclaw.json");
-    expect(
-      (presets.openclaw.config as any).tools.mcp["arbitrage-bot"].headers.Authorization,
-    ).toBe("Bearer lmp_sample_token_xyz");
+    expect((presets.openclaw.config as any).tools.mcp["arbitrage-bot"].headers.Authorization).toBe(
+      "Bearer lmp_sample_token_xyz",
+    );
 
     const liege = new LiegeClient({
       fetch: async (input) => {
@@ -549,11 +937,36 @@ describe("McpClient", () => {
       const body = JSON.parse(String(init?.body)) as { params?: { name?: string } };
       calls.push(body.params?.name ?? "");
       if (body.params?.name === "get_execution_grant")
-        return new Response(JSON.stringify({ result: { content: [{ type: "text", text: JSON.stringify({ grantToken: "lxe_token", jobId: "job-1", expiresAt: "2030-01-01T00:00:00Z" }) }] } }));
-      return new Response(JSON.stringify({ result: { content: [{ type: "text", text: JSON.stringify({ id: "job-1", status: "submitted" }) }] } }));
+        return new Response(
+          JSON.stringify({
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify({
+                    grantToken: "lxe_token",
+                    jobId: "job-1",
+                    expiresAt: "2030-01-01T00:00:00Z",
+                  }),
+                },
+              ],
+            },
+          }),
+        );
+      return new Response(
+        JSON.stringify({
+          result: {
+            content: [{ type: "text", text: JSON.stringify({ id: "job-1", status: "submitted" }) }],
+          },
+        }),
+      );
     });
     const grant = await mcp.getExecutionGrant("proposal-1");
-    const job = await mcp.submitGrantedDeliverable({ grantToken: grant.grantToken, jobId: grant.jobId, deliverable: "Report" });
+    const job = await mcp.submitGrantedDeliverable({
+      grantToken: grant.grantToken,
+      jobId: grant.jobId,
+      deliverable: "Report",
+    });
     expect(grant.jobId).toBe("job-1");
     expect(job.status).toBe("submitted");
     expect(calls).toEqual(["", "", "get_execution_grant", "submit_granted_deliverable"]);

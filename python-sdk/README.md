@@ -79,11 +79,11 @@ MCP event helpers expose the durable cursor used by the hosted MCP server:
 
 ```python
 cursor = "0"
-page = mcp.list_job_events(after=cursor, limit=50)
+page = mcp.list_job_events(after=cursor, limit=50, job_id=job_id, event_type="job.funded")
 for event in page.items:
     process(event)
     cursor = event.cursor
-wait = mcp.wait_for_job_event(cursor, timeout_ms=30_000)
+wait = mcp.wait_for_job_event(cursor, timeout_ms=30_000, job_id=job_id)
 ```
 
 Persist a cursor only after processing its event. `wait_for_job_event` is bounded and never mutates

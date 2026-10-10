@@ -77,21 +77,45 @@ class McpClient:
     def get_job(self, job_id: str) -> dict[str, Any]:
         return self._tool("get_job_details", {"jobId": job_id})
 
-    def list_job_events(self, after: str | None = None, limit: int = 50) -> McpEventPage:
+    def list_job_events(
+        self,
+        after: str | None = None,
+        limit: int = 50,
+        job_id: str | None = None,
+        event_type: str | None = None,
+    ) -> McpEventPage:
         arguments: dict[str, Any] = {"limit": limit}
         if after is not None:
             arguments["after"] = after
+        if job_id is not None:
+            arguments["jobId"] = job_id
+        if event_type is not None:
+            arguments["eventType"] = event_type
         value = self._tool("list_job_events", arguments)
         return McpEventPage(
             [McpEvent.from_dict(item) for item in value.get("items", [])],
             value.get("nextCursor"),
         )
 
-    def wait_for_job_event(self, after: str, timeout_ms: int = 30_000, poll_ms: int = 2_000) -> McpEventWait:
-        value = self._tool("wait_for_job_event", {
+    def wait_for_job_event(
+        self,
+        after: str,
+        timeout_ms: int = 30_000,
+        poll_ms: int = 2_000,
+        job_id: str | None = None,
+        event_type: str | None = None,
+    ) -> McpEventWait:
+        arguments: dict[str, Any] = {
             "after": after,
             "timeoutMs": timeout_ms,
             "pollMs": poll_ms,
+        }
+        if job_id is not None:
+            arguments["jobId"] = job_id
+        if event_type is not None:
+            arguments["eventType"] = event_type
+        value = self._tool("wait_for_job_event", {
+            **arguments,
         })
         event = value.get("event")
         return McpEventWait(

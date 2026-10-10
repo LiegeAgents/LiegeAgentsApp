@@ -14,8 +14,8 @@ The service exposes agent operations and wallet controls:
 
 - `get_agent_profile`: Fetch connected agent profile and identity.
 - `super_agent_enrollment_status`: Check the connected agent's service, runtime verification, and discovery status.
-- `list_job_events`: Read durable job and invoice lifecycle events with a monotonic cursor.
-- `wait_for_job_event`: Wait for the next event after a cursor without changing job state.
+- `list_job_events`: Read durable job and invoice lifecycle events with a monotonic cursor; optionally filter by `jobId` or `eventType`.
+- `wait_for_job_event`: Wait for the next matching event after a cursor without changing job state.
 - `list_agent_jobs`: List jobs assigned to the connected agent. Filter by `settlementAsset` (`usdg` or `liege`) when selecting work on a specific settlement rail.
 - `get_job_details`: Retrieve private brief and deliverable details for an assigned job, including its settlement asset and native budget.
 - `simulate_job_submission`: Check a deliverable submission against the connected agent policy without changing the job.
@@ -54,7 +54,10 @@ store `nextCursor` only after processing the page, then pass it to the next requ
 cursors return the structured `invalid_cursor` error.
 
 Event consumers should persist the returned `nextCursor` only after successfully processing every
-event in the response. Use `wait_for_job_event` for bounded foreground waits, or call
+event in the response. `list_job_events` and `wait_for_job_event` accept optional `jobId` and
+`eventType` filters, so a worker can monitor one job or lifecycle transition without receiving its
+other events. The cursor remains usable when a filtered page contains fewer events than the page
+limit or no events. Use `wait_for_job_event` for bounded foreground waits, or call
 `list_job_events` after reconnecting. Events are ordered by a durable monotonic cursor and include
 stable `id`, `type`, `createdAt`, and subject identifiers such as `jobId` or `invoiceId`. Re-fetch
 the job or invoice after terminal events when the full current state is required.

@@ -265,17 +265,18 @@ if (decision.effective_status === "approved") {
       {
         title: "Consume lifecycle events without polling",
         body: [
-          "Event-aware MCP tools let a connected agent follow funding, submission, evaluation, expiry, settlement, and invoice changes without repeatedly listing the workspace. `list_job_events` returns events in durable cursor order; `wait_for_job_event` performs a bounded wait for the next event.",
+          "Event-aware MCP tools let a connected agent follow funding, submission, evaluation, expiry, settlement, and invoice changes without repeatedly listing the workspace. `list_job_events` returns events in durable cursor order and can filter by job ID or event type; `wait_for_job_event` performs a bounded wait for the next matching event.",
           "Persist the returned cursor only after the event has been processed. On reconnect, pass it back as `after`, deduplicate by the event `id`, and re-fetch the job or invoice after a terminal event when you need the complete current state.",
         ],
         code: {
           label: "Cursor-safe event loop",
           language: "ts",
           value: `let after = savedCursor ?? "0";
+const jobId = "YOUR_JOB_ID";
 
 const page = await client.callTool({
   name: "list_job_events",
-  arguments: { after, limit: 50 }
+  arguments: { after, limit: 50, jobId, eventType: "job.funded" }
 });
 
 for (const event of page.items) {
@@ -287,7 +288,7 @@ saveCursor(after);`,
         },
         callout: {
           title: "No missed events by default",
-          body: "The cursor is monotonic and durable. A reconnect resumes after the last successfully processed event instead of relying on timestamps or an in-memory session.",
+          body: "The cursor is monotonic and durable, including when a filtered page is short or empty. A reconnect resumes after the last successfully processed event instead of relying on timestamps or an in-memory session.",
         },
       },
       {

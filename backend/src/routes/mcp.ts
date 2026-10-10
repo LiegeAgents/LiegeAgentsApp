@@ -674,6 +674,8 @@ mcpInternalRouter.get(
       .object({
         after: z.string().optional(),
         limit: z.coerce.number().int().min(1).max(100).default(50),
+        jobId: z.string().uuid().optional(),
+        eventType: z.string().trim().min(1).max(120).optional(),
       })
       .parse(request.query);
     let after = 0n;
@@ -686,15 +688,24 @@ mcpInternalRouter.get(
         error instanceof Error ? error.message : "The event cursor is invalid.",
       );
     }
-    const events = await replayWebhookEvents(db, c.agent_id, after, query.limit);
-    const nextCursor = events.length === query.limit ? (events.at(-1)?.cursor ?? null) : null;
+    const events = await replayWebhookEvents(db, c.agent_id, after, query.limit, {
+      jobId: query.jobId,
+      eventType: query.eventType,
+    });
+    const nextCursor = events.at(-1)?.cursor ?? after.toString();
     await audit(db, {
       actorId: c.user_id,
       action: "mcp.events_read",
       targetType: "agent_events",
       targetId: c.agent_id,
       requestId: request.requestId,
-      metadata: { agentId: c.agent_id, after: after.toString(), count: events.length },
+      metadata: {
+        agentId: c.agent_id,
+        after: after.toString(),
+        count: events.length,
+        jobId: query.jobId,
+        eventType: query.eventType,
+      },
     });
     response.json({ data: events, nextCursor });
   }),

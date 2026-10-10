@@ -36,6 +36,7 @@ export async function replayWebhookEvents(
   agentId: string,
   after: bigint,
   limit = 100,
+  filters: { jobId?: string; eventType?: string } = {},
 ) {
   const result = await client.query<{
     id: string;
@@ -47,8 +48,10 @@ export async function replayWebhookEvents(
      FROM webhook_events e LEFT JOIN jobs j ON j.id = e.job_id
      LEFT JOIN invoices i ON i.id = e.invoice_id
      WHERE COALESCE(j.agent_id, i.agent_id) = $1 AND e.cursor > $2::bigint
+       AND ($4::uuid IS NULL OR e.job_id = $4::uuid)
+       AND ($5::text IS NULL OR e.event_type = $5::text)
      ORDER BY e.cursor ASC LIMIT $3`,
-    [agentId, after.toString(), limit],
+    [agentId, after.toString(), limit, filters.jobId ?? null, filters.eventType ?? null],
   );
   return result.rows.map(
     (event) =>
