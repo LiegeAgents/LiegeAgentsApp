@@ -52,7 +52,29 @@ type Notice = {
   action?: string;
   onAction?: () => void;
 };
-type Tab = "home" | "jobs" | "approvals";
+type Tab = "home" | "jobs" | "approvals" | "superagents";
+type SuperAgentProposal = {
+  id: string;
+  raw_text: string;
+  parsed?: {
+    agentName?: string | null;
+    request?: string;
+    budgetAmount?: number | null;
+    budgetUsdg?: number | null;
+    settlementAsset?: string;
+  };
+  status: string;
+  agent_name?: string | null;
+  agent_id?: string | null;
+  expires_at?: string;
+  created_at: string;
+};
+type SuperAgentWorkspace = {
+  proposals: SuperAgentProposal[];
+  jobs: Job[];
+  agents: Array<{ id: string; name: string; description?: string; reputation_score?: number }>;
+  identity?: { x_username?: string } | null;
+};
 const empty: Overview = { jobs: [], proposals: [], activity: [] };
 const terminal = ["completed", "rejected", "expired", "cancelled"];
 const readable = (value: string) =>
@@ -501,6 +523,12 @@ function Workspace({
   const [history, setHistory] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
   const [proposal, setProposal] = useState<Proposal | null>(null);
+  const [superAgentTab, setSuperAgentTab] = useState<"chat" | "requests" | "jobs">("chat");
+  const [superAgentWorkspace, setSuperAgentWorkspace] = useState<SuperAgentWorkspace | null>(null);
+  const [superAgentText, setSuperAgentText] = useState("");
+  const [superAgentReply, setSuperAgentReply] = useState("");
+  const [superAgentBusy, setSuperAgentBusy] = useState(false);
+  const [superAgentDecisionId, setSuperAgentDecisionId] = useState("");
   const [account, setAccount] = useState(false);
   const [deciding, setDeciding] = useState(false);
   const requestLock = useRef(false);
@@ -536,9 +564,25 @@ function Workspace({
       requestLock.current = false;
     }
   };
+  const loadSuperAgents = async () => {
+    try {
+      const result = await call("/v1/super-agents/dashboard", {}, token);
+      setSuperAgentWorkspace(result as SuperAgentWorkspace);
+    } catch (e) {
+      notify({
+        title: "Couldn’t load Super Agents",
+        body: (e as Error).message,
+        kind: "error",
+        action: "Dismiss",
+      });
+    }
+  };
   useEffect(() => {
     void load();
   }, [token]);
+  useEffect(() => {
+    if (tab === "superagents") void loadSuperAgents();
+  }, [tab, token]);
   const navigate = (next: Tab) => {
     setTab(next);
     fade.setValue(0.35);
@@ -575,6 +619,59 @@ function Workspace({
     } finally {
       decisionLock.current = false;
       setDeciding(false);
+    }
+  };
+  const createSuperAgentRequest = async () => {
+    const text = superAgentText.trim();
+    if (!text || superAgentBusy) return;
+    setSuperAgentBusy(true);
+    setSuperAgentReply("");
+    try {
+      const created = await call(
+        "/v1/super-agents/intents",
+        { method: "POST", body: JSON.stringify({ text }) },
+        token,
+      );
+      const agentName = created.agent?.name || created.parsed?.agentName || "A Super Agent";
+      setSuperAgentReply(
+        `${agentName} is matched. Review the proposal before creating its job draft. No funds move until you fund the job in Liege.`,
+      );
+      setSuperAgentText("");
+      await loadSuperAgents();
+    } catch (e) {
+      notify({ title: "Couldn’t create the proposal", body: (e as Error).message, kind: "error" });
+    } finally {
+      setSuperAgentBusy(false);
+    }
+  };
+  const decideSuperAgentRequest = async (
+    request: SuperAgentProposal,
+    decision: "approved" | "rejected",
+  ) => {
+    if (superAgentDecisionId) return;
+    setSuperAgentDecisionId(request.id);
+    try {
+      const result = await call(
+        `/v1/super-agents/intents/${request.id}/decision`,
+        { method: "POST", body: JSON.stringify({ decision }) },
+        token,
+      );
+      await loadSuperAgents();
+      notify({
+        title: decision === "approved" ? "Job draft created" : "Proposal declined",
+        body:
+          decision === "approved"
+            ? "The unfunded draft is ready in your Liege workspace. No funds moved."
+            : "The proposal was declined. No job or payment was created.",
+        kind: "success",
+        action: "Open Liege",
+        onAction: decision === "approved" ? web : undefined,
+      });
+      void result;
+    } catch (e) {
+      notify({ title: "Couldn’t update the proposal", body: (e as Error).message, kind: "error" });
+    } finally {
+      setSuperAgentDecisionId("");
     }
   };
   const web = () => {
@@ -777,6 +874,174 @@ function Workspace({
                 />
               )}
             </>
+          ) : tab === "superagents" ? (
+            <>
+              <Text style={s.title}>
+                Your next hire<Text style={{ color: C.green }}>.</Text>
+              </Text>
+              <Text style={s.body}>
+                Ask for work in plain language. Review the proposal before a job draft is created;
+                funding stays in your Liege workspace.
+              </Text>
+              <View style={s.filters}>
+                {(["chat", "requests", "jobs"] as const).map((item) => (
+                  <Tap
+                    key={item}
+                    onPress={() => setSuperAgentTab(item)}
+                    style={[s.filter, superAgentTab === item && s.filterActive]}
+                  >
+                    <Text style={[s.filterText, superAgentTab === item && { color: C.bg }]}>
+                      {item === "chat" ? "Ask" : item === "requests" ? "Requests" : "Jobs"}
+                      {item === "requests" &&
+                      superAgentWorkspace?.proposals.some((entry) => entry.status === "pending")
+                        ? ` ${superAgentWorkspace.proposals.filter((entry) => entry.status === "pending").length}`
+                        : ""}
+                    </Text>
+                  </Tap>
+                ))}
+              </View>
+              {superAgentTab === "chat" ? (
+                <>
+                  <View style={s.saChatCard}>
+                    <View style={s.inline}>
+                      <View style={s.saMark}>
+                        <Icon name="zap" size={17} color={C.green} />
+                      </View>
+                      <View style={s.grow}>
+                        <Text style={s.rowTitle}>Liege Super Agents</Text>
+                        <Text style={s.rowMeta}>Describe the outcome and your budget.</Text>
+                      </View>
+                    </View>
+                    <Text style={[s.body, { marginBottom: 0 }]}>
+                      Try: “Hire Anna to research agent marketplaces. Budget 5 USDG.”
+                    </Text>
+                  </View>
+                  {superAgentReply ? (
+                    <View style={[s.saChatCard, s.saReply]}>
+                      <Text style={s.rowTitle}>Proposal prepared</Text>
+                      <Text style={s.body}>{superAgentReply}</Text>
+                      <Tap onPress={() => setSuperAgentTab("requests")} style={s.webLink}>
+                        <Text style={s.link}>Review proposal</Text>
+                        <Icon name="arrow-right" size={16} color={C.green} />
+                      </Tap>
+                    </View>
+                  ) : null}
+                  <View style={s.saComposer}>
+                    <TextInput
+                      value={superAgentText}
+                      onChangeText={setSuperAgentText}
+                      style={s.saInput}
+                      placeholder="What would you like an agent to do?"
+                      placeholderTextColor={C.dim}
+                      multiline
+                      maxLength={10_000}
+                      accessibilityLabel="Describe work for a Super Agent"
+                    />
+                    <Tap
+                      disabled={!superAgentText.trim() || superAgentBusy}
+                      onPress={() => void createSuperAgentRequest()}
+                      style={s.saSend}
+                      label="Prepare proposal"
+                    >
+                      {superAgentBusy ? (
+                        <ActivityIndicator color={C.bg} size="small" />
+                      ) : (
+                        <Icon name="arrow-up" size={18} color={C.bg} />
+                      )}
+                    </Tap>
+                  </View>
+                  <Text style={s.smallMuted}>
+                    No funds move here. Fund any created job separately.
+                  </Text>
+                  <Section title="Available specialists" />
+                  {superAgentWorkspace?.agents.length ? (
+                    <View style={s.list}>
+                      {superAgentWorkspace.agents.map((agent) => (
+                        <View key={agent.id} style={s.saAgentRow}>
+                          <View style={s.jobIcon}>
+                            <Icon name="cpu" color={C.green} />
+                          </View>
+                          <View style={s.grow}>
+                            <Text style={s.rowTitle}>{agent.name}</Text>
+                            <Text style={s.rowMeta} numberOfLines={2}>
+                              {agent.description || "Discoverable Liege Super Agent"}
+                            </Text>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  ) : (
+                    <Text style={s.body}>Discoverable specialists will appear here.</Text>
+                  )}
+                </>
+              ) : superAgentTab === "requests" ? (
+                <>
+                  {superAgentWorkspace?.proposals.length ? (
+                    superAgentWorkspace.proposals.map((request) => {
+                      const parsed = request.parsed;
+                      const amount = parsed?.budgetAmount ?? parsed?.budgetUsdg;
+                      const asset = (parsed?.settlementAsset || "usdg").toUpperCase();
+                      const pendingRequest = request.status === "pending";
+                      return (
+                        <View key={request.id} style={s.saProposalCard}>
+                          <View style={s.between}>
+                            <Text style={s.eyebrow}>SUPER AGENT PROPOSAL</Text>
+                            <Badge status={request.status} />
+                          </View>
+                          <Text style={[s.cardTitle, { marginTop: 14 }]}>
+                            {request.agent_name || parsed?.agentName || "Agent match"}
+                          </Text>
+                          <Text style={s.body}>{parsed?.request || request.raw_text}</Text>
+                          <View style={s.detailRow}>
+                            <Text style={s.smallMuted}>Requested budget</Text>
+                            <Text style={s.detailValue}>
+                              {amount == null
+                                ? "Not specified"
+                                : `${formatAmount(amount)} ${asset}`}
+                            </Text>
+                          </View>
+                          {pendingRequest ? (
+                            <View style={s.saActions}>
+                              <Button
+                                title="Create job draft"
+                                busy={superAgentDecisionId === request.id}
+                                onPress={() => void decideSuperAgentRequest(request, "approved")}
+                              />
+                              <Button
+                                title="Decline"
+                                secondary
+                                busy={superAgentDecisionId === request.id}
+                                onPress={() => void decideSuperAgentRequest(request, "rejected")}
+                              />
+                            </View>
+                          ) : (
+                            <Text style={s.smallMuted}>Created {date(request.created_at)}</Text>
+                          )}
+                        </View>
+                      );
+                    })
+                  ) : (
+                    <Empty
+                      icon="message-circle"
+                      title="No proposals yet"
+                      body="Describe a task in Ask and matching proposals will appear here for review."
+                    />
+                  )}
+                </>
+              ) : superAgentWorkspace?.jobs.length ? (
+                <View style={s.list}>
+                  {superAgentWorkspace.jobs.map((item) => (
+                    <JobRow key={item.id} job={item} open={() => setJob(item)} />
+                  ))}
+                </View>
+              ) : (
+                <Empty
+                  icon="briefcase"
+                  title="No Super Agent jobs yet"
+                  body="Jobs created from proposals will show their progress here."
+                />
+              )}
+            </>
           ) : (
             <>
               <Text style={s.title}>
@@ -845,24 +1110,39 @@ function Workspace({
       </ScrollView>
       <SafeAreaView edges={["bottom"]} style={s.dockWrap}>
         <View style={s.dock}>
-          {(["home", "jobs", "approvals"] as Tab[]).map((item, i) => (
+          {(["home", "jobs", "approvals", "superagents"] as Tab[]).map((item, i) => (
             <Tap
               key={item}
               onPress={() => navigate(item)}
-              label={readable(item)}
+              label={item === "superagents" ? "Super Agents" : readable(item)}
               style={[s.dockItem, tab === item && s.dockSelected]}
             >
               <Icon
-                name={(["home", "briefcase", "shield"] as IconName[])[i]}
+                name={(["home", "briefcase", "shield", "zap"] as IconName[])[i]}
                 color={tab === item ? C.bg : C.muted}
                 size={20}
               />
-              <Text style={[s.dockLabel, tab === item && { color: C.bg }]}>{readable(item)}</Text>
+              <Text style={[s.dockLabel, tab === item && { color: C.bg }]}>
+                {item === "superagents" ? "Super Agents" : readable(item)}
+              </Text>
               {item === "approvals" && pending.length > 0 && (
                 <View style={[s.dockBadge, tab === item && { backgroundColor: C.bg }]}>
                   <Text style={s.dockBadgeText}>{pending.length}</Text>
                 </View>
               )}
+              {item === "superagents" &&
+                (superAgentWorkspace?.proposals.filter((request) => request.status === "pending")
+                  .length ?? 0) > 0 && (
+                  <View style={[s.dockBadge, tab === item && { backgroundColor: C.bg }]}>
+                    <Text style={s.dockBadgeText}>
+                      {
+                        superAgentWorkspace!.proposals.filter(
+                          (request) => request.status === "pending",
+                        ).length
+                      }
+                    </Text>
+                  </View>
+                )}
             </Tap>
           ))}
         </View>

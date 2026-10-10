@@ -1,7 +1,7 @@
 import { createHash, createHmac, timingSafeEqual, randomBytes, randomUUID } from "node:crypto";
 import { Router } from "express";
 import { z } from "zod";
-import { hashRuntimeToken, requireAuth } from "../auth.js";
+import { hashRuntimeToken, requireAuth, requireSessionOrMobileAuth } from "../auth.js";
 import { audit } from "../audit.js";
 import { env } from "../config.js";
 import { selfSettlementLimit } from "../capacity.js";
@@ -555,7 +555,7 @@ superAgentsRouter.delete(
 
 superAgentsRouter.get(
   "/dashboard",
-  requireAuth,
+  requireSessionOrMobileAuth("mobile:read"),
   asyncRoute(async (request, response) => {
     const userId = request.auth!.userId;
     const [identity, intents, jobs, agents] = await Promise.all([
@@ -568,7 +568,10 @@ superAgentsRouter.get(
         [userId],
       ),
       db.query(
-        `SELECT j.id,j.public_id,j.title,j.status,j.settlement_asset,j.budget_amount,j.budget_usdg,j.deadline_at,j.created_at,a.name AS agent_name FROM jobs j JOIN agents a ON a.id=j.agent_id WHERE j.client_id=$1 OR a.owner_id=$1 ORDER BY j.created_at DESC LIMIT 50`,
+        `SELECT j.id,j.public_id,j.title,j.status,j.settlement_asset,j.budget_amount,j.budget_usdg,j.deadline_at,j.created_at,a.name AS agent_name
+         FROM jobs j JOIN agents a ON a.id=j.agent_id
+         WHERE (j.client_id=$1 OR a.owner_id=$1) AND j.strategy_policy->>'source'='superagent'
+         ORDER BY j.created_at DESC LIMIT 50`,
         [userId],
       ),
       db.query(
@@ -588,7 +591,7 @@ superAgentsRouter.get(
 
 superAgentsRouter.post(
   "/intents/parse",
-  requireAuth,
+  requireSessionOrMobileAuth("mobile:read"),
   asyncRoute(async (request, response) => {
     const input = textInput.parse(request.body);
     response.json({ data: await parseSuperAgentIntent(input.text) });
@@ -597,7 +600,7 @@ superAgentsRouter.post(
 
 superAgentsRouter.post(
   "/intents",
-  requireAuth,
+  requireSessionOrMobileAuth("mobile:approve"),
   asyncRoute(async (request, response) => {
     const input = textInput.parse(request.body);
     const parsed = await parseSuperAgentIntent(input.text);
@@ -643,7 +646,7 @@ superAgentsRouter.post(
 
 superAgentsRouter.get(
   "/intents",
-  requireAuth,
+  requireSessionOrMobileAuth("mobile:read"),
   asyncRoute(async (request, response) => {
     const result = await db.query(
       `SELECT i.id,i.raw_text,i.parsed,i.status,i.expires_at,i.created_at,i.decided_at,a.id AS agent_id,a.name AS agent_name FROM superagent_intents i LEFT JOIN agents a ON a.id=i.agent_id WHERE i.user_id=$1 ORDER BY i.created_at DESC LIMIT 100`,
@@ -655,7 +658,7 @@ superAgentsRouter.get(
 
 superAgentsRouter.post(
   "/intents/:id/decision",
-  requireAuth,
+  requireSessionOrMobileAuth("mobile:approve"),
   asyncRoute(async (request, response) => {
     const id = z.string().uuid().parse(request.params.id);
     const { decision } = decisionInput.parse(request.body);

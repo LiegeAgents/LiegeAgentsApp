@@ -1,8 +1,11 @@
 import { beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
 import { createSiweMessage } from "viem/siwe";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { env } from "../src/config.js";
-import { api, clearData, databaseAvailable, rebuildSchema } from "./support.js";
+import { hashSessionToken } from "../src/auth.js";
+import { api, bearer, clearData, databaseAvailable, rebuildSchema, signIn } from "./support.js";
+import { db } from "../src/db/index.js";
 
 describe.skipIf(!databaseAvailable)("wallet authentication", () => {
   beforeAll(rebuildSchema);
@@ -38,5 +41,46 @@ describe.skipIf(!databaseAvailable)("wallet authentication", () => {
       .send({ address: account.address, nonce: nonce.body.data.nonce, signature })
       .expect(401);
     expect(response.body.error.code).toBe("invalid_signature");
+  });
+
+  test("allows scoped mobile sessions to read Super Agents and gates hire proposals", async () => {
+    const owner = await signIn();
+    const code = await api()
+      .post("/v1/mobile/pairing-codes")
+      .set(bearer(owner))
+      .send({})
+      .expect(201);
+    const paired = await api()
+      .post("/v1/mobile/pair")
+      .send({ code: code.body.data.code, name: "Test companion", platform: "android" })
+      .expect(201);
+    const mobileToken = paired.body.data.accessToken as string;
+
+    await api()
+      .get("/v1/super-agents/dashboard")
+      .set(bearer({ ...owner, token: mobileToken }))
+      .expect(200);
+
+    await db.query("UPDATE mobile_sessions SET scopes=$2 WHERE access_token_hash=$1", [
+      hashSessionToken(mobileToken),
+      ["mobile:read"],
+    ]);
+    const denied = await api()
+      .post(`/v1/super-agents/intents/${randomUUID()}/decision`)
+      .set(bearer({ ...owner, token: mobileToken }))
+      .send({ decision: "approved" })
+      .expect(403);
+    expect(denied.body.error.code).toBe("mobile_scope_required");
+
+    await db.query("UPDATE mobile_sessions SET scopes=$2 WHERE access_token_hash=$1", [
+      hashSessionToken(mobileToken),
+      ["mobile:read", "mobile:approve"],
+    ]);
+    const response = await api()
+      .post(`/v1/super-agents/intents/${randomUUID()}/decision`)
+      .set(bearer({ ...owner, token: mobileToken }))
+      .send({ decision: "approved" })
+      .expect(409);
+    expect(response.body.error.code).toBe("proposal_unavailable");
   });
 });

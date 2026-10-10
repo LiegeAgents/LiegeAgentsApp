@@ -2823,8 +2823,8 @@ function MobileCompanion({ token, onNotice }) {
       </div>
       <p>
         Generate a one-time code in your browser, enter it in the Liege Android app, and monitor
-        jobs or approve proposals on the go. Mobile sessions cannot fund, settle, or sign wallet
-        transactions.
+        jobs, review Super Agent hire proposals, and create unfunded job drafts on the go. Mobile
+        sessions cannot fund, settle, or sign wallet transactions.
       </p>
       <div className="mobile-pairing-actions">
         <Button onClick={generate} disabled={loading}>

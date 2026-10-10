@@ -215,3 +215,66 @@ export async function requireMobileAuth(request: Request, _response: Response, n
     next(error);
   }
 }
+
+/** Accept regular Liege sessions and explicitly scoped companion sessions on mobile-safe routes. */
+export function requireSessionOrMobileAuth(mobileScope: "mobile:read" | "mobile:approve") {
+  return async (request: Request, _response: Response, next: NextFunction) => {
+    try {
+      if (request.header("x-liege-runtime-token") === "1")
+        return requireRuntimeAuth(request, _response, next);
+      const bearer = request.header("authorization")?.match(/^Bearer (.+)$/i)?.[1];
+      if (!bearer)
+        throw new ApiError(401, "unauthenticated", "A bearer session token is required.");
+      const tokenHash = hashSessionToken(bearer);
+      const session = await db.query<{ user_id: string; wallet_address: string }>(
+        `SELECT s.user_id, u.wallet_address FROM sessions s JOIN users u ON u.id=s.user_id
+         WHERE s.token_hash=$1 AND s.revoked_at IS NULL AND s.expires_at > now()`,
+        [tokenHash],
+      );
+      if (session.rowCount) {
+        request.auth = {
+          userId: session.rows[0].user_id,
+          walletAddress: session.rows[0].wallet_address,
+        };
+        return next();
+      }
+      const mobile = await db.query<{
+        user_id: string;
+        device_id: string;
+        scopes: string[];
+        wallet_address: string;
+      }>(
+        `SELECT s.user_id, s.device_id, s.scopes, u.wallet_address
+         FROM mobile_sessions s JOIN mobile_devices d ON d.id=s.device_id
+         JOIN users u ON u.id=s.user_id
+         WHERE s.access_token_hash=$1 AND s.revoked_at IS NULL AND s.access_expires_at > now()
+           AND d.revoked_at IS NULL`,
+        [tokenHash],
+      );
+      if (!mobile.rowCount)
+        throw new ApiError(401, "invalid_session", "This session is invalid or expired.");
+      const scopes = mobile.rows[0].scopes ?? [];
+      if (!scopes.includes(mobileScope))
+        throw new ApiError(
+          403,
+          "mobile_scope_required",
+          "This mobile session lacks the required permission.",
+        );
+      await db.query("UPDATE mobile_devices SET last_seen_at=now() WHERE id=$1", [
+        mobile.rows[0].device_id,
+      ]);
+      request.auth = {
+        userId: mobile.rows[0].user_id,
+        walletAddress: mobile.rows[0].wallet_address,
+      };
+      request.mobileAuth = {
+        userId: mobile.rows[0].user_id,
+        deviceId: mobile.rows[0].device_id,
+        scopes,
+      };
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
+}
