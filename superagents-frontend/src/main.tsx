@@ -782,11 +782,26 @@ const tabs = [
   { id: "activity", label: "Activity", icon: Activity },
   { id: "settings", label: "Settings", icon: Settings },
 ];
-function SuperAgentChat({ live = false }: { live?: boolean }) {
+type DiscoverableAgent = {
+  id: string;
+  name: string;
+  description?: string;
+  category?: string;
+  capabilities?: string[];
+  settlement_assets?: string[];
+};
+
+function SuperAgentChat({
+  live = false,
+  agents: directory,
+}: {
+  live?: boolean;
+  agents: DiscoverableAgent[];
+}) {
   const [messages, setMessages] = useState<Array<{ role: "assistant" | "user"; text: string }>>([
     {
       role: "assistant",
-      text: "Tell me what you need done. I’ll find a specialist, shape a proposal, and leave the final decision with you.",
+      text: "Tell me what you need done. I’ll find a specialist and shape a proposal for your review. You can also ask who’s available and what they specialize in.",
     },
   ]);
   const [text, setText] = useState("");
@@ -799,6 +814,42 @@ function SuperAgentChat({ live = false }: { live?: boolean }) {
     setMessages((current) => [...current, { role: "user", text: value }]);
     setBusy(true);
     try {
+      const availabilityQuestion =
+        /\b(available|discoverable|what|which|list|show|who)\b/i.test(value) &&
+        /\b(agents?|specialists?)\b/i.test(value);
+      const specialty = value.match(
+        /\b(research|design|engineering|development|content|automation|operations)\b/i,
+      )?.[1];
+      const mentionedAgent = directory.find((agent) =>
+        value.toLowerCase().includes(agent.name.replace(/ by LiegeAgents$/i, "").toLowerCase()),
+      );
+      const agentInfoQuestion =
+        mentionedAgent &&
+        /\b(what|who|tell me|about|specialt|capabilit|does|can)\b/i.test(value) &&
+        !/\b(hire|assign|budget|usd[g]?|liege)\b/i.test(value);
+      const formatAgent = (agent: DiscoverableAgent) =>
+        `${agent.name}${agent.category ? ` — ${agent.category}` : ""}${agent.description ? `: ${agent.description}` : agent.capabilities?.length ? `: ${agent.capabilities.join(", ")}` : ""}`;
+      if (availabilityQuestion || agentInfoQuestion) {
+        const matches = specialty
+          ? directory.filter((agent) =>
+              [agent.category, agent.description, ...(agent.capabilities ?? [])]
+                .filter(Boolean)
+                .join(" ")
+                .toLowerCase()
+                .includes(specialty.toLowerCase()),
+            )
+          : directory;
+        const answer =
+          agentInfoQuestion && mentionedAgent
+            ? formatAgent(mentionedAgent)
+            : matches.length
+              ? `${specialty ? `Available for ${specialty}:` : "Currently discoverable Super Agents:"}\n${matches.map(formatAgent).join("\n\n")}`
+              : specialty
+                ? `There are no currently discoverable agents specializing in ${specialty}.`
+                : "There are no currently discoverable Super Agents. Check back after an agent has completed enrollment and enabled discovery.";
+        setMessages((current) => [...current, { role: "assistant", text: answer }]);
+        return;
+      }
       const token = getSessionToken();
       const api = superAgentsApi;
       const response = token
@@ -813,6 +864,17 @@ function SuperAgentChat({ live = false }: { live?: boolean }) {
       const parsedBudget = parsed?.budgetAmount ?? parsed?.budgetUsdg;
       const parsedAsset = String(parsed?.settlementAsset || "usdg").toUpperCase();
       if (!parsed?.agentName || !parsedBudget) {
+        if (!parsed?.agentName && directory.length) {
+          const available = directory.map((agent) => formatAgent(agent)).join("\n\n");
+          setMessages((current) => [
+            ...current,
+            {
+              role: "assistant",
+              text: `Here are the currently discoverable specialists:\n${available}\n\nWhich agent would you like to hire?${!parsedBudget ? " Please also include a positive budget in USDG or LIEGE." : ""}`,
+            },
+          ]);
+          return;
+        }
         setMessages((current) => [
           ...current,
           {
@@ -925,9 +987,7 @@ function Dashboard() {
   const [workspace, setWorkspace] = useState(readWorkspace);
   const [liveRequests, setLiveRequests] = useState<RequestItem[]>([]);
   const [liveActivity, setLiveActivity] = useState<string[]>([]);
-  const [catalog, setCatalog] = useState<
-    Array<{ id: string; name: string; description: string; category: string }>
-  >([]);
+  const [catalog, setCatalog] = useState<DiscoverableAgent[]>([]);
   const [identity, setIdentity] = useState<{ x_username?: string } | null>(null);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [accountMenu, setAccountMenu] = useState(false);
@@ -1311,7 +1371,7 @@ function Dashboard() {
               </Button>
             )}
           </div>
-          {tab === "chat" && <SuperAgentChat live={Boolean(getSessionToken())} />}
+          {tab === "chat" && <SuperAgentChat live={Boolean(getSessionToken())} agents={catalog} />}
           {tab === "overview" && (
             <>
               <div className="metric-grid">

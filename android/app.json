@@ -15,6 +15,7 @@
     "android": {
       "package": "com.liegeagents.companion",
       "versionCode": 1,
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": { "backgroundColor": "#06100c" }
     },
     "plugins": ["expo-secure-store"],

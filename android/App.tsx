@@ -72,8 +72,24 @@ type SuperAgentProposal = {
 type SuperAgentWorkspace = {
   proposals: SuperAgentProposal[];
   jobs: Job[];
-  agents: Array<{ id: string; name: string; description?: string; reputation_score?: number }>;
+  agents: Array<{
+    id: string;
+    name: string;
+    slug?: string;
+    description?: string;
+    category?: string;
+    capabilities?: string[];
+    settlement_assets?: string[];
+    service_settlement_assets?: string[];
+    reputation_score?: number;
+  }>;
   identity?: { x_username?: string } | null;
+};
+type SuperAgentChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  actionLabel?: string;
 };
 const empty: Overview = { jobs: [], proposals: [], activity: [] };
 const terminal = ["completed", "rejected", "expired", "cancelled"];
@@ -104,8 +120,9 @@ async function call(path: string, options: RequestInit = {}, token?: string) {
   });
   const body = await response.json().catch(() => null);
   if (!response.ok)
-    throw new Error(
-      body?.error?.message || `Request failed (${response.status}). Please try again.`,
+    throw Object.assign(
+      new Error(body?.error?.message || `Request failed (${response.status}). Please try again.`),
+      { code: body?.error?.code },
     );
   return body.data;
 }
@@ -526,14 +543,23 @@ function Workspace({
   const [superAgentTab, setSuperAgentTab] = useState<"chat" | "requests" | "jobs">("chat");
   const [superAgentWorkspace, setSuperAgentWorkspace] = useState<SuperAgentWorkspace | null>(null);
   const [superAgentText, setSuperAgentText] = useState("");
-  const [superAgentReply, setSuperAgentReply] = useState("");
+  const [superAgentContext, setSuperAgentContext] = useState("");
+  const [superAgentMessages, setSuperAgentMessages] = useState<SuperAgentChatMessage[]>([]);
   const [superAgentBusy, setSuperAgentBusy] = useState(false);
   const [superAgentDecisionId, setSuperAgentDecisionId] = useState("");
   const [account, setAccount] = useState(false);
   const [deciding, setDeciding] = useState(false);
   const requestLock = useRef(false);
   const decisionLock = useRef(false);
+  const workspaceScroll = useRef<ScrollView>(null);
   const fade = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (tab !== "superagents" || superAgentTab !== "chat") return;
+    const subscription = Keyboard.addListener("keyboardDidShow", () => {
+      requestAnimationFrame(() => workspaceScroll.current?.scrollToEnd({ animated: true }));
+    });
+    return () => subscription.remove();
+  }, [tab, superAgentTab]);
   const load = async () => {
     if (requestLock.current) return;
     requestLock.current = true;
@@ -624,22 +650,159 @@ function Workspace({
   const createSuperAgentRequest = async () => {
     const text = superAgentText.trim();
     if (!text || superAgentBusy) return;
+    const intentText = superAgentContext ? `${superAgentContext}\n${text}` : text;
+    const userMessage: SuperAgentChatMessage = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      text,
+    };
+    setSuperAgentMessages((messages) => [...messages, userMessage]);
+    setSuperAgentText("");
     setSuperAgentBusy(true);
-    setSuperAgentReply("");
     try {
-      const created = await call(
-        "/v1/super-agents/intents",
-        { method: "POST", body: JSON.stringify({ text }) },
+      const isAvailabilityQuestion =
+        /\b(available|discoverable|what|which|list|show|who)\b/i.test(text) &&
+        /\b(agents?|specialists?)\b/i.test(text);
+      const explicitSpecialty = text.match(
+        /\b(research|design|engineering|development|content|automation|operations)\b/i,
+      )?.[1];
+      const mentionedAgent = superAgentWorkspace?.agents.find((agent) => {
+        const shortName = agent.name.replace(/ by LiegeAgents$/i, "");
+        return text.toLowerCase().includes(shortName.toLowerCase());
+      });
+      const isAgentInfoQuestion =
+        mentionedAgent &&
+        /\b(what|who|tell me|about|specialt|capabilit|does|can)\b/i.test(text) &&
+        !/\b(hire|assign|budget|usd[g]?|liege)\b/i.test(text);
+      if (isAvailabilityQuestion || isAgentInfoQuestion) {
+        setSuperAgentContext("");
+        const directory = superAgentWorkspace?.agents ?? [];
+        const formatAgent = (agent: (typeof directory)[number]) => {
+          const specialty = [
+            agent.category,
+            agent.description,
+            agent.capabilities?.length ? `Skills: ${agent.capabilities.join(", ")}` : null,
+          ]
+            .filter(Boolean)
+            .join(". ");
+          return `${agent.name}${specialty ? ` — ${specialty}` : ""}`;
+        };
+        let answer: string;
+        if (isAgentInfoQuestion && mentionedAgent) {
+          answer = formatAgent(mentionedAgent);
+        } else if (explicitSpecialty) {
+          const matches = directory.filter((agent) =>
+            [agent.category, agent.description, ...(agent.capabilities ?? [])]
+              .filter(Boolean)
+              .join(" ")
+              .toLowerCase()
+              .includes(explicitSpecialty.toLowerCase()),
+          );
+          answer = matches.length
+            ? `Available for ${explicitSpecialty}:\n${matches.map(formatAgent).join("\n\n")}`
+            : `There are no currently discoverable agents specializing in ${explicitSpecialty}.`;
+        } else {
+          answer = directory.length
+            ? `Currently discoverable Super Agents:\n${directory.map(formatAgent).join("\n\n")}`
+            : "There are no currently discoverable Super Agents. Check back after an agent has completed enrollment and enabled discovery.";
+        }
+        setSuperAgentMessages((messages) => [
+          ...messages,
+          { id: `assistant-${Date.now()}`, role: "assistant", text: answer },
+        ]);
+        return;
+      }
+      const greeting = /^(hi|hey|hello|good morning|good afternoon|good evening)[!.\s]*$/i.test(
+        text,
+      );
+      if (greeting) {
+        setSuperAgentMessages((messages) => [
+          ...messages,
+          {
+            id: `assistant-${Date.now()}`,
+            role: "assistant",
+            text: "Hey! I can help you hire a Liege Super Agent, or show you who’s available and what they specialize in. Tell me what you need done and your budget in USDG or LIEGE.",
+          },
+        ]);
+        return;
+      }
+      const parsed = await call(
+        "/v1/super-agents/intents/parse",
+        { method: "POST", body: JSON.stringify({ text: intentText }) },
         token,
       );
-      const agentName = created.agent?.name || created.parsed?.agentName || "A Super Agent";
-      setSuperAgentReply(
-        `${agentName} is matched. Review the proposal before creating its job draft. No funds move until you fund the job in Liege.`,
+      const budget = parsed.budgetAmount ?? parsed.budgetUsdg;
+      if (!parsed.agentName || !budget || budget <= 0) {
+        setSuperAgentContext(intentText);
+        if (!parsed.agentName && superAgentWorkspace?.agents.length) {
+          const available = superAgentWorkspace.agents
+            .map((agent) => {
+              const specialty = [agent.category, agent.description].filter(Boolean).join(" — ");
+              const skills = agent.capabilities?.length
+                ? ` Skills: ${agent.capabilities.join(", ")}.`
+                : "";
+              return `${agent.name}${specialty ? ` — ${specialty}` : ""}${skills}`;
+            })
+            .join("\n\n");
+          setSuperAgentMessages((messages) => [
+            ...messages,
+            {
+              id: `assistant-${Date.now()}`,
+              role: "assistant",
+              text: `Here are the currently discoverable specialists:\n${available}\n\nWhich agent would you like to hire?${!budget || budget <= 0 ? " Please also include a positive budget in USDG or LIEGE." : ""}`,
+            },
+          ]);
+          return;
+        }
+        const missing = [
+          !parsed.agentName ? "the specialist you want" : null,
+          !budget || budget <= 0 ? "your budget in USDG or LIEGE" : null,
+        ].filter(Boolean);
+        setSuperAgentMessages((messages) => [
+          ...messages,
+          {
+            id: `assistant-${Date.now()}`,
+            role: "assistant",
+            text: `I can help shape that into a proposal. Please add ${missing.join(" and ")}. You can send those details in another message.`,
+          },
+        ]);
+        return;
+      }
+      const created = await call(
+        "/v1/super-agents/intents",
+        { method: "POST", body: JSON.stringify({ text: intentText }) },
+        token,
       );
-      setSuperAgentText("");
+      setSuperAgentContext("");
+      const agentName = created.agent?.name || created.parsed?.agentName || "A Super Agent";
+      setSuperAgentMessages((messages) => [
+        ...messages,
+        {
+          id: `assistant-${Date.now()}`,
+          role: "assistant",
+          text: `I matched ${agentName} to your request. Review the proposal before creating its job draft. No funds move until you fund the job in Liege.`,
+          actionLabel: "Review proposal",
+        },
+      ]);
       await loadSuperAgents();
     } catch (e) {
-      notify({ title: "Couldn’t create the proposal", body: (e as Error).message, kind: "error" });
+      const code = (e as Error & { code?: string }).code;
+      if (code === "agent_unavailable" || code === "incomplete_proposal") {
+        setSuperAgentMessages((messages) => [
+          ...messages,
+          {
+            id: `assistant-${Date.now()}`,
+            role: "assistant",
+            text: "I couldn’t match that request to an available specialist. Try choosing one from the list below, then include the task and budget.",
+          },
+        ]);
+      } else {
+        notify({
+          title: "Couldn’t prepare your request",
+          body: (e as Error).message,
+          kind: "error",
+        });
+      }
     } finally {
       setSuperAgentBusy(false);
     }
@@ -691,462 +854,510 @@ function Workspace({
   );
   return (
     <SafeAreaView style={s.safe} edges={["top", "left", "right"]}>
-      <View style={s.topbar}>
-        <Brand />
-        <View style={s.inline}>
-          <Tap label="Open approvals" onPress={() => navigate("approvals")} style={s.circle}>
-            <Icon name="bell" size={20} />
-          </Tap>
-          <Tap label="Device settings" onPress={() => setAccount(true)} style={s.avatar}>
-            <Icon name="user" size={20} color={C.green} />
-          </Tap>
-        </View>
-      </View>
-      <ScrollView
-        key={tab}
-        contentContainerStyle={s.main}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={load}
-            tintColor={C.green}
-            colors={[C.green]}
-            progressBackgroundColor={C.panel}
-          />
-        }
+      <KeyboardAvoidingView
+        style={s.flex}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
       >
-        <Animated.View style={{ opacity: fade }}>
-          {tab === "home" ? (
-            <>
-              <Text style={s.title}>
-                Stay in the loop<Text style={{ color: C.green }}>.</Text>
-              </Text>
-              <Tap
-                style={s.heroCard}
-                onPress={() => {
-                  setFilter("Active");
-                  navigate("jobs");
-                }}
-              >
-                <View style={s.heroRing} />
-                <View style={s.heroRingSmall} />
-                <Image source={logo} style={s.cardLogo} />
-                <Text style={s.heroNumber}>
-                  {loaded ? String(active.length).padStart(2, "0") : "—"}
+        <View style={s.topbar}>
+          <Brand />
+          <View style={s.inline}>
+            <Tap label="Open approvals" onPress={() => navigate("approvals")} style={s.circle}>
+              <Icon name="bell" size={20} />
+            </Tap>
+            <Tap label="Device settings" onPress={() => setAccount(true)} style={s.avatar}>
+              <Icon name="user" size={20} color={C.green} />
+            </Tap>
+          </View>
+        </View>
+        <ScrollView
+          ref={workspaceScroll}
+          key={tab}
+          contentContainerStyle={[
+            s.main,
+            tab === "superagents" && superAgentTab === "chat" && s.saChatScroll,
+          ]}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={load}
+              tintColor={C.green}
+              colors={[C.green]}
+              progressBackgroundColor={C.panel}
+            />
+          }
+        >
+          <Animated.View
+            style={[
+              { opacity: fade },
+              tab === "superagents" && superAgentTab === "chat" && s.saChatFlex,
+            ]}
+          >
+            {tab === "home" ? (
+              <>
+                <Text style={s.title}>
+                  Stay in the loop<Text style={{ color: C.green }}>.</Text>
                 </Text>
-                <View style={s.between}>
-                  <Text style={s.heroLabel}>Active jobs</Text>
-                  <View style={s.heroArrow}>
-                    <Icon name="arrow-up-right" color={C.bg} size={23} />
-                  </View>
-                </View>
-              </Tap>
-              <View style={s.metricRow}>
-                <Tap style={s.metric} onPress={() => navigate("approvals")}>
-                  <View style={s.between}>
-                    <Icon name="shield" color={C.green} />
-                    <Text style={s.metricNumber}>{loaded ? pending.length : "—"}</Text>
-                  </View>
-                  <Text style={s.metricLabel}>Awaiting you</Text>
-                </Tap>
                 <Tap
-                  style={s.metric}
+                  style={s.heroCard}
                   onPress={() => {
-                    setFilter("Finished");
+                    setFilter("Active");
                     navigate("jobs");
                   }}
                 >
-                  <View style={s.between}>
-                    <Icon name="check-circle" color={C.green} />
-                    <Text style={s.metricNumber}>{loaded ? finished.length : "—"}</Text>
-                  </View>
-                  <Text style={s.metricLabel}>Completed jobs</Text>
-                </Tap>
-              </View>
-              {pending.length > 0 && (
-                <Tap style={s.attention} onPress={() => navigate("approvals")}>
-                  <View style={s.attentionIcon}>
-                    <Icon name="inbox" color={C.green} />
-                  </View>
-                  <View style={s.grow}>
-                    <Text style={s.rowTitle}>Your agents are waiting</Text>
-                    <Text style={s.rowMeta}>
-                      {pending.length} request{pending.length === 1 ? "" : "s"} ready for your
-                      review
-                    </Text>
-                  </View>
-                  <Icon name="arrow-up-right" color={C.green} />
-                </Tap>
-              )}
-              <Section
-                title="On your radar"
-                action="All jobs"
-                onPress={() => {
-                  setFilter("All");
-                  navigate("jobs");
-                }}
-              />
-              {!loaded ? (
-                <ActivityIndicator color={C.green} style={{ margin: 30 }} />
-              ) : data.jobs.length ? (
-                <View style={s.list}>
-                  {data.jobs.slice(0, 3).map((j) => (
-                    <JobRow key={j.id} job={j} open={() => setJob(j)} />
-                  ))}
-                </View>
-              ) : (
-                <Empty
-                  icon="briefcase"
-                  title="Room for your next idea"
-                  body="Create a job in your web workspace. You can follow its progress here."
-                />
-              )}
-              <Section title="Recent activity" />
-              {data.activity.length ? (
-                <View style={s.list}>
-                  {data.activity.slice(0, 5).map((entry) => (
-                    <View key={entry.id} style={s.activityRow}>
-                      <View style={s.activityDot}>
-                        <Icon name="activity" size={16} color={C.green} />
-                      </View>
-                      <View style={s.grow}>
-                        <Text style={s.rowTitle}>{readable(entry.type)}</Text>
-                        <Text style={s.rowMeta}>
-                          {entry.reference ? short(entry.reference) : "Workspace activity"}
-                        </Text>
-                      </View>
-                      <Text style={s.smallMuted}>{date(entry.created_at)}</Text>
-                    </View>
-                  ))}
-                </View>
-              ) : (
-                <Text style={s.body}>Your latest workspace activity will appear here.</Text>
-              )}
-            </>
-          ) : tab === "jobs" ? (
-            <>
-              <Text style={s.title}>
-                Your job desk<Text style={{ color: C.green }}>.</Text>
-              </Text>
-              <View style={s.search}>
-                <Icon name="search" size={18} color={C.muted} />
-                <TextInput
-                  value={search}
-                  onChangeText={setSearch}
-                  style={s.searchInput}
-                  placeholder="Find a job or agent"
-                  placeholderTextColor={C.muted}
-                  accessibilityLabel="Search jobs"
-                />
-                {search.length > 0 && (
-                  <Tap onPress={() => setSearch("")} label="Clear search">
-                    <Icon name="x" size={18} />
-                  </Tap>
-                )}
-              </View>
-              <View style={s.filters}>
-                {["All", "Active", "Finished"].map((f) => (
-                  <Tap
-                    key={f}
-                    onPress={() => setFilter(f)}
-                    style={[s.filter, filter === f && s.filterActive]}
-                  >
-                    <Text style={[s.filterText, filter === f && { color: C.bg }]}>{f}</Text>
-                  </Tap>
-                ))}
-              </View>
-              {jobs.length ? (
-                <View style={s.list}>
-                  {jobs.map((j) => (
-                    <JobRow key={j.id} job={j} open={() => setJob(j)} />
-                  ))}
-                </View>
-              ) : (
-                <Empty
-                  icon="search"
-                  title="A clear desk"
-                  body={
-                    search
-                      ? "No jobs match that search. Try a different title or agent."
-                      : "Jobs in this category will appear here."
-                  }
-                />
-              )}
-            </>
-          ) : tab === "superagents" ? (
-            <>
-              <Text style={s.title}>
-                Your next hire<Text style={{ color: C.green }}>.</Text>
-              </Text>
-              <Text style={s.body}>
-                Ask for work in plain language. Review the proposal before a job draft is created;
-                funding stays in your Liege workspace.
-              </Text>
-              <View style={s.filters}>
-                {(["chat", "requests", "jobs"] as const).map((item) => (
-                  <Tap
-                    key={item}
-                    onPress={() => setSuperAgentTab(item)}
-                    style={[s.filter, superAgentTab === item && s.filterActive]}
-                  >
-                    <Text style={[s.filterText, superAgentTab === item && { color: C.bg }]}>
-                      {item === "chat" ? "Ask" : item === "requests" ? "Requests" : "Jobs"}
-                      {item === "requests" &&
-                      superAgentWorkspace?.proposals.some((entry) => entry.status === "pending")
-                        ? ` ${superAgentWorkspace.proposals.filter((entry) => entry.status === "pending").length}`
-                        : ""}
-                    </Text>
-                  </Tap>
-                ))}
-              </View>
-              {superAgentTab === "chat" ? (
-                <>
-                  <View style={s.saChatCard}>
-                    <View style={s.inline}>
-                      <View style={s.saMark}>
-                        <Icon name="zap" size={17} color={C.green} />
-                      </View>
-                      <View style={s.grow}>
-                        <Text style={s.rowTitle}>Liege Super Agents</Text>
-                        <Text style={s.rowMeta}>Describe the outcome and your budget.</Text>
-                      </View>
-                    </View>
-                    <Text style={[s.body, { marginBottom: 0 }]}>
-                      Try: “Hire Anna to research agent marketplaces. Budget 5 USDG.”
-                    </Text>
-                  </View>
-                  {superAgentReply ? (
-                    <View style={[s.saChatCard, s.saReply]}>
-                      <Text style={s.rowTitle}>Proposal prepared</Text>
-                      <Text style={s.body}>{superAgentReply}</Text>
-                      <Tap onPress={() => setSuperAgentTab("requests")} style={s.webLink}>
-                        <Text style={s.link}>Review proposal</Text>
-                        <Icon name="arrow-right" size={16} color={C.green} />
-                      </Tap>
-                    </View>
-                  ) : null}
-                  <View style={s.saComposer}>
-                    <TextInput
-                      value={superAgentText}
-                      onChangeText={setSuperAgentText}
-                      style={s.saInput}
-                      placeholder="What would you like an agent to do?"
-                      placeholderTextColor={C.dim}
-                      multiline
-                      maxLength={10_000}
-                      accessibilityLabel="Describe work for a Super Agent"
-                    />
-                    <Tap
-                      disabled={!superAgentText.trim() || superAgentBusy}
-                      onPress={() => void createSuperAgentRequest()}
-                      style={s.saSend}
-                      label="Prepare proposal"
-                    >
-                      {superAgentBusy ? (
-                        <ActivityIndicator color={C.bg} size="small" />
-                      ) : (
-                        <Icon name="arrow-up" size={18} color={C.bg} />
-                      )}
-                    </Tap>
-                  </View>
-                  <Text style={s.smallMuted}>
-                    No funds move here. Fund any created job separately.
+                  <View style={s.heroRing} />
+                  <View style={s.heroRingSmall} />
+                  <Image source={logo} style={s.cardLogo} />
+                  <Text style={s.heroNumber}>
+                    {loaded ? String(active.length).padStart(2, "0") : "—"}
                   </Text>
-                  <Section title="Available specialists" />
-                  {superAgentWorkspace?.agents.length ? (
-                    <View style={s.list}>
-                      {superAgentWorkspace.agents.map((agent) => (
-                        <View key={agent.id} style={s.saAgentRow}>
-                          <View style={s.jobIcon}>
-                            <Icon name="cpu" color={C.green} />
-                          </View>
-                          <View style={s.grow}>
-                            <Text style={s.rowTitle}>{agent.name}</Text>
-                            <Text style={s.rowMeta} numberOfLines={2}>
-                              {agent.description || "Discoverable Liege Super Agent"}
-                            </Text>
-                          </View>
-                        </View>
-                      ))}
-                    </View>
-                  ) : (
-                    <Text style={s.body}>Discoverable specialists will appear here.</Text>
-                  )}
-                </>
-              ) : superAgentTab === "requests" ? (
-                <>
-                  {superAgentWorkspace?.proposals.length ? (
-                    superAgentWorkspace.proposals.map((request) => {
-                      const parsed = request.parsed;
-                      const amount = parsed?.budgetAmount ?? parsed?.budgetUsdg;
-                      const asset = (parsed?.settlementAsset || "usdg").toUpperCase();
-                      const pendingRequest = request.status === "pending";
-                      return (
-                        <View key={request.id} style={s.saProposalCard}>
-                          <View style={s.between}>
-                            <Text style={s.eyebrow}>SUPER AGENT PROPOSAL</Text>
-                            <Badge status={request.status} />
-                          </View>
-                          <Text style={[s.cardTitle, { marginTop: 14 }]}>
-                            {request.agent_name || parsed?.agentName || "Agent match"}
-                          </Text>
-                          <Text style={s.body}>{parsed?.request || request.raw_text}</Text>
-                          <View style={s.detailRow}>
-                            <Text style={s.smallMuted}>Requested budget</Text>
-                            <Text style={s.detailValue}>
-                              {amount == null
-                                ? "Not specified"
-                                : `${formatAmount(amount)} ${asset}`}
-                            </Text>
-                          </View>
-                          {pendingRequest ? (
-                            <View style={s.saActions}>
-                              <Button
-                                title="Create job draft"
-                                busy={superAgentDecisionId === request.id}
-                                onPress={() => void decideSuperAgentRequest(request, "approved")}
-                              />
-                              <Button
-                                title="Decline"
-                                secondary
-                                busy={superAgentDecisionId === request.id}
-                                onPress={() => void decideSuperAgentRequest(request, "rejected")}
-                              />
-                            </View>
-                          ) : (
-                            <Text style={s.smallMuted}>Created {date(request.created_at)}</Text>
-                          )}
-                        </View>
-                      );
-                    })
-                  ) : (
-                    <Empty
-                      icon="message-circle"
-                      title="No proposals yet"
-                      body="Describe a task in Ask and matching proposals will appear here for review."
-                    />
-                  )}
-                </>
-              ) : superAgentWorkspace?.jobs.length ? (
-                <View style={s.list}>
-                  {superAgentWorkspace.jobs.map((item) => (
-                    <JobRow key={item.id} job={item} open={() => setJob(item)} />
-                  ))}
-                </View>
-              ) : (
-                <Empty
-                  icon="briefcase"
-                  title="No Super Agent jobs yet"
-                  body="Jobs created from proposals will show their progress here."
-                />
-              )}
-            </>
-          ) : (
-            <>
-              <Text style={s.title}>
-                Your call<Text style={{ color: C.green }}>.</Text>
-              </Text>
-              <View style={s.filters}>
-                {["Pending", "History"].map((label, i) => (
-                  <Tap
-                    key={label}
-                    onPress={() => setHistory(i === 1)}
-                    style={[s.filter, history === (i === 1) && s.filterActive]}
-                  >
-                    <Text style={[s.filterText, history === (i === 1) && { color: C.bg }]}>
-                      {label}
-                      {i === 0 ? `  ${pending.length}` : ""}
-                    </Text>
-                  </Tap>
-                ))}
-              </View>
-              {(history
-                ? data.proposals.filter((p) => p.effective_status !== "pending")
-                : pending
-              ).map((p) => (
-                <Tap key={p.id} onPress={() => setProposal(p)} style={s.proposalCard}>
                   <View style={s.between}>
-                    <View style={s.jobIcon}>
-                      <Icon name="command" color={C.green} />
-                    </View>
-                    <Badge status={p.effective_status} />
-                  </View>
-                  <Text style={[s.cardTitle, { marginTop: 20 }]}>{readable(p.action)}</Text>
-                  <Text style={s.body}>Proposal {short(p.id)}</Text>
-                  <View style={s.proposalFooter}>
-                    <Text style={s.smallMuted}>
-                      {p.effective_status === "pending" ? "Expires" : "Created"}{" "}
-                      {date(p.effective_status === "pending" ? p.expires_at : p.created_at)}
-                    </Text>
-                    <View style={s.inline}>
-                      <Text style={s.link}>Review</Text>
-                      <Icon name="arrow-up-right" size={16} color={C.green} />
+                    <Text style={s.heroLabel}>Active jobs</Text>
+                    <View style={s.heroArrow}>
+                      <Icon name="arrow-up-right" color={C.bg} size={23} />
                     </View>
                   </View>
                 </Tap>
-              ))}
-              {!(history
-                ? data.proposals.some((p) => p.effective_status !== "pending")
-                : pending.length) && (
-                <Empty
-                  icon="check-circle"
-                  title={history ? "A fresh start" : "You’re all caught up"}
-                  body={
-                    history
-                      ? "Your reviewed and expired requests will appear here."
-                      : "Nothing needs your attention right now. New agent requests will land here."
-                  }
-                />
-              )}
-            </>
-          )}
-          <View style={s.endMark}>
-            <View style={s.endLine} />
-            <Image source={logo} style={s.endLogo} />
-            <View style={s.endLine} />
-          </View>
-        </Animated.View>
-      </ScrollView>
-      <SafeAreaView edges={["bottom"]} style={s.dockWrap}>
-        <View style={s.dock}>
-          {(["home", "jobs", "approvals", "superagents"] as Tab[]).map((item, i) => (
-            <Tap
-              key={item}
-              onPress={() => navigate(item)}
-              label={item === "superagents" ? "Super Agents" : readable(item)}
-              style={[s.dockItem, tab === item && s.dockSelected]}
-            >
-              <Icon
-                name={(["home", "briefcase", "shield", "zap"] as IconName[])[i]}
-                color={tab === item ? C.bg : C.muted}
-                size={20}
-              />
-              <Text style={[s.dockLabel, tab === item && { color: C.bg }]}>
-                {item === "superagents" ? "Super Agents" : readable(item)}
-              </Text>
-              {item === "approvals" && pending.length > 0 && (
-                <View style={[s.dockBadge, tab === item && { backgroundColor: C.bg }]}>
-                  <Text style={s.dockBadgeText}>{pending.length}</Text>
+                <View style={s.metricRow}>
+                  <Tap style={s.metric} onPress={() => navigate("approvals")}>
+                    <View style={s.between}>
+                      <Icon name="shield" color={C.green} />
+                      <Text style={s.metricNumber}>{loaded ? pending.length : "—"}</Text>
+                    </View>
+                    <Text style={s.metricLabel}>Awaiting you</Text>
+                  </Tap>
+                  <Tap
+                    style={s.metric}
+                    onPress={() => {
+                      setFilter("Finished");
+                      navigate("jobs");
+                    }}
+                  >
+                    <View style={s.between}>
+                      <Icon name="check-circle" color={C.green} />
+                      <Text style={s.metricNumber}>{loaded ? finished.length : "—"}</Text>
+                    </View>
+                    <Text style={s.metricLabel}>Completed jobs</Text>
+                  </Tap>
                 </View>
-              )}
-              {item === "superagents" &&
-                (superAgentWorkspace?.proposals.filter((request) => request.status === "pending")
-                  .length ?? 0) > 0 && (
+                {pending.length > 0 && (
+                  <Tap style={s.attention} onPress={() => navigate("approvals")}>
+                    <View style={s.attentionIcon}>
+                      <Icon name="inbox" color={C.green} />
+                    </View>
+                    <View style={s.grow}>
+                      <Text style={s.rowTitle}>Your agents are waiting</Text>
+                      <Text style={s.rowMeta}>
+                        {pending.length} request{pending.length === 1 ? "" : "s"} ready for your
+                        review
+                      </Text>
+                    </View>
+                    <Icon name="arrow-up-right" color={C.green} />
+                  </Tap>
+                )}
+                <Section
+                  title="On your radar"
+                  action="All jobs"
+                  onPress={() => {
+                    setFilter("All");
+                    navigate("jobs");
+                  }}
+                />
+                {!loaded ? (
+                  <ActivityIndicator color={C.green} style={{ margin: 30 }} />
+                ) : data.jobs.length ? (
+                  <View style={s.list}>
+                    {data.jobs.slice(0, 3).map((j) => (
+                      <JobRow key={j.id} job={j} open={() => setJob(j)} />
+                    ))}
+                  </View>
+                ) : (
+                  <Empty
+                    icon="briefcase"
+                    title="Room for your next idea"
+                    body="Create a job in your web workspace. You can follow its progress here."
+                  />
+                )}
+                <Section title="Recent activity" />
+                {data.activity.length ? (
+                  <View style={s.list}>
+                    {data.activity.slice(0, 5).map((entry) => (
+                      <View key={entry.id} style={s.activityRow}>
+                        <View style={s.activityDot}>
+                          <Icon name="activity" size={16} color={C.green} />
+                        </View>
+                        <View style={s.grow}>
+                          <Text style={s.rowTitle}>{readable(entry.type)}</Text>
+                          <Text style={s.rowMeta}>
+                            {entry.reference ? short(entry.reference) : "Workspace activity"}
+                          </Text>
+                        </View>
+                        <Text style={s.smallMuted}>{date(entry.created_at)}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={s.body}>Your latest workspace activity will appear here.</Text>
+                )}
+              </>
+            ) : tab === "jobs" ? (
+              <>
+                <Text style={s.title}>
+                  Your job desk<Text style={{ color: C.green }}>.</Text>
+                </Text>
+                <View style={s.search}>
+                  <Icon name="search" size={18} color={C.muted} />
+                  <TextInput
+                    value={search}
+                    onChangeText={setSearch}
+                    style={s.searchInput}
+                    placeholder="Find a job or agent"
+                    placeholderTextColor={C.muted}
+                    accessibilityLabel="Search jobs"
+                  />
+                  {search.length > 0 && (
+                    <Tap onPress={() => setSearch("")} label="Clear search">
+                      <Icon name="x" size={18} />
+                    </Tap>
+                  )}
+                </View>
+                <View style={s.filters}>
+                  {["All", "Active", "Finished"].map((f) => (
+                    <Tap
+                      key={f}
+                      onPress={() => setFilter(f)}
+                      style={[s.filter, filter === f && s.filterActive]}
+                    >
+                      <Text style={[s.filterText, filter === f && { color: C.bg }]}>{f}</Text>
+                    </Tap>
+                  ))}
+                </View>
+                {jobs.length ? (
+                  <View style={s.list}>
+                    {jobs.map((j) => (
+                      <JobRow key={j.id} job={j} open={() => setJob(j)} />
+                    ))}
+                  </View>
+                ) : (
+                  <Empty
+                    icon="search"
+                    title="A clear desk"
+                    body={
+                      search
+                        ? "No jobs match that search. Try a different title or agent."
+                        : "Jobs in this category will appear here."
+                    }
+                  />
+                )}
+              </>
+            ) : tab === "superagents" ? (
+              <>
+                <View style={s.saTabs}>
+                  {(["chat", "requests", "jobs"] as const).map((item) => (
+                    <Tap
+                      key={item}
+                      onPress={() => setSuperAgentTab(item)}
+                      style={[s.saTab, superAgentTab === item && s.saTabActive]}
+                    >
+                      <Text style={[s.saTabText, superAgentTab === item && s.saTabTextActive]}>
+                        {item === "chat" ? "Ask" : item === "requests" ? "Requests" : "Jobs"}
+                        {item === "requests" &&
+                        superAgentWorkspace?.proposals.some((entry) => entry.status === "pending")
+                          ? ` ${superAgentWorkspace.proposals.filter((entry) => entry.status === "pending").length}`
+                          : ""}
+                      </Text>
+                    </Tap>
+                  ))}
+                </View>
+                {superAgentTab === "chat" ? (
+                  <View style={s.saChatScreen}>
+                    {superAgentMessages.length > 0 && (
+                      <View style={s.saNewChatRow}>
+                        <Tap
+                          label="Start a new chat"
+                          onPress={() => {
+                            setSuperAgentMessages([]);
+                            setSuperAgentContext("");
+                            setSuperAgentText("");
+                          }}
+                          style={s.saNewChat}
+                        >
+                          <Icon name="plus" size={17} color={C.muted} />
+                        </Tap>
+                      </View>
+                    )}
+                    {superAgentMessages.length === 0 ? (
+                      <View style={s.saWelcome}>
+                        <Text style={s.saWelcomeTitle}>What would you like{`\n`}to get done?</Text>
+                        <Text style={[s.body, s.centerText, s.saWelcomeCopy]}>
+                          Describe the outcome. I’ll help match it to a specialist and prepare a
+                          proposal for your review.
+                        </Text>
+                        <View style={s.saSuggestions}>
+                          {[
+                            "Research agent marketplaces · 5 USDG",
+                            "Write a launch thread · 5 USDG",
+                            "Build a product landing page · 10 USDG",
+                          ].map((prompt) => (
+                            <Tap
+                              key={prompt}
+                              onPress={() => setSuperAgentText(prompt)}
+                              style={s.saSuggestion}
+                            >
+                              <Icon name="arrow-up-right" size={13} color={C.green} />
+                              <Text style={s.saSuggestionText}>{prompt}</Text>
+                            </Tap>
+                          ))}
+                        </View>
+                      </View>
+                    ) : (
+                      <View style={s.saConversation}>
+                        {superAgentMessages.map((message) => (
+                          <View
+                            key={message.id}
+                            style={[s.saMessageRow, message.role === "user" && s.saMessageUserRow]}
+                          >
+                            <View
+                              style={[
+                                s.saMessageBubble,
+                                message.role === "user" ? s.saUserBubble : s.saAssistantBubble,
+                              ]}
+                            >
+                              <Text style={s.saMessageText}>{message.text}</Text>
+                              {message.actionLabel && (
+                                <Tap
+                                  onPress={() => setSuperAgentTab("requests")}
+                                  style={s.saMessageAction}
+                                >
+                                  <Text style={s.link}>{message.actionLabel}</Text>
+                                  <Icon name="arrow-right" size={15} color={C.green} />
+                                </Tap>
+                              )}
+                            </View>
+                          </View>
+                        ))}
+                        {superAgentBusy && (
+                          <View style={s.inline}>
+                            <ActivityIndicator color={C.green} size="small" />
+                            <Text style={s.smallMuted}>Finding the right specialist…</Text>
+                          </View>
+                        )}
+                      </View>
+                    )}
+                    <View style={s.saChatBottom}>
+                      <View style={s.saComposer}>
+                        <TextInput
+                          value={superAgentText}
+                          onChangeText={setSuperAgentText}
+                          style={s.saInput}
+                          placeholder="Message Liege Super Agents…"
+                          placeholderTextColor={C.dim}
+                          multiline
+                          maxLength={10_000}
+                          accessibilityLabel="Message Liege Super Agents"
+                          onFocus={() => {
+                            setTimeout(
+                              () => workspaceScroll.current?.scrollToEnd({ animated: true }),
+                              250,
+                            );
+                          }}
+                        />
+                        <Tap
+                          disabled={!superAgentText.trim() || superAgentBusy}
+                          onPress={() => void createSuperAgentRequest()}
+                          style={[
+                            s.saSend,
+                            (!superAgentText.trim() || superAgentBusy) && s.saSendDisabled,
+                          ]}
+                          label="Send message"
+                        >
+                          {superAgentBusy ? (
+                            <ActivityIndicator color={C.bg} size="small" />
+                          ) : (
+                            <Icon name="arrow-up" size={18} color={C.bg} />
+                          )}
+                        </Tap>
+                      </View>
+                      <Text style={s.saFootnote}>
+                        Proposals need your approval. Funding and signing stay in Liege.
+                      </Text>
+                    </View>
+                  </View>
+                ) : superAgentTab === "requests" ? (
+                  <>
+                    {superAgentWorkspace?.proposals.length ? (
+                      superAgentWorkspace.proposals.map((request) => {
+                        const parsed = request.parsed;
+                        const amount = parsed?.budgetAmount ?? parsed?.budgetUsdg;
+                        const asset = (parsed?.settlementAsset || "usdg").toUpperCase();
+                        const pendingRequest = request.status === "pending";
+                        return (
+                          <View key={request.id} style={s.saProposalCard}>
+                            <View style={s.between}>
+                              <Text style={s.eyebrow}>SUPER AGENT PROPOSAL</Text>
+                              <Badge status={request.status} />
+                            </View>
+                            <Text style={[s.cardTitle, { marginTop: 14 }]}>
+                              {request.agent_name || parsed?.agentName || "Agent match"}
+                            </Text>
+                            <Text style={s.body}>{parsed?.request || request.raw_text}</Text>
+                            <View style={s.detailRow}>
+                              <Text style={s.smallMuted}>Requested budget</Text>
+                              <Text style={s.detailValue}>
+                                {amount == null
+                                  ? "Not specified"
+                                  : `${formatAmount(amount)} ${asset}`}
+                              </Text>
+                            </View>
+                            {pendingRequest ? (
+                              <View style={s.saActions}>
+                                <Button
+                                  title="Create job draft"
+                                  busy={superAgentDecisionId === request.id}
+                                  onPress={() => void decideSuperAgentRequest(request, "approved")}
+                                />
+                                <Button
+                                  title="Decline"
+                                  secondary
+                                  busy={superAgentDecisionId === request.id}
+                                  onPress={() => void decideSuperAgentRequest(request, "rejected")}
+                                />
+                              </View>
+                            ) : (
+                              <Text style={s.smallMuted}>Created {date(request.created_at)}</Text>
+                            )}
+                          </View>
+                        );
+                      })
+                    ) : (
+                      <Empty
+                        icon="message-circle"
+                        title="No proposals yet"
+                        body="Describe a task in Ask and matching proposals will appear here for review."
+                      />
+                    )}
+                  </>
+                ) : superAgentWorkspace?.jobs.length ? (
+                  <View style={s.list}>
+                    {superAgentWorkspace.jobs.map((item) => (
+                      <JobRow key={item.id} job={item} open={() => setJob(item)} />
+                    ))}
+                  </View>
+                ) : (
+                  <Empty
+                    icon="briefcase"
+                    title="No Super Agent jobs yet"
+                    body="Jobs created from proposals will show their progress here."
+                  />
+                )}
+              </>
+            ) : (
+              <>
+                <Text style={s.title}>
+                  Your call<Text style={{ color: C.green }}>.</Text>
+                </Text>
+                <View style={s.filters}>
+                  {["Pending", "History"].map((label, i) => (
+                    <Tap
+                      key={label}
+                      onPress={() => setHistory(i === 1)}
+                      style={[s.filter, history === (i === 1) && s.filterActive]}
+                    >
+                      <Text style={[s.filterText, history === (i === 1) && { color: C.bg }]}>
+                        {label}
+                        {i === 0 ? `  ${pending.length}` : ""}
+                      </Text>
+                    </Tap>
+                  ))}
+                </View>
+                {(history
+                  ? data.proposals.filter((p) => p.effective_status !== "pending")
+                  : pending
+                ).map((p) => (
+                  <Tap key={p.id} onPress={() => setProposal(p)} style={s.proposalCard}>
+                    <View style={s.between}>
+                      <View style={s.jobIcon}>
+                        <Icon name="command" color={C.green} />
+                      </View>
+                      <Badge status={p.effective_status} />
+                    </View>
+                    <Text style={[s.cardTitle, { marginTop: 20 }]}>{readable(p.action)}</Text>
+                    <Text style={s.body}>Proposal {short(p.id)}</Text>
+                    <View style={s.proposalFooter}>
+                      <Text style={s.smallMuted}>
+                        {p.effective_status === "pending" ? "Expires" : "Created"}{" "}
+                        {date(p.effective_status === "pending" ? p.expires_at : p.created_at)}
+                      </Text>
+                      <View style={s.inline}>
+                        <Text style={s.link}>Review</Text>
+                        <Icon name="arrow-up-right" size={16} color={C.green} />
+                      </View>
+                    </View>
+                  </Tap>
+                ))}
+                {!(history
+                  ? data.proposals.some((p) => p.effective_status !== "pending")
+                  : pending.length) && (
+                  <Empty
+                    icon="check-circle"
+                    title={history ? "A fresh start" : "You’re all caught up"}
+                    body={
+                      history
+                        ? "Your reviewed and expired requests will appear here."
+                        : "Nothing needs your attention right now. New agent requests will land here."
+                    }
+                  />
+                )}
+              </>
+            )}
+            <View style={s.endMark}>
+              <View style={s.endLine} />
+              <Image source={logo} style={s.endLogo} />
+              <View style={s.endLine} />
+            </View>
+          </Animated.View>
+        </ScrollView>
+        <SafeAreaView edges={["bottom"]} style={s.dockWrap}>
+          <View style={s.dock}>
+            {(["home", "jobs", "approvals", "superagents"] as Tab[]).map((item, i) => (
+              <Tap
+                key={item}
+                onPress={() => navigate(item)}
+                label={item === "superagents" ? "Super Agents" : readable(item)}
+                style={[s.dockItem, tab === item && s.dockSelected]}
+              >
+                <Icon
+                  name={(["home", "briefcase", "shield", "zap"] as IconName[])[i]}
+                  color={tab === item ? C.bg : C.muted}
+                  size={20}
+                />
+                <Text style={[s.dockLabel, tab === item && { color: C.bg }]}>
+                  {item === "superagents" ? "Super Agents" : readable(item)}
+                </Text>
+                {item === "approvals" && pending.length > 0 && (
                   <View style={[s.dockBadge, tab === item && { backgroundColor: C.bg }]}>
-                    <Text style={s.dockBadgeText}>
-                      {
-                        superAgentWorkspace!.proposals.filter(
-                          (request) => request.status === "pending",
-                        ).length
-                      }
-                    </Text>
+                    <Text style={s.dockBadgeText}>{pending.length}</Text>
                   </View>
                 )}
-            </Tap>
-          ))}
-        </View>
-      </SafeAreaView>
+                {item === "superagents" &&
+                  (superAgentWorkspace?.proposals.filter((request) => request.status === "pending")
+                    .length ?? 0) > 0 && (
+                    <View style={[s.dockBadge, tab === item && { backgroundColor: C.bg }]}>
+                      <Text style={s.dockBadgeText}>
+                        {
+                          superAgentWorkspace!.proposals.filter(
+                            (request) => request.status === "pending",
+                          ).length
+                        }
+                      </Text>
+                    </View>
+                  )}
+              </Tap>
+            ))}
+          </View>
+        </SafeAreaView>
+      </KeyboardAvoidingView>
       <Sheet visible={!!job} close={() => setJob(null)}>
         {job && (
           <>

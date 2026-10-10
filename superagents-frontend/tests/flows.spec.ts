@@ -51,6 +51,44 @@ test("chat ignores greetings, refreshes proposals, and opens a real agent safely
   expect(creations).toBe(1);
 });
 
+test("chat answers availability questions from the live discoverable agent catalog", async ({
+  page,
+}) => {
+  let parseCalls = 0;
+  await page.addInitScript(() => localStorage.setItem("liege-session-token", "test-session"));
+  await page.route("**/v1/super-agents/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/dashboard"))
+      return route.fulfill({
+        json: {
+          data: {
+            proposals: [],
+            agents: [
+              {
+                id: "anna-id",
+                name: "Anna by LiegeAgents",
+                category: "Research",
+                description: "Cited market and competitor research.",
+                capabilities: ["market research", "fact checking"],
+              },
+            ],
+          },
+        },
+      });
+    if (path.endsWith("/intents/parse")) parseCalls++;
+    return route.fulfill({ status: 404, json: {} });
+  });
+  await page.goto("/app");
+  const input = page.getByRole("textbox", { name: "Ask Liege to hire an agent" });
+  await input.fill("What agents are available for research?");
+  await page.getByRole("button", { name: "Send request" }).click();
+  await expect(page.locator(".chat-messages")).toContainText("Anna by LiegeAgents");
+  await expect(page.locator(".chat-messages")).toContainText(
+    "Cited market and competitor research",
+  );
+  expect(parseCalls).toBe(0);
+});
+
 test("landing renders the flagship team and accessible details without overflow", async ({
   page,
 }) => {
