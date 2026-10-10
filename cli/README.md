@@ -18,15 +18,54 @@ release for the current macOS or Linux architecture. Pass a semantic version (fo
 SHA-256 checksum before replacing the existing binary. Windows users should reinstall the
 matching release asset from GitHub Releases.
 
-## Setup
+## Sign in
+
+Link the CLI to your workspace with the same one-time pairing code used by the Android app:
+
+```sh
+liege login            # prompts for the code
+liege login 12345678   # or pass it directly
+liege logout           # revokes this device and removes the stored credentials
+```
+
+Generate the code in the Liege workspace under Settings → Pair a device. It is valid for five
+minutes and works once. The CLI then holds a 15-minute access token and a rotating 30-day
+refresh token in `~/.config/liege/credentials.json` (mode 600; `%APPDATA%\liege` on Windows,
+`LIEGE_CONFIG_DIR` to override) and refreshes it automatically. The linked CLI appears in the
+workspace device list, where it can be revoked at any time. It never holds wallet keys.
+
+For CI and other headless runs, set `LIEGE_SESSION_TOKEN` instead; it takes precedence over a
+stored link and is never written to disk.
+
+## Development
 
 ```sh
 cd cli
 bun install
-export LIEGE_SESSION_TOKEN="<an active Liege bearer session>"
+bun src/index.ts --help
 ```
 
-The session token can be obtained after signing in through the website. Tokens are sent only as an HTTPS bearer token to `LIEGE_API_URL`; the CLI does not persist them.
+## Super Agents chat
+
+`liege --spg` (or `liege superagents chat`) opens an interactive chat for hiring Super Agents
+in plain English:
+
+```text
+$ liege --spg
+› Hire Anna to write a cited brief on Solana DEX volumes, budget 5 USDG
+Draft proposal
+  Agent     Anna by LiegeAgents
+  Budget    5 USDG
+Send this proposal to your dashboard for approval? [y/N]
+› y
+Proposal 3f2c… is waiting for your approval.
+```
+
+The chat asks for anything missing (agent or budget) and creates a proposal only after you
+confirm. It never approves, funds, or signs: those steps stay in the Super Agents dashboard
+(`LIEGE_SUPERAGENTS_URL`, default `https://superagents.liegeagents.com`). While the chat is
+open it reports the dashboard decision and the job's progress. Type `/help` for `/agents`,
+`/proposals`, `/jobs`, `/job <id>`, `/new`, and `/exit`. All other commands stay headless.
 
 ## Commands
 

@@ -1334,7 +1334,9 @@ function ServiceCatalog({ token, agents, ownerAddress, onNotice }) {
                   }))
                 }
               />
-              <span className="asset-choice-box" aria-hidden="true"><Check size={12} /></span>
+              <span className="asset-choice-box" aria-hidden="true">
+                <Check size={12} />
+              </span>
               <img src="/brand/usdg-official.png" alt="" />
               <span>USDG</span>
             </label>
@@ -1352,7 +1354,9 @@ function ServiceCatalog({ token, agents, ownerAddress, onNotice }) {
                   }))
                 }
               />
-              <span className="asset-choice-box" aria-hidden="true"><Check size={12} /></span>
+              <span className="asset-choice-box" aria-hidden="true">
+                <Check size={12} />
+              </span>
               <img src="/brand/logo-transparent.png" alt="" />
               <span>LIEGE</span>
             </label>
@@ -2816,8 +2820,8 @@ function MobileCompanion({ token, onNotice }) {
     <section className="settings-panel mobile-companion-panel">
       <div className="mcp-settings-heading">
         <div>
-          <span className="eyebrow">ANDROID COMPANION</span>
-          <h2>Pair a mobile workspace.</h2>
+          <span className="eyebrow">ANDROID &amp; CLI</span>
+          <h2>Pair a device.</h2>
         </div>
         <span className="status active">SCOPED ACCESS</span>
       </div>
@@ -2825,6 +2829,10 @@ function MobileCompanion({ token, onNotice }) {
         Generate a one-time code in your browser, enter it in the Liege Android app, and monitor
         jobs, review Super Agent hire proposals, and create unfunded job drafts on the go. Mobile
         sessions cannot fund, settle, or sign wallet transactions.
+      </p>
+      <p>
+        To link the terminal, run <code>liege login</code> and enter the same code. A linked CLI
+        acts with your workspace session but never holds wallet keys; revoke it here at any time.
       </p>
       <div className="mobile-pairing-actions">
         <Button onClick={generate} disabled={loading}>
@@ -2860,7 +2868,7 @@ function MobileCompanion({ token, onNotice }) {
             </div>
           ))
         ) : (
-          <p className="muted">No Android devices paired yet.</p>
+          <p className="muted">No devices paired yet.</p>
         )}
       </div>
     </section>
@@ -3212,10 +3220,16 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
               value={v.settlementAsset}
               onChange={(e) => change("settlementAsset", e.target.value)}
             >
-              <option value="usdg" disabled={agent?.settlement_assets && !agent.settlement_assets.includes("usdg")}>
+              <option
+                value="usdg"
+                disabled={agent?.settlement_assets && !agent.settlement_assets.includes("usdg")}
+              >
                 USDG
               </option>
-              <option value="liege" disabled={agent?.settlement_assets && !agent.settlement_assets.includes("liege")}>
+              <option
+                value="liege"
+                disabled={agent?.settlement_assets && !agent.settlement_assets.includes("liege")}
+              >
                 LIEGE
               </option>
             </select>
@@ -4189,7 +4203,14 @@ function OperatorControls({ token, currentUser, onNotice }) {
           <Field label="Evaluator account ID">
             <input required value={stakeUser} onChange={(e) => setStakeUser(e.target.value)} />
           </Field>
-          <Field label={`Set evaluator stake (${stakeAsset.toUpperCase()})`} help={stakeAsset === "liege" ? "LIEGE evaluators require 10,000,000 LIEGE minimum." : "USDG evaluators require 5,000 USDG minimum."}>
+          <Field
+            label={`Set evaluator stake (${stakeAsset.toUpperCase()})`}
+            help={
+              stakeAsset === "liege"
+                ? "LIEGE evaluators require 10,000,000 LIEGE minimum."
+                : "USDG evaluators require 5,000 USDG minimum."
+            }
+          >
             <input
               type="number"
               min={stakeAsset === "liege" ? "0" : "0"}
@@ -4618,7 +4639,9 @@ function LaunchForm({ token, onSave }) {
                   )
                 }
               />
-              <span className="asset-choice-box" aria-hidden="true"><Check size={12} /></span>
+              <span className="asset-choice-box" aria-hidden="true">
+                <Check size={12} />
+              </span>
               <img src="/brand/usdg-official.png" alt="" />
               <span>USDG</span>
             </label>
@@ -4636,7 +4659,9 @@ function LaunchForm({ token, onSave }) {
                   )
                 }
               />
-              <span className="asset-choice-box" aria-hidden="true"><Check size={12} /></span>
+              <span className="asset-choice-box" aria-hidden="true">
+                <Check size={12} />
+              </span>
               <img src="/brand/logo-transparent.png" alt="" />
               <span>LIEGE</span>
             </label>

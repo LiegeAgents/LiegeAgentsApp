@@ -17,6 +17,8 @@ printf '%s\n' "$help" | grep -Fq "liege account status <agent-id>"
 printf '%s\n' "$help" | grep -Fq "liege account pause <agent-id> [--reason <text>]"
 printf '%s\n' "$help" | grep -Fq "liege services list"
 printf '%s\n' "$help" | grep -Fq "liege services create"
+printf '%s\n' "$help" | grep -Fq "liege --spg"
+printf '%s\n' "$help" | grep -Fq "liege login"
 sh -n install.sh
 
 echo "CLI packaging smoke test passed."

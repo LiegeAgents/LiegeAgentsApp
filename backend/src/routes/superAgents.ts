@@ -15,6 +15,7 @@ import { ApiError, asyncRoute } from "../http.js";
 export const superAgentsRouter = Router();
 
 const textInput = z.object({ text: z.string().trim().min(1).max(10_000) });
+const intentInput = textInput.extend({ source: z.enum(["dashboard", "cli"]).default("dashboard") });
 const decisionInput = z.object({ decision: z.enum(["approved", "rejected"]) });
 const claimInput = z.object({ claimToken: z.string().min(24).max(200) });
 const intentShape = z.object({
@@ -602,7 +603,7 @@ superAgentsRouter.post(
   "/intents",
   requireSessionOrMobileAuth("mobile:approve"),
   asyncRoute(async (request, response) => {
-    const input = textInput.parse(request.body);
+    const input = intentInput.parse(request.body);
     const parsed = await parseSuperAgentIntent(input.text);
     const asset = parsed.settlementAsset;
     const budget = intentAmount(parsed);
@@ -623,13 +624,14 @@ superAgentsRouter.post(
       );
     }
     const result = await db.query(
-      `INSERT INTO superagent_intents (user_id,raw_text,parsed,agent_id,status,source) VALUES ($1,$2,$3,$4,$5,'dashboard') RETURNING id,raw_text,parsed,agent_id,status,expires_at,created_at`,
+      `INSERT INTO superagent_intents (user_id,raw_text,parsed,agent_id,status,source) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id,raw_text,parsed,agent_id,status,expires_at,created_at`,
       [
         request.auth!.userId,
         input.text,
         parsed,
         agent?.id ?? null,
         agent ? "pending" : "unmatched",
+        input.source,
       ],
     );
     await audit(db, {
@@ -638,7 +640,7 @@ superAgentsRouter.post(
       targetType: "superagent_intent",
       targetId: result.rows[0].id,
       requestId: request.requestId,
-      metadata: { source: "dashboard", matched: Boolean(agent) },
+      metadata: { source: input.source, matched: Boolean(agent) },
     });
     response.status(201).json({ data: { ...result.rows[0], agent: agent ?? null } });
   }),
@@ -649,7 +651,10 @@ superAgentsRouter.get(
   requireSessionOrMobileAuth("mobile:read"),
   asyncRoute(async (request, response) => {
     const result = await db.query(
-      `SELECT i.id,i.raw_text,i.parsed,i.status,i.expires_at,i.created_at,i.decided_at,a.id AS agent_id,a.name AS agent_name FROM superagent_intents i LEFT JOIN agents a ON a.id=i.agent_id WHERE i.user_id=$1 ORDER BY i.created_at DESC LIMIT 100`,
+      `SELECT i.id,i.raw_text,i.parsed,i.status,i.source,i.expires_at,i.created_at,i.decided_at,a.id AS agent_id,a.name AS agent_name,j.id AS job_id,j.status AS job_status
+       FROM superagent_intents i LEFT JOIN agents a ON a.id=i.agent_id
+       LEFT JOIN jobs j ON j.client_id=i.user_id AND j.strategy_policy->>'intentId'=i.id::text
+       WHERE i.user_id=$1 ORDER BY i.created_at DESC LIMIT 100`,
       [request.auth!.userId],
     );
     response.json({ data: result.rows });

@@ -69,7 +69,7 @@ const latestRelease = async () => {
 
 const pairingInput = z.object({
   name: z.string().trim().min(1).max(80).default("Android device"),
-  platform: z.literal("android").default("android"),
+  platform: z.enum(["android", "cli"]).default("android"),
   appVersion: z.string().trim().max(40).optional(),
 });
 const codeInput = z.object({
@@ -78,15 +78,25 @@ const codeInput = z.object({
 });
 const refreshInput = z.object({ refreshToken: z.string().min(32).max(256) });
 
-const issueTokens = async (client: { query: Function }, deviceId: string, userId: string) => {
+// CLI devices act as an operator session (see requireAuth); Android keeps the narrower
+// companion scopes.
+const scopesFor = (platform: string) =>
+  platform === "cli" ? ["cli:operator"] : ["mobile:read", "mobile:approve"];
+
+const issueTokens = async (
+  client: { query: Function },
+  deviceId: string,
+  userId: string,
+  scopes: string[],
+) => {
   const accessToken = randomBytes(32).toString("base64url");
   const refreshToken = randomBytes(48).toString("base64url");
   const accessExpiresAt = new Date(Date.now() + 15 * 60_000);
   const refreshExpiresAt = new Date(Date.now() + 30 * 86_400_000);
   await client.query(
     `INSERT INTO mobile_sessions
-      (device_id, user_id, access_token_hash, refresh_token_hash, access_expires_at, refresh_expires_at)
-     VALUES ($1,$2,$3,$4,$5,$6)`,
+      (device_id, user_id, access_token_hash, refresh_token_hash, access_expires_at, refresh_expires_at, scopes)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
     [
       deviceId,
       userId,
@@ -94,6 +104,7 @@ const issueTokens = async (client: { query: Function }, deviceId: string, userId
       hashSessionToken(refreshToken),
       accessExpiresAt,
       refreshExpiresAt,
+      scopes,
     ],
   );
   return {
@@ -167,7 +178,12 @@ mobileRouter.post(
          VALUES ($1,$2,$3,$4,now()) RETURNING id`,
         [pairing.rows[0].user_id, input.name, input.platform, input.appVersion ?? null],
       );
-      const tokens = await issueTokens(client, device.rows[0].id, pairing.rows[0].user_id);
+      const tokens = await issueTokens(
+        client,
+        device.rows[0].id,
+        pairing.rows[0].user_id,
+        scopesFor(input.platform),
+      );
       await audit(client, {
         actorId: pairing.rows[0].user_id,
         action: "mobile.device_paired",
@@ -197,8 +213,13 @@ mobileRouter.post(
     const client = await db.connect();
     try {
       await client.query("BEGIN");
-      const result = await client.query<{ id: string; device_id: string; user_id: string }>(
-        `SELECT s.id, s.device_id, s.user_id FROM mobile_sessions s
+      const result = await client.query<{
+        id: string;
+        device_id: string;
+        user_id: string;
+        scopes: string[];
+      }>(
+        `SELECT s.id, s.device_id, s.user_id, s.scopes FROM mobile_sessions s
          JOIN mobile_devices d ON d.id = s.device_id
          WHERE s.refresh_token_hash = $1 AND s.revoked_at IS NULL
            AND s.refresh_expires_at > now() AND d.revoked_at IS NULL FOR UPDATE`,
@@ -213,7 +234,12 @@ mobileRouter.post(
       await client.query("UPDATE mobile_sessions SET revoked_at = now() WHERE id = $1", [
         result.rows[0].id,
       ]);
-      const tokens = await issueTokens(client, result.rows[0].device_id, result.rows[0].user_id);
+      const tokens = await issueTokens(
+        client,
+        result.rows[0].device_id,
+        result.rows[0].user_id,
+        result.rows[0].scopes,
+      );
       await client.query("COMMIT");
       response.json({ data: { deviceId: result.rows[0].device_id, ...tokens } });
     } catch (error) {

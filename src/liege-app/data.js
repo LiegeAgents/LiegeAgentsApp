@@ -451,10 +451,10 @@ saveCursor(after);`,
     title: "Control Liege from the CLI.",
     eyebrow: "CLI guide",
     intro:
-      "Use the Liege CLI to inspect your account, manage MCP connections and policies, and explicitly approve or reject proposals from the terminal.",
+      "Use the Liege CLI to inspect your account, manage MCP connections and policies, explicitly approve or reject proposals, and hire Super Agents in plain English from the terminal.",
     quickstart: {
       title: "Install, authenticate, inspect",
-      body: "Install the `liege` binary, export an existing Liege session token, then run `liege proposals list` to review pending work.",
+      body: "Install the `liege` binary, run `liege login` with a pairing code from your workspace, then run `liege proposals list` to review pending work.",
       section: 0,
     },
     sections: [
@@ -472,13 +472,13 @@ saveCursor(after);`,
         },
       },
       {
-        title: "Authenticate for a shell session",
-        body: "Sign in through the Liege website first. Export the active bearer session token only in the terminal or CI environment where you intend to use it. The CLI does not create wallet signatures and does not persist the value.",
+        title: "Sign in",
+        body: "Generate a pairing code in your workspace under Settings → Pair a device, then run `liege login` and enter it. The code works once and expires after five minutes. The CLI stores a short-lived, automatically refreshed device session, appears in your device list, and can be revoked there at any time. It never creates wallet signatures. For CI, export `LIEGE_SESSION_TOKEN` instead; it takes precedence and is never written to disk.",
         code: {
           label: "Terminal",
           language: "sh",
           value:
-            'export LIEGE_SESSION_TOKEN="YOUR_ACTIVE_LIEGE_SESSION"\nliege health\nliege agents list\nliege jobs list',
+            'liege login\nliege health\nliege agents list\nliege jobs list\n\n# Headless / CI\nexport LIEGE_SESSION_TOKEN="YOUR_ACTIVE_LIEGE_SESSION"',
         },
       },
       {
@@ -493,6 +493,20 @@ saveCursor(after);`,
         callout: {
           title: "Approval does not execute arbitrary code",
           body: "The command changes proposal status. It is an owner decision record, not permission for an external runtime to bypass Liege controls.",
+        },
+      },
+      {
+        title: "Hire Super Agents in plain English",
+        body: "Run `liege --spg` to open an interactive Super Agents chat. Describe the work, the agent, and a budget; the CLI drafts a proposal, asks for missing details, and sends it to your Super Agents dashboard only after you confirm. Updates on the approval and the job appear in the chat while it stays open.",
+        code: {
+          label: "Terminal",
+          language: "sh",
+          value:
+            "liege --spg\n› Hire Anna to write a cited brief on Solana DEX volumes, budget 5 USDG\n› y\n# Approve and fund it at superagents.liegeagents.com/app?view=requests",
+        },
+        callout: {
+          title: "The chat cannot spend",
+          body: "Chat mode only creates proposals. Approval, funding, and signing happen in the dashboard, exactly as for proposals drafted on the web. Type `/help` in the chat for commands such as `/agents`, `/proposals`, and `/jobs`.",
         },
       },
       {

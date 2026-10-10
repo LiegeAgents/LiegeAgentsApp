@@ -2,8 +2,16 @@
 
 import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import { createInterface } from "node:readline/promises";
+import {
+  clearCredentials,
+  credentialsPath,
+  linkedAccessToken,
+  loadCredentials,
+  saveCredentials,
+} from "./credentials.js";
 
 export type Json = Record<string, unknown>;
 
@@ -19,11 +27,15 @@ export function usage(): never {
   console.log(`Liege operator CLI
 
 Usage:
+  liege --spg
+  liege login [<pairing-code>] [--name <device-name>]
+  liege logout
   liege health
   liege upgrade [latest|<version>]
   liege agents list
   liege agents reputation <slug>
   liege agents get <slug>
+  liege superagents chat
   liege superagents dashboard
   liege superagents enrollments
   liege superagents enroll <agent-id> <service-id> <webhook-id> --assets usdg,liege
@@ -73,21 +85,33 @@ Usage:
 
 Environment:
   LIEGE_API_URL       API origin (default: https://api.liegeagents.com)
-  LIEGE_SESSION_TOKEN Existing Liege bearer session token
+  LIEGE_SESSION_TOKEN Existing Liege bearer session token (overrides \`liege login\`)
+  LIEGE_SUPERAGENTS_URL Super Agents dashboard (default: https://superagents.liegeagents.com)
 `);
   process.exit(0);
 }
 
+export const NOT_SIGNED_IN =
+  "Not signed in. Run `liege login` with a pairing code from your Liege workspace, or set LIEGE_SESSION_TOKEN.";
+
 export async function request(path: string, init: RequestInit = {}, authenticated = true) {
-  const token = getSessionToken();
-  if (authenticated && !token) {
-    throw new Error("LIEGE_SESSION_TOKEN is required for this command.");
+  const envToken = getSessionToken();
+  // Linked device tokens are only sent (and refreshed) for commands that require sign-in.
+  let token = envToken ?? (authenticated ? await linkedAccessToken(getApiUrl()) : undefined);
+  if (authenticated && !token) throw new Error(NOT_SIGNED_IN);
+  const send = () => {
+    const headers = new Headers(init.headers);
+    headers.set("accept", "application/json");
+    if (init.body) headers.set("content-type", "application/json");
+    if (token) headers.set("authorization", `Bearer ${token}`);
+    return fetch(`${getApiUrl()}${path}`, { ...init, headers });
+  };
+  let response = await send();
+  if (response.status === 401 && authenticated && token && !envToken) {
+    // The linked access token may have been revoked or expired early; refresh once.
+    token = await linkedAccessToken(getApiUrl(), true);
+    response = await send();
   }
-  const headers = new Headers(init.headers);
-  headers.set("accept", "application/json");
-  if (init.body) headers.set("content-type", "application/json");
-  if (token) headers.set("authorization", `Bearer ${token}`);
-  const response = await fetch(`${getApiUrl()}${path}`, { ...init, headers });
   const body = response.status === 204 ? null : ((await response.json()) as Json);
   if (!response.ok) {
     const details = (body?.error as Json | undefined) ?? {};
@@ -146,6 +170,63 @@ export async function upgrade(version = "latest") {
     await rm(directory, { recursive: true, force: true }).catch(() => undefined);
   }
   return { upgraded: true, version: requestedVersion };
+}
+
+export async function login(code?: string, name?: string) {
+  let pairingCode = code?.trim();
+  if (!pairingCode) {
+    if (!process.stdin.isTTY) throw new Error("Pass the pairing code: liege login <8-digit-code>.");
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    try {
+      pairingCode = (
+        await rl.question(
+          "Generate a pairing code in your Liege workspace (Settings → Pair a device), then enter it: ",
+        )
+      ).trim();
+    } finally {
+      rl.close();
+    }
+  }
+  pairingCode = pairingCode.replace(/[\s-]/g, "");
+  if (!/^\d{8}$/.test(pairingCode)) throw new Error("The pairing code must contain 8 digits.");
+  const apiUrl = getApiUrl();
+  const paired = (await request(
+    "/v1/mobile/pair",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        code: pairingCode,
+        platform: "cli",
+        name: (name?.trim() || `CLI on ${hostname()}`).slice(0, 80),
+      }),
+    },
+    false,
+  )) as Json;
+  await saveCredentials({
+    apiUrl,
+    deviceId: String(paired.deviceId),
+    accessToken: String(paired.accessToken),
+    refreshToken: String(paired.refreshToken),
+    accessExpiresAt: String(paired.accessExpiresAt),
+    refreshExpiresAt: String(paired.refreshExpiresAt),
+  });
+  return { linked: true, deviceId: paired.deviceId, apiUrl, credentials: credentialsPath() };
+}
+
+export async function logout() {
+  const stored = await loadCredentials(getApiUrl());
+  let revoked = false;
+  if (stored && !getSessionToken()) {
+    // Revoke the device server-side so the stored refresh token stops working everywhere.
+    revoked = await request(`/v1/mobile/devices/${encodeURIComponent(stored.deviceId)}`, {
+      method: "DELETE",
+    }).then(
+      () => true,
+      () => false,
+    );
+  }
+  await clearCredentials();
+  return { loggedOut: true, revoked };
 }
 
 export function parseFlags(args: string[]): {
@@ -227,6 +308,8 @@ export async function execute(args: string[]): Promise<unknown> {
   if (!resource || resource === "--help" || resource === "-h" || flags.help === "true") usage();
 
   if (resource === "health") return request("/health", {}, false);
+  if (resource === "login") return login(action ?? flags.code, flags.name);
+  if (resource === "logout") return logout();
   if (resource === "upgrade") return upgrade(id ?? "latest");
   if (resource === "agents" && action === "list") return request("/v1/agents");
   if (resource === "agents" && (action === "reputation" || action === "audit") && id)
@@ -586,7 +669,15 @@ export async function execute(args: string[]): Promise<unknown> {
   usage();
 }
 
+export const isChatInvocation = (args: string[]) =>
+  args.includes("--spg") ||
+  ((args[0] === "superagents" || args[0] === "super-agents") && args[1] === "chat");
+
 async function main(args: string[]) {
+  if (isChatInvocation(args)) {
+    const { startChat } = await import("./chat.js");
+    return startChat();
+  }
   const result = await execute(args);
   if (result !== undefined) {
     print(result);

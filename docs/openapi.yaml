@@ -284,7 +284,7 @@ paths:
   /v1/mobile/pair:
     post:
       operationId: pairMobileDevice
-      summary: Exchange an eight-digit pairing code for a scoped mobile session.
+      summary: Exchange an eight-digit pairing code for a scoped Android or CLI device session.
       requestBody:
         required: true
         content:
@@ -295,7 +295,7 @@ paths:
               properties:
                 code: { type: string, pattern: "^[0-9]{8}$" }
                 name: { type: string }
-                platform: { const: android }
+                platform: { type: string, enum: [android, cli] }
                 appVersion: { type: string }
       responses:
         "201":

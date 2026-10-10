@@ -163,12 +163,25 @@ export async function requireAuth(request: Request, _response: Response, next: N
        WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > now()`,
       [hashSessionToken(bearer)],
     );
-    if (!session.rowCount)
-      throw new ApiError(401, "invalid_session", "This session is invalid or expired.");
-    request.auth = {
-      userId: session.rows[0].user_id,
-      walletAddress: session.rows[0].wallet_address,
-    };
+    // A CLI linked with a workspace pairing code holds a short-lived device token in place
+    // of a dashboard session; it is revocable from the workspace device list.
+    const cli = session.rowCount
+      ? null
+      : await db.query<{ user_id: string; wallet_address: string; device_id: string }>(
+          `SELECT s.user_id, u.wallet_address, s.device_id
+           FROM mobile_sessions s JOIN mobile_devices d ON d.id = s.device_id
+           JOIN users u ON u.id = s.user_id
+           WHERE s.access_token_hash = $1 AND s.revoked_at IS NULL AND s.access_expires_at > now()
+             AND d.revoked_at IS NULL AND 'cli:operator' = ANY(s.scopes)`,
+          [hashSessionToken(bearer)],
+        );
+    const row = session.rows[0] ?? cli?.rows[0];
+    if (!row) throw new ApiError(401, "invalid_session", "This session is invalid or expired.");
+    if (cli?.rowCount)
+      await db.query("UPDATE mobile_devices SET last_seen_at = now() WHERE id = $1", [
+        cli.rows[0].device_id,
+      ]);
+    request.auth = { userId: row.user_id, walletAddress: row.wallet_address };
     next();
   } catch (error) {
     next(error);
@@ -258,7 +271,8 @@ export function requireSessionOrMobileAuth(mobileScope: "mobile:read" | "mobile:
       if (!mobile.rowCount)
         throw new ApiError(401, "invalid_session", "This session is invalid or expired.");
       const scopes = mobile.rows[0].scopes ?? [];
-      if (!scopes.includes(mobileScope))
+      // A linked CLI already acts as an operator session (see requireAuth).
+      if (!scopes.includes(mobileScope) && !scopes.includes("cli:operator"))
         throw new ApiError(
           403,
           "mobile_scope_required",
