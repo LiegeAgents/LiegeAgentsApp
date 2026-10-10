@@ -218,7 +218,11 @@ export async function requireMobileAuth(request: Request, _response: Response, n
 
 /** Accept regular Liege sessions and explicitly scoped companion sessions on mobile-safe routes. */
 export function requireSessionOrMobileAuth(mobileScope: "mobile:read" | "mobile:approve") {
-  return async (request: Request, _response: Response, next: NextFunction) => {
+  return async function requireSessionOrMobileAuthMiddleware(
+    request: Request,
+    _response: Response,
+    next: NextFunction,
+  ) {
     try {
       if (request.header("x-liege-runtime-token") === "1")
         return requireRuntimeAuth(request, _response, next);

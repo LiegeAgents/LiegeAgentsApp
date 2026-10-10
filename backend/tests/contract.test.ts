@@ -105,7 +105,10 @@ function implementedRoutes() {
   const collect = (stack: Layer[], prefix: string) => {
     const guardedRouter = stack.some(
       (layer) =>
-        !layer.route && (layer.handle === requireAuth || layer.handle === requireMobileAuth),
+        !layer.route &&
+        (layer.handle === requireAuth ||
+          layer.handle === requireMobileAuth ||
+          (layer.handle as { name?: string }).name === "requireSessionOrMobileAuthMiddleware"),
     );
     for (const layer of stack)
       if (layer.route) {
@@ -116,7 +119,10 @@ function implementedRoutes() {
         const authenticated =
           guardedRouter ||
           layer.route.stack.some(
-            (inner) => inner.handle === requireAuth || inner.handle === requireMobileAuth,
+            (inner) =>
+              inner.handle === requireAuth ||
+              inner.handle === requireMobileAuth ||
+              (inner.handle as { name?: string }).name === "requireSessionOrMobileAuthMiddleware",
           );
         for (const method of Object.keys(layer.route.methods))
           routes.push({ operation: `${method.toUpperCase()} ${path}`, path, authenticated });
