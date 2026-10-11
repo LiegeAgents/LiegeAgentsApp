@@ -19,7 +19,7 @@ npm run test:e2e
 
 - `/`: flagship lineup, agent details, how it works, builders, and Liege footer.
 - `/auth`: four-step preview of X identity, Liege wallet, permissions, and completion.
-- `/app`: sample dashboard. `?view=requests`, `agents`, `activity`, and `settings` deep-link to sections.
+- `/app`: sample dashboard. `?view=requests`, `recurring`, `agents`, `activity`, and `settings` deep-link to sections. `recurring` approves capped, repeating jobs (daily, weekly, monthly) and lets you pause or cancel them.
 
 The production build uses a same-origin `/api/*` proxy to `api.liegeagents.com` (the edge function `api/[...path].js`). Set `LIEGE_PROXY_SECRET` on the Vercel project to the API's value so each visitor gets their own rate-limit budget.
 Onboarding performs X OAuth first, then one Liege wallet SIWE signature, followed by

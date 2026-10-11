@@ -19,6 +19,9 @@ const env = z
     // Shared with the Vercel proxies in front of the API. A request carrying it may name the
     // end user's IP for rate limiting; without it every proxied user shares one budget.
     LIEGE_PROXY_SECRET: z.string().min(32).optional(),
+    // How often the API looks for due recurring Super Agent jobs; 0 disables the in-process
+    // scheduler (POST /v1/cron/run-schedules still works).
+    SUPERAGENT_SCHEDULES_INTERVAL_MS: z.coerce.number().int().min(0).default(60_000),
     DATABASE_URL: z.string().url(),
     RHC_ID: z.coerce.number().int().positive().default(4663),
     RHC_RPC_URL: z.string().url(),

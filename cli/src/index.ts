@@ -19,7 +19,7 @@ export const getApiUrl = () =>
   (process.env.LIEGE_API_URL ?? "https://api.liegeagents.com").replace(/\/$/, "");
 export const getSessionToken = () => process.env.LIEGE_SESSION_TOKEN;
 
-const BOOLEAN_FLAGS = new Set(["ap2", "help", "h"]);
+const BOOLEAN_FLAGS = new Set(["ap2", "help", "h", "auto-fund"]);
 const INSTALLER_URL =
   "https://raw.githubusercontent.com/LiegeAgents/LiegeAgentsApp/main/cli/install.sh";
 
@@ -44,6 +44,10 @@ Usage:
   liege superagents runtime-token create
   liege superagents runtime-token list
   liege superagents runtime-token revoke <token-id>
+  liege superagents schedules list
+  liege superagents schedules get <schedule-id>
+  liege superagents schedules create --agent-id <id> --request <text> --budget <n> --cadence <daily|weekly|monthly> --cap <n> [--max-runs <n>] [--auto-fund] [--asset usdg|liege] [--start <iso-time>]
+  liege superagents schedules pause|resume|cancel <schedule-id>
   liege jobs list [--status <status>] [--asset <usdg|liege>] [--limit <n>]
   liege jobs get <job-id>
   liege jobs simulate '<json-job>'
@@ -349,6 +353,39 @@ export async function execute(args: string[]): Promise<unknown> {
         method: "POST",
         body: JSON.stringify({ enabled }),
       });
+    }
+    if (action === "schedules" || action === "schedule") {
+      const target = positional[3];
+      const path = (suffix = "") =>
+        `/v1/super-agents/schedules/${encodeURIComponent(target!)}${suffix}`;
+      if (!id || id === "list") return request("/v1/super-agents/schedules");
+      if (id === "get" && target) return request(path());
+      if (id === "pause" && target) return request(path("/pause"), { method: "POST" });
+      if (id === "resume" && target) return request(path("/resume"), { method: "POST" });
+      if (id === "cancel" && target) return request(path(), { method: "DELETE" });
+      if (id === "create") {
+        const body = target?.startsWith("{")
+          ? jsonArgument(target, "schedule")
+          : {
+              agentId: flags["agent-id"] ?? flags.agentId,
+              request: flags.request,
+              settlementAsset: (flags.asset ?? "usdg").toLowerCase(),
+              budgetAmount: Number(flags.budget),
+              cadence: flags.cadence,
+              spendCap: Number(flags.cap ?? flags["spend-cap"]),
+              ...(flags["max-runs"] ? { maxRuns: Number(flags["max-runs"]) } : {}),
+              autoFund: flags["auto-fund"] === "true",
+              ...(flags.start ? { startAt: flags.start } : {}),
+            };
+        if (!body.agentId || !body.request || !body.cadence)
+          throw new Error(
+            "Provide --agent-id, --request, --budget, --cadence and --cap, or a JSON schedule.",
+          );
+        return request("/v1/super-agents/schedules", {
+          method: "POST",
+          body: JSON.stringify({ source: "cli", ...body }),
+        });
+      }
     }
     if (action === "runtime-token" || action === "runtime-tokens") {
       if (id === "create") return request("/v1/super-agents/runtime-token", { method: "POST" });

@@ -1668,6 +1668,24 @@ paths:
                   data: { $ref: "#/components/schemas/SettlementRunSummary" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
 
+  /v1/cron/run-schedules:
+    post:
+      operationId: runSuperAgentSchedules
+      summary: Run due recurring Super Agent jobs. Each slot runs once, so repeat calls are safe.
+      security: [{ cronSecret: [] }]
+      responses:
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
+          description: Runs performed in this pass.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    properties: { runs: { type: array, items: { type: object } } }
   /v1/cron/deliver-webhooks:
     post:
       operationId: deliverWebhooks
@@ -2491,6 +2509,104 @@ paths:
               { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } },
           }
         "400": { $ref: "#/components/responses/InvalidRequest" }
+  /v1/super-agents/schedules:
+    get:
+      operationId: listSuperAgentSchedules
+      summary: List your recurring Super Agent jobs with their latest runs.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Recurring jobs, active and paused first.
+          content:
+            { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+    post:
+      operationId: createSuperAgentSchedule
+      summary: >-
+        Approve a recurring Super Agent job. Each run opens a job like an approved proposal; with
+        autoFund, ledger-escrow runs are funded from your available balance up to the spending cap.
+        On-chain runs always wait for your wallet.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agentId, request, budgetAmount, cadence, spendCap]
+              properties:
+                agentId: { type: string, format: uuid }
+                request: { type: string, maxLength: 10000 }
+                settlementAsset: { type: string, enum: [usdg, liege], default: usdg }
+                budgetAmount: { type: number, exclusiveMinimum: 0, description: Budget per run. }
+                cadence: { type: string, enum: [daily, weekly, monthly] }
+                spendCap: { type: number, description: Total committed across all runs. }
+                maxRuns: { type: integer, minimum: 1, maximum: 1000 }
+                autoFund: { type: boolean, default: false }
+                startAt: { type: string, format: date-time }
+                source: { type: string, enum: [dashboard, cli], default: dashboard }
+      responses:
+        "201":
+          description: Recurring job created.
+          content:
+            { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/super-agents/schedules/{id}:
+    get:
+      operationId: getSuperAgentSchedule
+      summary: Get one recurring job with its recent runs.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Recurring job.
+          content:
+            { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+    delete:
+      operationId: cancelSuperAgentSchedule
+      summary: Cancel a recurring job. Jobs already opened are unaffected.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Recurring job cancelled.
+          content:
+            { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/super-agents/schedules/{id}/pause:
+    post:
+      operationId: pauseSuperAgentSchedule
+      summary: Pause a recurring job.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Recurring job paused.
+          content:
+            { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/super-agents/schedules/{id}/resume:
+    post:
+      operationId: resumeSuperAgentSchedule
+      summary: Resume a paused recurring job; slots missed while paused are skipped.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Recurring job resumed.
+          content:
+            { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /v1/super-agents/intents/{id}/decision:
     post:
       operationId: decideSuperAgentIntent

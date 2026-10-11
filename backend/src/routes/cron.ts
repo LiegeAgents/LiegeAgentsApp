@@ -5,6 +5,7 @@ import { db } from "../db/index.js";
 import { ApiError, asyncRoute } from "../http.js";
 import { escrowAccount, transfer, userBalance } from "../ledger.js";
 import { planSettlement, processPendingSettlements } from "../settlement.js";
+import { processDueSchedules } from "../superAgentSchedules.js";
 import { deliverPendingWebhooks, enqueueWebhookEvent } from "../webhooks.js";
 
 export const cronRouter = Router();
@@ -141,5 +142,14 @@ cronRouter.post(
   "/deliver-webhooks",
   asyncRoute(async (_request, response) => {
     response.json({ data: await deliverPendingWebhooks() });
+  }),
+);
+
+// Recurring Super Agent jobs also run in-process (SUPERAGENT_SCHEDULES_INTERVAL_MS); each slot
+// runs once, so calling this from an external scheduler as well is safe.
+cronRouter.post(
+  "/run-schedules",
+  asyncRoute(async (_request, response) => {
+    response.json({ data: { runs: await processDueSchedules() } });
   }),
 );

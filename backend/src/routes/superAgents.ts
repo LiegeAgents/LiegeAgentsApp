@@ -4,11 +4,11 @@ import { z } from "zod";
 import { hashRuntimeToken, requireAuth, requireSessionOrMobileAuth } from "../auth.js";
 import { audit } from "../audit.js";
 import { env } from "../config.js";
-import { selfSettlementLimit } from "../capacity.js";
-import { decryptPayload, encryptPayload, payloadContext, payloadDigest } from "../crypto.js";
-import { ensureEscrowWallet } from "../escrow.js";
+import { decryptPayload, encryptPayload, payloadContext } from "../crypto.js";
 import { probeTransport } from "../superAgentProbe.js";
 import { findEnrolledAgent, readyEnrollment } from "../superAgentEnrollment.js";
+import { openSuperAgentJob } from "../superAgentSchedules.js";
+import { registerScheduleRoutes } from "./superAgentSchedules.js";
 import { db } from "../db/index.js";
 import { ApiError, asyncRoute } from "../http.js";
 
@@ -705,75 +705,15 @@ superAgentsRouter.post(
             "budget_required",
             `Add a positive ${asset.toUpperCase()} budget before approving this request.`,
           );
-        if (budget >= selfSettlementLimit(asset))
-          throw new ApiError(
-            422,
-            "self_evaluation_limit",
-            `Super Agent jobs of ${selfSettlementLimit(asset)} ${asset.toUpperCase()} or more need an independent evaluator.`,
-          );
-        const agent = await client.query<{
-          id: string;
-          name: string;
-          owner_id: string;
-          price_usd: string;
-          service_slug: string;
-          settlement_assets: string[];
-          sla_minutes: number;
-          description: string;
-        }>(
-          `SELECT a.id,a.name,a.owner_id,s.price_usd,s.slug AS service_slug,s.sla_minutes,s.description,e.settlement_assets FROM agents a ${readyEnrollment} WHERE a.id=$1 AND a.active AND e.enabled AND e.verified_at IS NOT NULL AND $2 = ANY(e.settlement_assets) FOR SHARE OF a,e,s,w`,
-          [intent.rows[0].agent_id, asset],
-        );
-        if (!agent.rowCount)
-          throw new ApiError(404, "agent_not_found", "The matched Super Agent is unavailable.");
-        if (agent.rows[0].owner_id === request.auth!.userId)
-          throw new ApiError(422, "self_hire_not_allowed", "An owner cannot hire their own agent.");
-        const parsedDeadline = parsed.deadlineAt ? new Date(parsed.deadlineAt) : null;
-        // Natural-language parsers can return a stale calendar timestamp for relative
-        // phrases such as “within 10 minutes”. Treat invalid or expired model output as
-        // absent and use the service SLA instead of making an otherwise valid proposal
-        // impossible to approve.
-        const deadline =
-          parsedDeadline && Number.isFinite(parsedDeadline.getTime()) && parsedDeadline > new Date()
-            ? parsedDeadline
-            : new Date(Date.now() + agent.rows[0].sla_minutes * 60_000);
-        const expires = new Date(deadline.getTime() + 7 * 86_400_000);
-        const jobId = randomUUID();
-        const title = `${agent.rows[0].name}: ${parsed.request}`.slice(0, 160);
-        const brief = parsed.request;
-        const created = await client.query(
-          `INSERT INTO jobs (id, client_id, agent_id, evaluator_id, kind, title, brief_ciphertext, brief_hash,
-             acceptance_criteria, settlement_asset, budget_amount, evaluator_fee_amount, budget_usdg,
-             evaluator_fee_usdg, deadline_at, expires_at, strategy_policy, escrow_mode)
-           VALUES ($1,$2,$3,NULL,'standard',$4,$5,$6,$7,$8,$9,0,$10,0,$11,$12,$13,$14)
-           RETURNING id, public_id, title, status, settlement_asset, budget_amount, budget_usdg, deadline_at, expires_at`,
-          [
-            jobId,
-            request.auth!.userId,
-            agent.rows[0].id,
-            title,
-            encryptPayload(brief, payloadContext(jobId, "brief")),
-            payloadDigest(brief),
-            JSON.stringify(["Deliver the requested work", agent.rows[0].description]),
-            asset,
-            String(budget),
-            asset === "usdg" ? String(budget) : null,
-            deadline,
-            expires,
-            JSON.stringify({
-              source: "superagent",
-              intentId: id,
-              serviceSlug: agent.rows[0].service_slug,
-            }),
-            env.ESCROW_MODE,
-          ],
-        );
-        job = created.rows[0];
-        if (env.ESCROW_MODE === "onchain") await ensureEscrowWallet(client, created.rows[0].id);
-        await client.query(
-          "INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,$3)",
-          [jobId, request.auth!.userId, "job.opened"],
-        );
+        job = await openSuperAgentJob(client, {
+          userId: request.auth!.userId,
+          agentId: intent.rows[0].agent_id,
+          asset,
+          budget,
+          request: parsed.request,
+          deadlineAt: parsed.deadlineAt,
+          policy: { intentId: id },
+        });
       }
       const result = await client.query(
         `UPDATE superagent_intents SET status=$3,decided_at=now() WHERE id=$1 AND user_id=$2 RETURNING id,status,decided_at`,
@@ -797,3 +737,5 @@ superAgentsRouter.post(
     }
   }),
 );
+
+registerScheduleRoutes(superAgentsRouter);

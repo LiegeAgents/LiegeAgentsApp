@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Enrollment } from "./Enrollment";
+import { Recurring } from "./Recurring";
 import {
   ArrowUpRight,
   ArrowRight,
@@ -23,6 +24,7 @@ import {
   FileText,
   MessageCircle,
   Send,
+  Repeat,
 } from "lucide-react";
 import {
   agents,
@@ -778,6 +780,7 @@ const tabs = [
   { id: "chat", label: "Chat", icon: MessageCircle },
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "requests", label: "Requests", icon: Inbox },
+  { id: "recurring", label: "Recurring", icon: Repeat },
   { id: "agents", label: "Agents", icon: Users },
   { id: "activity", label: "Activity", icon: Activity },
   { id: "settings", label: "Settings", icon: Settings },
@@ -1340,6 +1343,7 @@ function Dashboard() {
                     {
                       overview: "Good ideas, in motion.",
                       requests: "Your next decisions.",
+                      recurring: "Approve once. Repeat on schedule.",
                       agents: "Find your kind of brilliant.",
                       activity: "Every step, accounted for.",
                       settings: "Your account. Your rules.",
@@ -1353,6 +1357,8 @@ function Dashboard() {
                     {
                       overview: "A clear view of your agents, requests, and what needs you next.",
                       requests: "From an X mention to a brief you can review.",
+                      recurring:
+                        "Weekly briefs, daily digests, monthly reviews — always within your cap.",
                       agents: "Meet the flagship team, or start shaping your own Super Agent.",
                       activity: "Follow the trail from request to decision.",
                       settings: "Manage your identities and the access you give Super Agents.",
@@ -1571,6 +1577,26 @@ function Dashboard() {
               )}
             </>
           )}
+          {tab === "recurring" &&
+            (getSessionToken() ? (
+              <Recurring
+                api={superAgentsApi}
+                token={getSessionToken()!}
+                agents={catalog}
+                notify={setNotice}
+              />
+            ) : (
+              <section className="panel">
+                <div className="empty">
+                  <Repeat size={28} />
+                  <h3>Connect to set up recurring jobs.</h3>
+                  <p>Sign in with your Liege wallet to approve work that repeats on schedule.</p>
+                  <a className="button" href="/auth">
+                    Connect wallet
+                  </a>
+                </div>
+              </section>
+            ))}
           {tab === "activity" && (
             <section className="panel">
               <div className="panel-heading">

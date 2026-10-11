@@ -783,3 +783,124 @@
     grid-column: auto;
   }
 }
+
+/* Recurring jobs: a setup form beside the running schedules. */
+.recurring-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.recurring-form select,
+.recurring-form textarea,
+.recurring-form input[type="number"] {
+  width: 100%;
+  min-height: 44px;
+  margin-bottom: 18px;
+  padding: 10px 12px;
+  border: 1px solid #365841;
+  border-radius: 9px;
+  background: #101c14;
+  color: #e6ece7;
+}
+.recurring-form textarea {
+  resize: vertical;
+}
+.recurring-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+.recurring-toggle {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 4px 0 22px;
+  padding: 14px;
+  border: 1px solid #2e4a36;
+  border-radius: 10px;
+  background: #111e15;
+}
+.recurring-toggle input {
+  margin-top: 3px;
+  accent-color: var(--green);
+}
+.recurring-toggle strong {
+  display: block;
+  color: #d8e7dc;
+  font-size: 13px;
+  font-weight: 500;
+}
+.recurring-toggle small {
+  color: #819889;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.recurring-empty {
+  padding: 24px;
+}
+.recurring-item {
+  display: grid;
+  gap: 8px;
+  padding: 18px 22px;
+  border-top: 1px solid var(--line);
+}
+.recurring-item header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+.recurring-item header small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: capitalize;
+}
+.recurring-item p {
+  margin: 0;
+  color: #c9d8ce;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.recurring-meter {
+  height: 5px;
+  border-radius: 99px;
+  background: #1a2a20;
+  overflow: hidden;
+}
+.recurring-meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--green);
+}
+.recurring-run {
+  font-size: 12px;
+}
+.recurring-run-funded {
+  color: var(--green);
+}
+.recurring-run-awaiting_funding,
+.recurring-run-skipped {
+  color: #e2c27a;
+}
+.recurring-run-failed {
+  color: #f08a7a;
+}
+.recurring-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.recurring-actions .button {
+  min-height: 36px;
+  padding: 7px 12px;
+  font-size: 12px;
+}
+@media (max-width: 900px) {
+  .recurring-grid {
+    grid-template-columns: 1fr;
+  }
+}

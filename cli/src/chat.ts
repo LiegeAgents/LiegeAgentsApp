@@ -46,7 +46,9 @@ const sameName = (agent: Agent, name: string) => {
 
 export function describeDraft(draft: Draft, agents: Agent[]) {
   const budget = budgetOf(draft);
-  const agent = draft.agentName ? agents.find((item) => sameName(item, draft.agentName!)) : null;
+  const agent = draft.agentName
+    ? (agents.find((item) => sameName(item, draft.agentName!)) ?? null)
+    : null;
   const missing: string[] = [];
   if (!draft.agentName) missing.push("which Super Agent to hire");
   else if (agents.length && !agent)
@@ -59,8 +61,26 @@ export function describeDraft(draft: Draft, agents: Agent[]) {
     `  Budget    ${budget ? `${budget} ${draft.settlementAsset.toUpperCase()}` : dim("not specified")}`,
     `  Deadline  ${draft.deadlineAt ?? dim(agent?.sla_minutes ? `service SLA (${agent.sla_minutes} min)` : "service SLA")}`,
   ];
-  return { lines, missing, complete: missing.length === 0 };
+  return { lines, missing, complete: missing.length === 0, agent, budget };
 }
+
+const CADENCES = ["daily", "weekly", "monthly"] as const;
+
+/** `/repeat weekly 20 auto`: cadence, optional total spending cap, optional auto-funding. */
+export function parseRepeat(line: string, budget: number) {
+  const words = line.trim().split(/\s+/).slice(1);
+  const cadence = CADENCES.find((item) => words.some((word) => word.toLowerCase() === item));
+  if (!cadence) return null;
+  const capWord = words.find((word) => /^\d+(\.\d+)?$/.test(word));
+  const spendCap = capWord ? Number(capWord) : budget * 4;
+  return {
+    cadence,
+    spendCap,
+    autoFund: words.some((word) => /^auto(-?fund)?$/i.test(word)),
+  };
+}
+
+const shortId = (value: unknown) => String(value).slice(0, 8);
 
 export const chatHelp = () => [
   bold("Describe the work in plain English, for example:"),
@@ -71,6 +91,10 @@ export const chatHelp = () => [
   "  /proposals       Show your recent proposals and their status",
   "  /jobs            Show your recent Super Agent jobs",
   "  /job <job-id>    Show one job",
+  "  /repeat <daily|weekly|monthly> [cap] [auto]",
+  "                   Make the current draft a recurring job (cap = total spend)",
+  "  /schedules       Show your recurring jobs",
+  "  /schedule <pause|resume|cancel> <id>",
   "  /new             Discard the current draft",
   "  /help            Show this help",
   "  /exit            Leave the chat",
@@ -81,7 +105,12 @@ export const chatHelp = () => [
 export class ChatSession {
   agents: Agent[] = [];
   pendingText: string | null = null;
-  awaitingConfirmation: { text: string } | null = null;
+  awaitingConfirmation: {
+    text: string;
+    draft: Draft;
+    agent: Agent | null;
+    budget: number | null;
+  } | null = null;
   tracked = new Map<string, Tracked>();
   closed = false;
 
@@ -111,20 +140,23 @@ export class ChatSession {
       method: "POST",
       body: JSON.stringify({ text }),
     })) as Draft;
-    const { lines, missing, complete } = describeDraft(draft, this.agents);
+    const { lines, missing, complete, agent, budget } = describeDraft(draft, this.agents);
     lines.forEach((item) => this.write(item));
     if (!complete) {
       this.pendingText = text;
       this.write(yellow(`Still needed: ${missing.join(" and ")}. Reply with the details.`));
       return;
     }
-    this.awaitingConfirmation = { text };
+    this.awaitingConfirmation = { text, draft, agent, budget };
     this.write(`Send this proposal to your dashboard for approval? ${dim("[y/N]")}`);
+    this.write(dim("Or make it recurring: /repeat weekly 20 (20 = total spending cap)."));
   }
 
   private async confirm(line: string) {
-    const { text } = this.awaitingConfirmation!;
+    const pending = this.awaitingConfirmation!;
+    const { text } = pending;
     this.awaitingConfirmation = null;
+    if (/^\/repeat\b/i.test(line)) return this.repeat(line, pending);
     if (!/^y(es)?$/i.test(line)) {
       this.pendingText = text;
       this.write(dim("Not sent. Add details to refine the draft, or /new to start over."));
@@ -141,8 +173,84 @@ export class ChatSession {
     this.write(dim("Updates will appear here while the chat is open."));
   }
 
+  private async repeat(line: string, pending: NonNullable<ChatSession["awaitingConfirmation"]>) {
+    const options = pending.budget ? parseRepeat(line, pending.budget) : null;
+    if (!options || !pending.agent || !pending.budget) {
+      this.awaitingConfirmation = pending;
+      this.write(yellow("Usage: /repeat <daily|weekly|monthly> [total cap] [auto]"));
+      return;
+    }
+    if (options.spendCap < pending.budget) {
+      this.awaitingConfirmation = pending;
+      this.write(yellow(`The total cap must cover at least one run (${pending.budget}).`));
+      return;
+    }
+    this.pendingText = null;
+    const asset = pending.draft.settlementAsset;
+    const schedule = (await request("/v1/super-agents/schedules", {
+      method: "POST",
+      body: JSON.stringify({
+        agentId: pending.agent.id,
+        request: pending.draft.request,
+        settlementAsset: asset,
+        budgetAmount: pending.budget,
+        cadence: options.cadence,
+        spendCap: options.spendCap,
+        autoFund: options.autoFund,
+        source: "cli",
+      }),
+    })) as Json;
+    const unit = asset.toUpperCase();
+    this.write(
+      green(
+        `Recurring job ${shortId(schedule.id)} created: ${pending.agent.name}, ${options.cadence}, ${pending.budget} ${unit} per run, up to ${options.spendCap} ${unit} in total.`,
+      ),
+    );
+    this.write(
+      options.autoFund
+        ? dim(
+            "Runs paid from your Liege balance are funded automatically; on-chain runs wait for your wallet in the dashboard.",
+          )
+        : dim(
+            "Each run opens a job for you to fund in the dashboard. Add `auto` to fund ledger runs automatically.",
+          ),
+    );
+    this.write(dim("Manage it with /schedules and /schedule <pause|resume|cancel> <id>."));
+  }
+
+  private async scheduleAction(action: string | undefined, idOrPrefix: string | undefined) {
+    const verbs: Record<string, [string, string]> = {
+      pause: ["POST", "pause"],
+      resume: ["POST", "resume"],
+      cancel: ["DELETE", ""],
+    };
+    if (!action || !verbs[action] || !idOrPrefix) {
+      this.write(yellow("Usage: /schedule <pause|resume|cancel> <id>"));
+      return;
+    }
+    const schedules = (await request("/v1/super-agents/schedules")) as Json[];
+    const matches = schedules.filter((item) => String(item.id).startsWith(idOrPrefix));
+    if (matches.length !== 1) {
+      this.write(
+        yellow(
+          matches.length
+            ? "That id matches several recurring jobs."
+            : "No recurring job with that id.",
+        ),
+      );
+      return;
+    }
+    const [method, suffix] = verbs[action];
+    const id = encodeURIComponent(String(matches[0].id));
+    const updated = (await request(
+      `/v1/super-agents/schedules/${id}${suffix ? `/${suffix}` : ""}`,
+      { method },
+    )) as Json;
+    this.write(green(`Recurring job ${shortId(updated.id)} is ${updated.status}.`));
+  }
+
   private async command(line: string) {
-    const [name, arg] = line.slice(1).split(/\s+/);
+    const [name, arg, extra] = line.slice(1).split(/\s+/);
     switch (name.toLowerCase()) {
       case "help":
       case "?":
@@ -186,6 +294,26 @@ export class ChatSession {
           );
         return;
       }
+      case "repeat":
+        this.write(yellow("Describe a job first, then use /repeat when the draft is complete."));
+        return;
+      case "schedules": {
+        const schedules = (await request("/v1/super-agents/schedules")) as Json[];
+        if (!schedules.length) this.write(dim("No recurring jobs yet."));
+        for (const item of schedules.slice(0, 10)) {
+          const unit = String(item.settlement_asset).toUpperCase();
+          const next =
+            item.status === "active"
+              ? ` · next ${new Date(String(item.next_run_at)).toLocaleString()}`
+              : "";
+          this.write(
+            `  ${dim(shortId(item.id))}  ${String(item.status).padEnd(9)} ${item.agent_name}, ${item.cadence}, ${Number(item.budget_amount)} ${unit}/run, ${Number(item.committed_amount)}/${Number(item.spend_cap)} ${unit} used${next}`,
+          );
+        }
+        return;
+      }
+      case "schedule":
+        return this.scheduleAction(arg?.toLowerCase(), extra);
       case "job": {
         if (!arg) {
           this.write(yellow("Usage: /job <job-id>"));

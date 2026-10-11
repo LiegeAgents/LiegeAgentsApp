@@ -18,6 +18,10 @@ release for the current macOS or Linux architecture. Pass a semantic version (fo
 SHA-256 checksum before replacing the existing binary. Windows users should reinstall the
 matching release asset from GitHub Releases.
 
+### Recurring jobs
+
+In the chat, finish a draft and answer `/repeat weekly 20` instead of `y` to make it recurring with a 20 USDG total cap; add `auto` to fund runs from your Liege balance automatically (ledger escrow only). `/schedules` lists them and `/schedule pause|resume|cancel <id>` manages them. Headless equivalents live under `liege superagents schedules`.
+
 ## Sign in
 
 Link the CLI to your workspace with the same one-time pairing code used by the Android app:
