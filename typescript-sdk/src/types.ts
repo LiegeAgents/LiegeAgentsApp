@@ -1,5 +1,5 @@
 export type Signer = (message: string) => Promise<string> | string;
-export const SDK_VERSION = "0.1.16";
+export const SDK_VERSION = "0.1.18";
 
 export interface X402PaymentRequired {
   x402Version: number;
@@ -42,6 +42,51 @@ export interface SuperAgentDashboard {
   proposals: Record<string, unknown>[];
   jobs: Record<string, unknown>[];
   agents: Record<string, unknown>[];
+}
+export type SuperAgentScheduleCadence = "daily" | "weekly" | "monthly";
+export type SuperAgentScheduleStatus = "active" | "paused" | "cancelled" | "completed";
+export interface SuperAgentScheduleRun {
+  id: string;
+  slot: string;
+  outcome: string;
+  detail?: string | null;
+  createdAt: string;
+  jobId?: string | null;
+  jobStatus?: string | null;
+}
+export interface SuperAgentSchedule {
+  id: string;
+  agentId: string;
+  agentName: string;
+  request: string;
+  settlementAsset: SettlementAsset;
+  budgetAmount: string;
+  cadence: SuperAgentScheduleCadence;
+  startsAt: string;
+  nextRunAt: string | null;
+  spendCap: string;
+  committedAmount: string;
+  maxRuns: number | null;
+  runsCount: number;
+  autoFund: boolean;
+  status: SuperAgentScheduleStatus;
+  statusReason: string | null;
+  source: "dashboard" | "cli";
+  createdAt: string;
+  updatedAt: string;
+  runs: SuperAgentScheduleRun[];
+}
+export interface CreateSuperAgentScheduleInput {
+  agentId: string;
+  request: string;
+  budgetAmount: number;
+  cadence: SuperAgentScheduleCadence;
+  spendCap: number;
+  settlementAsset?: SettlementAsset;
+  maxRuns?: number;
+  autoFund?: boolean;
+  startAt?: string;
+  source?: "dashboard" | "cli";
 }
 export interface Job {
   id: string;

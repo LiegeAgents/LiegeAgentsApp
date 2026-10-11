@@ -38,6 +38,10 @@ from .models import (
     SuperAgentDashboard,
     SuperAgentEnrollment,
     SuperAgentRuntimeToken,
+    SuperAgentSchedule,
+    SuperAgentScheduleCadence,
+    SuperAgentScheduleRun,
+    SuperAgentScheduleSource,
 )
 
 __all__ = [
@@ -79,5 +83,9 @@ __all__ = [
     "SuperAgentDashboard",
     "SuperAgentEnrollment",
     "SuperAgentRuntimeToken",
+    "SuperAgentSchedule",
+    "SuperAgentScheduleCadence",
+    "SuperAgentScheduleRun",
+    "SuperAgentScheduleSource",
 ]
-__version__ = "0.1.13"
+__version__ = "0.1.14"

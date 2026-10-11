@@ -9,6 +9,7 @@ import time
 from collections.abc import Callable, Iterator
 from datetime import datetime
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -18,6 +19,7 @@ from .models import (
     AgentReputationAudit,
     AgentMandate, AgentPolicyInput, Invoice, InvoiceRefund, Job, JobEvent, Receipt, Service, ServiceType, Session,
     RunnerInput, RunnerResult, RunnerArtifact, McpHarnessPreset, McpHarnessPresetsResponse, WebhookCreateInput, WebhookSubscription, Page,
+    SettlementAsset, SuperAgentSchedule, SuperAgentScheduleCadence, SuperAgentScheduleSource,
 )
 
 
@@ -219,6 +221,42 @@ class LiegeClient:
 
     def revoke_super_agent_runtime_token(self, token_id: str) -> dict[str, Any]:
         return self._request("DELETE", f"/v1/super-agents/runtime-tokens/{token_id}")
+
+    def list_super_agent_schedules(self) -> list[SuperAgentSchedule]:
+        return [SuperAgentSchedule.from_dict(item) for item in self._request("GET", "/v1/super-agents/schedules")]
+
+    def get_super_agent_schedule(self, schedule_id: str) -> SuperAgentSchedule:
+        value = self._request("GET", f"/v1/super-agents/schedules/{quote(schedule_id, safe='')}")
+        return SuperAgentSchedule.from_dict(value)
+
+    def create_super_agent_schedule(
+        self, agent_id: str, request: str, budget_amount: float, cadence: SuperAgentScheduleCadence,
+        spend_cap: float, settlement_asset: SettlementAsset = "usdg", max_runs: int | None = None,
+        auto_fund: bool = False, start_at: str | None = None, source: SuperAgentScheduleSource = "dashboard",
+    ) -> SuperAgentSchedule:
+        body: dict[str, Any] = {
+            "agentId": agent_id, "request": request, "budgetAmount": budget_amount,
+            "cadence": cadence, "spendCap": spend_cap, "settlementAsset": settlement_asset,
+            "autoFund": auto_fund, "source": source,
+        }
+        if max_runs is not None:
+            body["maxRuns"] = max_runs
+        if start_at is not None:
+            body["startAt"] = start_at
+        return SuperAgentSchedule.from_dict(self._request("POST", "/v1/super-agents/schedules", json=body))
+
+    def pause_super_agent_schedule(self, schedule_id: str) -> SuperAgentSchedule:
+        return self._super_agent_schedule_action(schedule_id, "pause")
+
+    def resume_super_agent_schedule(self, schedule_id: str) -> SuperAgentSchedule:
+        return self._super_agent_schedule_action(schedule_id, "resume")
+
+    def cancel_super_agent_schedule(self, schedule_id: str) -> SuperAgentSchedule:
+        return SuperAgentSchedule.from_dict(self._request("DELETE", f"/v1/super-agents/schedules/{quote(schedule_id, safe='')}"))
+
+    def _super_agent_schedule_action(self, schedule_id: str, action: str) -> SuperAgentSchedule:
+        value = self._request("POST", f"/v1/super-agents/schedules/{quote(schedule_id, safe='')}/{action}")
+        return SuperAgentSchedule.from_dict(value)
 
     def create_service(self, agent_id: str, slug: str, name: str, description: str,
                        service_type: ServiceType, price_usd: str | float, sla_minutes: int,
@@ -565,6 +603,45 @@ class AsyncLiegeClient:
 
     async def revoke_super_agent_runtime_token(self, token_id: str) -> dict[str, Any]:
         return await self._request("DELETE", f"/v1/super-agents/runtime-tokens/{token_id}")
+
+    async def list_super_agent_schedules(self) -> list[SuperAgentSchedule]:
+        items = await self._request("GET", "/v1/super-agents/schedules")
+        return [SuperAgentSchedule.from_dict(item) for item in items]
+
+    async def get_super_agent_schedule(self, schedule_id: str) -> SuperAgentSchedule:
+        value = await self._request("GET", f"/v1/super-agents/schedules/{quote(schedule_id, safe='')}")
+        return SuperAgentSchedule.from_dict(value)
+
+    async def create_super_agent_schedule(
+        self, agent_id: str, request: str, budget_amount: float, cadence: SuperAgentScheduleCadence,
+        spend_cap: float, settlement_asset: SettlementAsset = "usdg", max_runs: int | None = None,
+        auto_fund: bool = False, start_at: str | None = None, source: SuperAgentScheduleSource = "dashboard",
+    ) -> SuperAgentSchedule:
+        body: dict[str, Any] = {
+            "agentId": agent_id, "request": request, "budgetAmount": budget_amount,
+            "cadence": cadence, "spendCap": spend_cap, "settlementAsset": settlement_asset,
+            "autoFund": auto_fund, "source": source,
+        }
+        if max_runs is not None:
+            body["maxRuns"] = max_runs
+        if start_at is not None:
+            body["startAt"] = start_at
+        value = await self._request("POST", "/v1/super-agents/schedules", json=body)
+        return SuperAgentSchedule.from_dict(value)
+
+    async def pause_super_agent_schedule(self, schedule_id: str) -> SuperAgentSchedule:
+        return await self._super_agent_schedule_action(schedule_id, "pause")
+
+    async def resume_super_agent_schedule(self, schedule_id: str) -> SuperAgentSchedule:
+        return await self._super_agent_schedule_action(schedule_id, "resume")
+
+    async def cancel_super_agent_schedule(self, schedule_id: str) -> SuperAgentSchedule:
+        value = await self._request("DELETE", f"/v1/super-agents/schedules/{quote(schedule_id, safe='')}")
+        return SuperAgentSchedule.from_dict(value)
+
+    async def _super_agent_schedule_action(self, schedule_id: str, action: str) -> SuperAgentSchedule:
+        value = await self._request("POST", f"/v1/super-agents/schedules/{quote(schedule_id, safe='')}/{action}")
+        return SuperAgentSchedule.from_dict(value)
 
 
 def _page(value: Any, mapper: Callable[[dict[str, Any]], Any]) -> Page:

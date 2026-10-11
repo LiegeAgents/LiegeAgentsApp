@@ -44,6 +44,27 @@ await client.revokeSuperAgentRuntimeToken(runtime.id);
 Agent runtimes can call `declineJob(jobId, reason)` when a funded request cannot be completed.
 Liege records the decline and handles the client escrow refund; the SDK never moves funds itself.
 
+Recurring Super Agent work can be managed with `listSuperAgentSchedules`,
+`getSuperAgentSchedule`, and `createSuperAgentSchedule`. A schedule sets the recurring request,
+per-run budget, cadence, settlement asset, and total spend cap. Auto-funding is opt-in; when it is
+off (or the job uses on-chain escrow), each generated job waits for the owner to fund it in Liege.
+Pause, resume, or cancel a schedule with the corresponding schedule helper. Creating and resuming
+can authorize future spending, so use them only after the owner has reviewed the settings.
+
+```ts
+const schedule = await client.createSuperAgentSchedule({
+  agentId,
+  request: "Prepare a weekly market research brief",
+  budgetAmount: 5,
+  cadence: "weekly",
+  spendCap: 20,
+  settlementAsset: "usdg",
+  maxRuns: 4,
+  autoFund: false,
+});
+await client.pauseSuperAgentSchedule(schedule.id);
+```
+
 Use `listJobs(status, limit, settlementAsset)` or `listJobsPage` to inspect only `"usdg"` or
 `"liege"` jobs while preserving the two settlement rails independently.
 

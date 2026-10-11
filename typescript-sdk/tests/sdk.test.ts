@@ -2,6 +2,97 @@ import { describe, expect, test } from "bun:test";
 import { LiegeAPIError, LiegeClient, McpClient, decodeX402PaymentRequired } from "../src/index.js";
 
 describe("LiegeClient", () => {
+  test("manages recurring Super Agent schedules without coercing token amounts", async () => {
+    const requests: Array<{ path: string; method: string; body?: unknown }> = [];
+    const schedule = {
+      id: "schedule-1",
+      agent_id: "agent-1",
+      agent_name: "Anna",
+      request: "Research agent markets",
+      settlement_asset: "liege",
+      budget_amount: "0.000000000000000001",
+      cadence: "weekly",
+      starts_at: "2026-10-12T00:00:00.000Z",
+      next_run_at: "2026-10-12T00:00:00.000Z",
+      spend_cap: "9",
+      committed_amount: "0",
+      max_runs: 3,
+      runs_count: 0,
+      auto_fund: false,
+      status: "active",
+      status_reason: null,
+      source: "dashboard",
+      created_at: "2026-10-11T00:00:00.000Z",
+      updated_at: "2026-10-11T00:00:00.000Z",
+      runs: [
+        {
+          id: "run-1",
+          slot: "2026-10-12T00:00:00.000Z",
+          outcome: "awaiting_funding",
+          detail: "Auto-funding is off.",
+          created_at: "2026-10-11T00:00:00.000Z",
+          job_id: "job-1",
+          job_status: "open",
+        },
+      ],
+    };
+    const client = new LiegeClient({
+      token: "session",
+      fetch: async (input, init) => {
+        requests.push({
+          path: new URL(String(input)).pathname,
+          method: init?.method ?? "GET",
+          body: init?.body ? JSON.parse(String(init.body)) : undefined,
+        });
+        const path = new URL(String(input)).pathname;
+        return new Response(
+          JSON.stringify({
+            data: path.endsWith("/schedules") && init?.method !== "POST" ? [schedule] : schedule,
+          }),
+          {
+            status: init?.method === "POST" ? 201 : 200,
+          },
+        );
+      },
+    });
+
+    const created = await client.createSuperAgentSchedule({
+      agentId: "agent-1",
+      request: "Research agent markets",
+      budgetAmount: 5,
+      cadence: "weekly",
+      spendCap: 15,
+      settlementAsset: "liege",
+      maxRuns: 3,
+      autoFund: false,
+    });
+    expect(created).toMatchObject({
+      id: "schedule-1",
+      agentId: "agent-1",
+      budgetAmount: "0.000000000000000001",
+      settlementAsset: "liege",
+      runs: [{ slot: "2026-10-12T00:00:00.000Z", jobId: "job-1" }],
+    });
+    expect(requests[0]).toMatchObject({
+      path: "/v1/super-agents/schedules",
+      method: "POST",
+      body: { agentId: "agent-1", cadence: "weekly", settlementAsset: "liege", autoFund: false },
+    });
+
+    await client.listSuperAgentSchedules();
+    await client.getSuperAgentSchedule("schedule-1");
+    await client.pauseSuperAgentSchedule("schedule-1");
+    await client.resumeSuperAgentSchedule("schedule-1");
+    await client.cancelSuperAgentSchedule("schedule-1");
+    expect(requests.slice(1).map(({ path, method }) => [path, method])).toEqual([
+      ["/v1/super-agents/schedules", "GET"],
+      ["/v1/super-agents/schedules/schedule-1", "GET"],
+      ["/v1/super-agents/schedules/schedule-1/pause", "POST"],
+      ["/v1/super-agents/schedules/schedule-1/resume", "POST"],
+      ["/v1/super-agents/schedules/schedule-1", "DELETE"],
+    ]);
+  });
+
   test("retries transient GETs and preserves request ids on terminal errors", async () => {
     let calls = 0;
     const client = new LiegeClient({

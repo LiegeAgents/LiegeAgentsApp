@@ -29,6 +29,8 @@ import {
   type SuperAgentDashboard,
   type SuperAgentEnrollment,
   type SuperAgentRuntimeToken,
+  type SuperAgentSchedule,
+  type CreateSuperAgentScheduleInput,
   type Signer,
   type X402PaymentPayload,
   type X402PaymentRequired,
@@ -312,6 +314,43 @@ export class LiegeClient {
     return this.call(`/v1/super-agents/runtime-tokens/${encodeURIComponent(tokenId)}`, {
       method: "DELETE",
     });
+  }
+  listSuperAgentSchedules(): Promise<SuperAgentSchedule[]> {
+    return this.call<Record<string, unknown>[]>("/v1/super-agents/schedules").then((items) =>
+      items.map((item) => this.mapSuperAgentSchedule(item)),
+    );
+  }
+  getSuperAgentSchedule(scheduleId: string): Promise<SuperAgentSchedule> {
+    return this.call<Record<string, unknown>>(
+      `/v1/super-agents/schedules/${encodeURIComponent(scheduleId)}`,
+    ).then((item) => this.mapSuperAgentSchedule(item));
+  }
+  createSuperAgentSchedule(input: CreateSuperAgentScheduleInput): Promise<SuperAgentSchedule> {
+    return this.call<Record<string, unknown>>("/v1/super-agents/schedules", {
+      method: "POST",
+      body: input,
+    }).then((item) => this.mapSuperAgentSchedule(item));
+  }
+  pauseSuperAgentSchedule(scheduleId: string): Promise<SuperAgentSchedule> {
+    return this.changeSuperAgentSchedule(scheduleId, "pause");
+  }
+  resumeSuperAgentSchedule(scheduleId: string): Promise<SuperAgentSchedule> {
+    return this.changeSuperAgentSchedule(scheduleId, "resume");
+  }
+  cancelSuperAgentSchedule(scheduleId: string): Promise<SuperAgentSchedule> {
+    return this.call<Record<string, unknown>>(
+      `/v1/super-agents/schedules/${encodeURIComponent(scheduleId)}`,
+      { method: "DELETE" },
+    ).then((item) => this.mapSuperAgentSchedule(item));
+  }
+  private changeSuperAgentSchedule(
+    scheduleId: string,
+    action: "pause" | "resume",
+  ): Promise<SuperAgentSchedule> {
+    return this.call<Record<string, unknown>>(
+      `/v1/super-agents/schedules/${encodeURIComponent(scheduleId)}/${action}`,
+      { method: "POST" },
+    ).then((item) => this.mapSuperAgentSchedule(item));
   }
 
   getAccount(agentId: string): Promise<AgentAccount> {
@@ -631,6 +670,49 @@ export class LiegeClient {
       createdAt: (value.createdAt ?? value.created_at) as string | undefined,
       updatedAt: (value.updatedAt ?? value.updated_at) as string | undefined,
     };
+  }
+  private mapSuperAgentSchedule(value: Record<string, unknown>): SuperAgentSchedule {
+    const runs = Array.isArray(value.runs) ? value.runs : [];
+    return {
+      ...value,
+      id: String(value.id),
+      agentId: String(value.agentId ?? value.agent_id),
+      agentName: String(value.agentName ?? value.agent_name ?? ""),
+      request: String(value.request ?? ""),
+      settlementAsset: (value.settlementAsset ??
+        value.settlement_asset ??
+        "usdg") as SuperAgentSchedule["settlementAsset"],
+      budgetAmount: String(value.budgetAmount ?? value.budget_amount ?? "0"),
+      cadence: value.cadence as SuperAgentSchedule["cadence"],
+      startsAt: String(value.startsAt ?? value.starts_at ?? ""),
+      nextRunAt: (value.nextRunAt ?? value.next_run_at ?? null) as string | null,
+      spendCap: String(value.spendCap ?? value.spend_cap ?? "0"),
+      committedAmount: String(value.committedAmount ?? value.committed_amount ?? "0"),
+      maxRuns:
+        value.maxRuns == null
+          ? ((value.max_runs as number | null | undefined) ?? null)
+          : Number(value.maxRuns),
+      runsCount: Number(value.runsCount ?? value.runs_count ?? 0),
+      autoFund: Boolean(value.autoFund ?? value.auto_fund),
+      status: value.status as SuperAgentSchedule["status"],
+      statusReason: (value.statusReason ?? value.status_reason ?? null) as string | null,
+      source: (value.source ?? "dashboard") as SuperAgentSchedule["source"],
+      createdAt: String(value.createdAt ?? value.created_at ?? ""),
+      updatedAt: String(value.updatedAt ?? value.updated_at ?? ""),
+      runs: runs.map((run) => {
+        const item = run as Record<string, unknown>;
+        return {
+          ...item,
+          id: String(item.id),
+          slot: String(item.slot),
+          outcome: String(item.outcome),
+          detail: (item.detail ?? null) as string | null,
+          createdAt: String(item.createdAt ?? item.created_at ?? ""),
+          jobId: (item.jobId ?? item.job_id ?? null) as string | null,
+          jobStatus: (item.jobStatus ?? item.job_status ?? null) as string | null,
+        };
+      }),
+    } as SuperAgentSchedule;
   }
   private mapAccount(value: Record<string, unknown>): AgentAccount {
     const policy = value.policy as Record<string, unknown> | null | undefined;

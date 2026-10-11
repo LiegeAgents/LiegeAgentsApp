@@ -301,3 +301,81 @@ def test_agent_mandates_and_ap2_export():
         assert ap2["protocol"] == "ap2"
         assert ap2["version"] == "0.2"
         assert ap2["mandate_id"] == "man-1"
+
+
+def test_super_agent_schedule_lifecycle():
+    requests = []
+    schedule = {
+        "id": "schedule-1", "agent_id": "agent-1", "agent_name": "Anna",
+        "request": "Research agent markets", "settlement_asset": "liege",
+        "budget_amount": "5", "cadence": "weekly", "starts_at": "2026-10-12T00:00:00Z",
+        "next_run_at": "2026-10-12T00:00:00Z", "spend_cap": "15", "committed_amount": "0",
+        "max_runs": 3, "runs_count": 0, "auto_fund": False, "status": "active",
+        "status_reason": None, "source": "dashboard", "created_at": "2026-10-11T00:00:00Z",
+        "updated_at": "2026-10-11T00:00:00Z", "runs": [{
+            "id": "run-1", "slot": "2026-10-12T00:00:00Z", "outcome": "awaiting_funding",
+            "detail": "Auto-funding is off.", "created_at": "2026-10-11T00:00:00Z",
+            "job_id": "job-1", "job_status": "open",
+        }],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append((request.method, request.url.path, json.loads(request.content) if request.content else None))
+        if request.url.path.endswith("/schedules") and request.method == "GET":
+            return httpx.Response(200, json={"data": [schedule]})
+        return httpx.Response(201 if request.method == "POST" else 200, json={"data": schedule})
+
+    with LiegeClient("https://api.test", token="session", client=httpx.Client(transport=httpx.MockTransport(handler))) as client:
+        created = client.create_super_agent_schedule(
+            "agent-1", "Research agent markets", 5, "weekly", 15,
+            settlement_asset="liege", max_runs=3, auto_fund=False,
+        )
+        assert created.agent_id == "agent-1"
+        assert created.settlement_asset == "liege"
+        assert created.runs[0].slot == "2026-10-12T00:00:00Z"
+        assert client.list_super_agent_schedules()[0].id == "schedule-1"
+        assert client.get_super_agent_schedule("schedule-1").id == "schedule-1"
+        client.pause_super_agent_schedule("schedule-1")
+        client.resume_super_agent_schedule("schedule-1")
+        client.cancel_super_agent_schedule("schedule-1")
+
+    assert requests[0] == ("POST", "/v1/super-agents/schedules", {
+        "agentId": "agent-1", "request": "Research agent markets", "budgetAmount": 5,
+        "cadence": "weekly", "spendCap": 15, "settlementAsset": "liege",
+        "autoFund": False, "source": "dashboard", "maxRuns": 3,
+    })
+    assert [(method, path) for method, path, _ in requests[1:]] == [
+        ("GET", "/v1/super-agents/schedules"),
+        ("GET", "/v1/super-agents/schedules/schedule-1"),
+        ("POST", "/v1/super-agents/schedules/schedule-1/pause"),
+        ("POST", "/v1/super-agents/schedules/schedule-1/resume"),
+        ("DELETE", "/v1/super-agents/schedules/schedule-1"),
+    ]
+
+
+def test_async_super_agent_schedule_helpers():
+    schedule = {
+        "id": "schedule-1", "agent_id": "agent-1", "agent_name": "Anna",
+        "request": "Research", "settlement_asset": "usdg", "budget_amount": "5",
+        "cadence": "daily", "starts_at": "2026-10-12T00:00:00Z", "next_run_at": None,
+        "spend_cap": "10", "committed_amount": "0", "max_runs": None,
+        "runs_count": 0, "auto_fund": False, "status": "active", "status_reason": None,
+        "source": "dashboard", "created_at": "2026-10-11T00:00:00Z",
+        "updated_at": "2026-10-11T00:00:00Z", "runs": [],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(201, json={"data": schedule})
+
+    async def run() -> None:
+        async with AsyncLiegeClient("https://api.test", token="session", client=httpx.AsyncClient(
+            transport=httpx.MockTransport(handler)
+        )) as client:
+            created = await client.create_super_agent_schedule(
+                "agent-1", "Research", 5, "daily", 10
+            )
+            assert created.id == "schedule-1"
+            paused = await client.pause_super_agent_schedule("schedule-1")
+            assert paused.status == "active"
+
+    asyncio.run(run())

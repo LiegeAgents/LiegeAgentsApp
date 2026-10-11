@@ -11,11 +11,78 @@ def _date(value: str | None) -> datetime | None:
 ServiceType = Literal["tool", "data", "skill"]
 ServiceExecutionMode = Literal["manual", "sandboxed_runner"]
 SettlementAsset = Literal["usdg", "liege"]
+SuperAgentScheduleCadence = Literal["daily", "weekly", "monthly"]
+SuperAgentScheduleStatus = Literal["active", "paused", "cancelled", "completed"]
+SuperAgentScheduleSource = Literal["dashboard", "cli"]
 
 SuperAgentEnrollment = dict[str, Any]
 SuperAgentRuntimeToken = dict[str, Any]
 SuperAgentDashboard = dict[str, Any]
 ApprovalMode = Literal["always", "within_policy"]
+
+
+@dataclass(frozen=True)
+class SuperAgentScheduleRun:
+    id: str
+    slot: str
+    outcome: str
+    detail: str | None
+    created_at: str
+    job_id: str | None
+    job_status: str | None
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "SuperAgentScheduleRun":
+        return cls(
+            str(value["id"]), str(value.get("slot", "")), str(value.get("outcome", "")),
+            value.get("detail"), str(value.get("created_at", value.get("createdAt", ""))),
+            value.get("job_id", value.get("jobId")), value.get("job_status", value.get("jobStatus")),
+        )
+
+
+@dataclass(frozen=True)
+class SuperAgentSchedule:
+    id: str
+    agent_id: str
+    agent_name: str
+    request: str
+    settlement_asset: SettlementAsset
+    budget_amount: str
+    cadence: SuperAgentScheduleCadence
+    starts_at: str
+    next_run_at: str | None
+    spend_cap: str
+    committed_amount: str
+    max_runs: int | None
+    runs_count: int
+    auto_fund: bool
+    status: SuperAgentScheduleStatus
+    status_reason: str | None
+    source: SuperAgentScheduleSource
+    created_at: str
+    updated_at: str
+    runs: list[SuperAgentScheduleRun]
+    raw: dict[str, Any]
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "SuperAgentSchedule":
+        return cls(
+            str(value["id"]), str(value.get("agent_id", value.get("agentId", ""))),
+            str(value.get("agent_name", value.get("agentName", ""))), str(value.get("request", "")),
+            value.get("settlement_asset", value.get("settlementAsset", "usdg")),
+            str(value.get("budget_amount", value.get("budgetAmount", "0"))),
+            value["cadence"], str(value.get("starts_at", value.get("startsAt", ""))),
+            value.get("next_run_at", value.get("nextRunAt")),
+            str(value.get("spend_cap", value.get("spendCap", "0"))),
+            str(value.get("committed_amount", value.get("committedAmount", "0"))),
+            value.get("max_runs", value.get("maxRuns")),
+            int(value.get("runs_count", value.get("runsCount", 0))),
+            bool(value.get("auto_fund", value.get("autoFund", False))), value["status"],
+            value.get("status_reason", value.get("statusReason")), str(value.get("source", "dashboard")),
+            str(value.get("created_at", value.get("createdAt", ""))),
+            str(value.get("updated_at", value.get("updatedAt", ""))),
+            [SuperAgentScheduleRun.from_dict(item) for item in value.get("runs", [])], value,
+        )
 
 @dataclass(frozen=True)
 class Page:
