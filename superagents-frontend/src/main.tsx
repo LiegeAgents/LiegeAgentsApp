@@ -1051,15 +1051,20 @@ function Dashboard() {
                     .toLowerCase(),
               );
               const status =
-                proposal.status === "approved"
-                  ? "Approved draft"
-                  : proposal.status === "rejected"
-                    ? "Dismissed"
-                    : proposal.status === "pending"
-                      ? "Needs review"
-                      : "In progress";
+                proposal.job_status === "funded"
+                  ? "In progress"
+                  : proposal.job_status === "submitted" || proposal.job_status === "completed"
+                    ? "Delivered"
+                    : proposal.status === "approved"
+                      ? "Approved draft"
+                      : proposal.status === "rejected"
+                        ? "Dismissed"
+                        : proposal.status === "pending"
+                          ? "Needs review"
+                          : "In progress";
               return {
                 id: proposal.id,
+                progress: proposal.progress ?? null,
                 agentName: proposal.agent_name || parsed.agentName || "Unmatched agent",
                 title: parsed.request || proposal.raw_text || "Super Agent request",
                 agentId: matched?.id ?? "",
@@ -1217,6 +1222,9 @@ function Dashboard() {
                   <small>
                     {r.agentName || (a ? `${a.name} by LiegeAgents` : "Unmatched agent")} · {r.id}
                   </small>
+                  {r.progress && r.status === "In progress" && (
+                    <small className="request-progress">› {r.progress.message}</small>
+                  )}
                 </span>
                 <span className={`status status-${r.status.toLowerCase().replaceAll(" ", "-")}`}>
                   {r.status}
@@ -1718,6 +1726,26 @@ function Dashboard() {
           <blockquote>{selected.source}</blockquote>
           <h4>Proposed brief</h4>
           <p>{selected.brief}</p>
+          {selected.progress && (
+            <div className="live-progress" aria-live="polite">
+              <h4>Live progress</h4>
+              <p>{selected.progress.message}</p>
+              {selected.progress.percent != null && (
+                <div
+                  className="recurring-meter"
+                  role="progressbar"
+                  aria-valuenow={selected.progress.percent}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                >
+                  <span style={{ width: `${selected.progress.percent}%` }} />
+                </div>
+              )}
+              <small className="muted">
+                Updated {new Date(selected.progress.created_at).toLocaleTimeString()}
+              </small>
+            </div>
+          )}
           <dl className="review-terms">
             <div>
               <dt>Budget</dt>

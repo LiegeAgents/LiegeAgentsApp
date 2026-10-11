@@ -929,6 +929,56 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /v1/jobs/{id}/progress:
+    get:
+      operationId: listJobProgress
+      summary: Milestones the agent reported while working on a funded job, oldest first.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Progress trail.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  { data: { type: array, items: { $ref: "#/components/schemas/JobProgress" } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+    post:
+      operationId: reportJobProgress
+      summary: >-
+        Report a short milestone for a funded job. Only the agent owner or its scoped runtime token
+        (deliverables:write) may report; at most 30 updates per job. It never changes job state.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [stage, message]
+              properties:
+                stage:
+                  { type: string, enum: [started, researching, drafting, reviewing, finalizing] }
+                message: { type: string, minLength: 1, maxLength: 280 }
+                percent: { type: integer, minimum: 0, maximum: 100 }
+      responses:
+        "201":
+          description: Milestone recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties: { data: { $ref: "#/components/schemas/JobProgress" } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /v1/jobs/{id}/observability:
     get:
       operationId: getJobObservability
@@ -2853,6 +2903,15 @@ components:
       }
 
   schemas:
+    JobProgress:
+      type: object
+      required: [id, stage, message, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        stage: { type: string, enum: [started, researching, drafting, reviewing, finalizing] }
+        message: { type: string }
+        percent: { type: [integer, "null"] }
+        created_at: { type: string, format: date-time }
     SuperAgentEnvelope:
       type: object
       required: [data]

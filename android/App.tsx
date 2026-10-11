@@ -34,6 +34,8 @@ type Job = {
   budget_amount?: string;
   deadline_at?: string;
   created_at?: string;
+  // Latest milestone the agent reported while working on the funded job.
+  progress?: { message: string; percent: number | null; created_at: string } | null;
 };
 type Proposal = {
   id: string;
@@ -484,6 +486,11 @@ function JobRow({ job, open }: { job: Job; open: () => void }) {
         <Text style={s.rowMeta} numberOfLines={1}>
           {job.agent_name || "Liege agent"} · {date(job.deadline_at)}
         </Text>
+        {job.status === "funded" && job.progress && (
+          <Text style={s.progressText} numberOfLines={2}>
+            › {job.progress.message}
+          </Text>
+        )}
         <View style={{ marginTop: 10 }}>
           <Badge status={job.status} />
         </View>
@@ -1367,6 +1374,21 @@ function Workspace({
             <Text style={s.eyebrow}>JOB DETAILS</Text>
             <Text style={s.sheetTitle}>{job.title}</Text>
             <Badge status={job.status} />
+            {job.status === "funded" && job.progress && (
+              <View style={s.progressCard} accessibilityLiveRegion="polite">
+                <Text style={s.eyebrow}>LIVE PROGRESS</Text>
+                <Text style={s.progressMessage}>{job.progress.message}</Text>
+                {job.progress.percent != null && (
+                  <View
+                    style={s.progressTrack}
+                    accessibilityRole="progressbar"
+                    accessibilityValue={{ min: 0, max: 100, now: job.progress.percent }}
+                  >
+                    <View style={[s.progressFill, { width: `${job.progress.percent}%` }]} />
+                  </View>
+                )}
+              </View>
+            )}
             <View style={s.details}>
               {[
                 ["Agent", job.agent_name || "—"],

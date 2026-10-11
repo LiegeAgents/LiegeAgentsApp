@@ -8,6 +8,7 @@ import { decryptPayload, encryptPayload, payloadContext } from "../crypto.js";
 import { probeTransport } from "../superAgentProbe.js";
 import { findEnrolledAgent, readyEnrollment } from "../superAgentEnrollment.js";
 import { openSuperAgentJob } from "../superAgentSchedules.js";
+import { latestProgressColumn } from "../jobProgress.js";
 import { registerScheduleRoutes } from "./superAgentSchedules.js";
 import { db } from "../db/index.js";
 import { ApiError, asyncRoute } from "../http.js";
@@ -565,11 +566,16 @@ superAgentsRouter.get(
         [userId],
       ),
       db.query(
-        `SELECT i.id,i.raw_text,i.parsed,i.status,i.expires_at,i.created_at,i.decided_at,a.id AS agent_id,a.name AS agent_name,a.slug AS agent_slug FROM superagent_intents i LEFT JOIN agents a ON a.id=i.agent_id WHERE i.user_id=$1 ORDER BY i.created_at DESC LIMIT 50`,
+        `SELECT i.id,i.raw_text,i.parsed,i.status,i.expires_at,i.created_at,i.decided_at,a.id AS agent_id,a.name AS agent_name,a.slug AS agent_slug,
+           j.id AS job_id,j.status AS job_status,${latestProgressColumn("j")}
+         FROM superagent_intents i LEFT JOIN agents a ON a.id=i.agent_id
+         LEFT JOIN jobs j ON j.client_id=i.user_id AND j.strategy_policy->>'intentId'=i.id::text
+         WHERE i.user_id=$1 ORDER BY i.created_at DESC LIMIT 50`,
         [userId],
       ),
       db.query(
-        `SELECT j.id,j.public_id,j.title,j.status,j.settlement_asset,j.budget_amount,j.budget_usdg,j.deadline_at,j.created_at,a.name AS agent_name
+        `SELECT j.id,j.public_id,j.title,j.status,j.settlement_asset,j.budget_amount,j.budget_usdg,j.deadline_at,j.created_at,a.name AS agent_name,
+           ${latestProgressColumn("j")}
          FROM jobs j JOIN agents a ON a.id=j.agent_id
          WHERE (j.client_id=$1 OR a.owner_id=$1) AND j.strategy_policy->>'source'='superagent'
          ORDER BY j.created_at DESC LIMIT 50`,
@@ -651,7 +657,8 @@ superAgentsRouter.get(
   requireSessionOrMobileAuth("mobile:read"),
   asyncRoute(async (request, response) => {
     const result = await db.query(
-      `SELECT i.id,i.raw_text,i.parsed,i.status,i.source,i.expires_at,i.created_at,i.decided_at,a.id AS agent_id,a.name AS agent_name,j.id AS job_id,j.status AS job_status
+      `SELECT i.id,i.raw_text,i.parsed,i.status,i.source,i.expires_at,i.created_at,i.decided_at,a.id AS agent_id,a.name AS agent_name,j.id AS job_id,j.status AS job_status,
+       ${latestProgressColumn("j")}
        FROM superagent_intents i LEFT JOIN agents a ON a.id=i.agent_id
        LEFT JOIN jobs j ON j.client_id=i.user_id AND j.strategy_policy->>'intentId'=i.id::text
        WHERE i.user_id=$1 ORDER BY i.created_at DESC LIMIT 100`,

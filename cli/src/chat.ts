@@ -21,7 +21,17 @@ type Draft = {
 
 type Agent = { id: string; name: string; slug?: string; price_usd?: string; sla_minutes?: number };
 
-type Tracked = { intentStatus: string; jobId: string | null; jobStatus: string | null };
+type Tracked = {
+  intentStatus: string;
+  jobId: string | null;
+  jobStatus: string | null;
+  progressKey?: string | null;
+};
+
+type Progress = { stage: string; message: string; percent: number | null; created_at: string };
+
+export const formatProgress = (progress: Progress) =>
+  `${progress.message}${progress.percent == null ? "" : dim(` (${progress.percent}%)`)}`;
 
 const useColor = () => Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
 const paint = (code: string) => (text: string) =>
@@ -326,6 +336,14 @@ export class ChatSession {
           `  Budget    ${job.budget_amount ?? job.budget_usdg} ${String(job.settlement_asset ?? "usdg").toUpperCase()}`,
         );
         if (job.deadline_at) this.write(`  Deadline  ${job.deadline_at}`);
+        const trail = (job.progress as Progress[] | undefined) ?? [];
+        if (trail.length) {
+          this.write(`  Progress`);
+          for (const step of trail)
+            this.write(
+              `    ${dim(new Date(step.created_at).toLocaleTimeString())}  ${formatProgress(step)}`,
+            );
+        }
         return;
       }
       default:
@@ -357,6 +375,13 @@ export class ChatSession {
         state.jobStatus = jobStatus;
         this.write(`Job ${cyan(jobId)} is ${bold(jobStatus ?? "open")}${jobHint(jobStatus)}`);
         if (jobStatus && TERMINAL_JOB_STATUSES.has(jobStatus)) this.tracked.delete(id);
+      }
+      // Live milestones the agent reports while it works on the funded job.
+      const progress = intent.progress as Progress | null | undefined;
+      const progressKey = progress ? `${progress.created_at}|${progress.message}` : null;
+      if (progress && progressKey !== state.progressKey) {
+        state.progressKey = progressKey;
+        this.write(`  ${cyan("›")} ${formatProgress(progress)}`);
       }
     }
   }

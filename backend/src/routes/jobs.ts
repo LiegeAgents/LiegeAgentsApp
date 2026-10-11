@@ -23,6 +23,7 @@ import {
   STAKE_COVERAGE,
 } from "../capacity.js";
 import { consumeExecutionGrant } from "../executionGrants.js";
+import { registerProgressRoutes } from "./jobProgress.js";
 
 const decimalAmount = (positive = false) =>
   z
@@ -266,9 +267,14 @@ jobsRouter.get(
         "runtime_agent_scope",
         "This runtime token is not scoped to this agent.",
       );
+    const progress = await db.query(
+      "SELECT id, stage, message, percent, created_at FROM job_progress WHERE job_id = $1 ORDER BY created_at, id",
+      [id],
+    );
     response.json({
       data: {
         ...job,
+        progress: progress.rows,
         jobId: job.id,
         brief: undefined,
         brief_ciphertext: undefined,
@@ -1334,3 +1340,5 @@ jobsRouter.post(
     }
   }),
 );
+
+registerProgressRoutes(jobsRouter, assertRuntimeAgentScope);

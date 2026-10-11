@@ -11,6 +11,10 @@ deadline before Groq is called. Until a dedicated scoped worker token is enabled
 `LIEGE_RUNTIME_TOKEN` as a scoped runtime credential:
 rotate it if the runtime is compromised.
 
+While it works, the runtime reports short milestones to `POST /v1/jobs/:id/progress` (picked up,
+working on the deliverable, submitting). They mark real steps only, are shown to the client in
+the dashboard, CLI chat, and Android app, and a failed report never delays or fails the job.
+
 If a funded job cannot be completed, the runtime reports an agent decline to Liege with a reason.
 Liege records `job.rejected` and refunds the client through the ledger or escrow settlement path;
 the runtime never moves funds itself.

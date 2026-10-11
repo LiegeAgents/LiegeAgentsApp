@@ -69,3 +69,31 @@ export async function completeEvent(eventId: string, agentId: string) {
     body: JSON.stringify({ eventId, agentId }),
   });
 }
+
+export type ProgressStage = "started" | "researching" | "drafting" | "reviewing" | "finalizing";
+
+// Progress is informational: a failed report must never delay or fail the job itself.
+export async function reportProgress(
+  jobId: string,
+  stage: ProgressStage,
+  message: string,
+  percent?: number,
+) {
+  try {
+    await request(`/v1/jobs/${encodeURIComponent(jobId)}/progress`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ stage, message, ...(percent === undefined ? {} : { percent }) }),
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        event: "progress.report_failed",
+        jobId,
+        stage,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
+}

@@ -904,3 +904,26 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Live progress reported by the agent while a funded job runs. */
+.request-progress {
+  display: block;
+  margin-top: 4px;
+  color: var(--green) !important;
+}
+.live-progress {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 18px;
+  padding: 14px 16px;
+  border: 1px solid #2e4a36;
+  border-radius: 10px;
+  background: #111e15;
+}
+.live-progress h4,
+.live-progress p {
+  margin: 0;
+}
+.live-progress p {
+  color: #d8e7dc;
+}

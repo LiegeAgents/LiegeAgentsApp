@@ -4,6 +4,7 @@ import {
   claimEvent,
   completeEvent,
   declineJob,
+  reportProgress,
   getBrief,
   getJob,
   submitDeliverable,
@@ -77,8 +78,20 @@ async function execute(agentKey: AgentKey, eventId: string, event: LiegeWebhook)
       cleanProcessed();
       return { status: "declined" as const, reason: "unknown_service", jobId, agentKey };
     }
+    // Milestones mark real steps only; the agents do not claim work they have not done.
+    const name = agentKey.charAt(0).toUpperCase() + agentKey.slice(1);
+    await reportProgress(jobId, "started", `${name} picked up your job.`, 10);
     const brief = await getBrief(jobId);
+    await reportProgress(jobId, "drafting", `${name} is working on your deliverable.`, 40);
     const result = await handler.execute({ jobId, brief, requirements: policy });
+    await reportProgress(
+      jobId,
+      "finalizing",
+      result.evidence?.length
+        ? `Submitting the deliverable with ${result.evidence.length} source link${result.evidence.length === 1 ? "" : "s"} for your review.`
+        : "Submitting the deliverable for your review.",
+      90,
+    );
     await submitDeliverable(jobId, result.deliverable, result.evidence ?? []);
     await completeEvent(eventId, configuredAgent.id);
     processed.set(eventId, Date.now());

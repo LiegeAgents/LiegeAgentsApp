@@ -6,6 +6,7 @@ import { audit } from "../audit.js";
 import { db } from "../db/index.js";
 import { issueExecutionGrant } from "../executionGrants.js";
 import { ApiError, asyncRoute } from "../http.js";
+import { latestProgressColumn } from "../jobProgress.js";
 
 export const mobileRouter = Router();
 
@@ -307,7 +308,8 @@ mobileRouter.get(
     const [jobs, proposals, activity] = await Promise.all([
       db.query(
         `SELECT j.id, j.public_id, j.title, j.status, j.settlement_asset, j.budget_amount,
-                j.deadline_at, j.expires_at, j.created_at, a.name AS agent_name
+                j.deadline_at, j.expires_at, j.created_at, a.name AS agent_name,
+                ${latestProgressColumn("j")}
          FROM jobs j JOIN agents a ON a.id=j.agent_id
          WHERE j.client_id=$1 OR a.owner_id=$1 OR j.evaluator_id=$1
          ORDER BY j.created_at DESC, j.id DESC LIMIT 51 OFFSET $2`,

@@ -95,6 +95,8 @@ export type RequestItem = {
   source: string;
   brief: string;
   due: string;
+  // Latest milestone the agent reported while working on the funded job.
+  progress?: { message: string; percent: number | null; created_at: string } | null;
 };
 export const permissions = [
   {
