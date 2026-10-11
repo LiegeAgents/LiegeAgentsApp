@@ -1,6 +1,8 @@
 {
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "https://api.liegeagents.com/$1" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
   ]
 }

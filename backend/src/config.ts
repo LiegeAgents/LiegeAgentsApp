@@ -16,6 +16,9 @@ const env = z
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     PORT: z.coerce.number().int().positive().default(3001),
     TRUST_PROXY: z.string().min(1).default("1"),
+    // Shared with the Vercel proxies in front of the API. A request carrying it may name the
+    // end user's IP for rate limiting; without it every proxied user shares one budget.
+    LIEGE_PROXY_SECRET: z.string().min(32).optional(),
     DATABASE_URL: z.string().url(),
     RHC_ID: z.coerce.number().int().positive().default(4663),
     RHC_RPC_URL: z.string().url(),

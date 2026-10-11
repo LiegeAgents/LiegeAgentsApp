@@ -1,5 +1,7 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
+import { isIP } from "node:net";
 import type { NextFunction, Request, Response } from "express";
+import { env } from "./config.js";
 import { db } from "./db/index.js";
 import { ApiError } from "./http.js";
 
@@ -72,7 +74,7 @@ export async function rateLimit(request: Request, response: Response, next: Next
       );
     }
     const budget = budgets.find((candidate) => candidate.matches(request.path))!;
-    const ip = request.ip || request.socket.remoteAddress || "unknown";
+    const ip = clientIp(request);
     const minute = new Date();
     minute.setSeconds(0, 0);
     const bucket = `${budget.name}:${ip}:${minute.toISOString()}`;
@@ -90,6 +92,19 @@ export async function rateLimit(request: Request, response: Response, next: Next
   } catch (error) {
     next(error);
   }
+}
+
+const digest = (value: string) => createHash("sha256").update(value).digest();
+
+// The site proxies (www, staking, superagents) all reach the API from Vercel's addresses, so
+// they forward the visitor's IP together with LIEGE_PROXY_SECRET. The header is honoured only
+// with the correct secret; anyone else is limited by the address the API actually sees.
+export function clientIp(request: Request) {
+  const seen = request.ip || request.socket.remoteAddress || "unknown";
+  const secret = request.header("x-liege-proxy-secret");
+  const forwarded = request.header("x-liege-client-ip")?.trim();
+  if (!env.LIEGE_PROXY_SECRET || !secret || !forwarded || !isIP(forwarded)) return seen;
+  return timingSafeEqual(digest(secret), digest(env.LIEGE_PROXY_SECRET)) ? forwarded : seen;
 }
 
 // TRUST_PROXY tells Express which proxies may set X-Forwarded-For: a hop count, true/false, or a

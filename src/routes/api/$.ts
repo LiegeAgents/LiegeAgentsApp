@@ -39,6 +39,15 @@ async function proxy({ request, params }: { request: Request; params: { _splat?:
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
   }
+  // The API sees every visitor arriving from this proxy's address; name the real visitor so
+  // rate limits apply per person (honoured only with the shared secret, see backend clientIp).
+  const proxySecret = process.env.LIEGE_PROXY_SECRET;
+  const visitorIp =
+    request.headers.get("x-real-ip") ?? request.headers.get("x-forwarded-for")?.split(",")[0];
+  if (proxySecret && visitorIp) {
+    headers.set("x-liege-proxy-secret", proxySecret);
+    headers.set("x-liege-client-ip", visitorIp.trim());
+  }
   if (!headers.has("authorization")) {
     const token = cookieValue(request, sessionCookie);
     if (token) headers.set("authorization", `Bearer ${token}`);

@@ -21,7 +21,7 @@ npm run test:e2e
 - `/auth`: four-step preview of X identity, Liege wallet, permissions, and completion.
 - `/app`: sample dashboard. `?view=requests`, `agents`, `activity`, and `settings` deep-link to sections.
 
-The production build uses a same-origin `/api/*` proxy to `api.liegeagents.com`.
+The production build uses a same-origin `/api/*` proxy to `api.liegeagents.com` (the edge function `api/[...path].js`). Set `LIEGE_PROXY_SECRET` on the Vercel project to the API's value so each visitor gets their own rate-limit budget.
 Onboarding performs X OAuth first, then one Liege wallet SIWE signature, followed by
 the scoped Super Agents permission step. The dashboard chatbot creates proposal-only
 intents; it never funds or signs a job. Local development can point at the API with

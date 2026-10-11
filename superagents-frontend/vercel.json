@@ -3,8 +3,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://api.liegeagents.com/:path*" },
-    { "source": "/((?!.*\\.).*)", "destination": "/index.html" }
+    { "source": "/((?!api/)(?!.*\\.).*)", "destination": "/index.html" }
   ],
   "headers": [{ "source": "/(.*)", "headers": [
     { "key": "X-Content-Type-Options", "value": "nosniff" },

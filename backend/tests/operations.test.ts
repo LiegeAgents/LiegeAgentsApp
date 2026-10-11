@@ -25,6 +25,26 @@ describe.skipIf(!databaseAvailable)("rate limiting", () => {
     await api().get("/v1/agents").expect(200);
   }, 30_000);
 
+  test("visitors behind the site proxy get separate budgets; a forged IP header does not", async () => {
+    const seconds = new Date().getSeconds();
+    if (seconds > 45) await Bun.sleep((61 - seconds) * 1000);
+    const address = `0x${"2".repeat(40)}`;
+    const viaProxy = (ip: string, secret = process.env.LIEGE_PROXY_SECRET!) =>
+      api()
+        .post("/v1/auth/nonce")
+        .set("x-liege-proxy-secret", secret)
+        .set("x-liege-client-ip", ip)
+        .send({ address });
+    for (let request = 0; request < 20; request++) await viaProxy("203.0.113.10").expect(201);
+    await viaProxy("203.0.113.10").expect(429);
+    // A second visitor arriving through the same proxy still has a full budget.
+    await viaProxy("203.0.113.11").expect(201);
+    // Without the secret, the claimed IP is ignored and the caller's own address is limited.
+    for (let request = 0; request < 20; request++)
+      await viaProxy(`198.51.100.${request}`, "wrong-secret-wrong-secret-wrong-secret").expect(201);
+    await viaProxy("198.51.100.99", "wrong-secret-wrong-secret-wrong-secret").expect(429);
+  }, 30_000);
+
   test("expired buckets are pruned", async () => {
     await db.query(
       `INSERT INTO rate_limit_buckets (bucket, window_started_at, request_count) VALUES

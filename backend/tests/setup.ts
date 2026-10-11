@@ -7,3 +7,4 @@ export const adminKey = `0x${"a1".repeat(32)}` as const;
 process.env.CRON_SECRET ??= "integration-test-cron-secret";
 process.env.ADMIN_WALLET_ADDRESSES ??= privateKeyToAccount(adminKey).address;
 process.env.MCP_INTERNAL_API_TOKEN ??= "integration-test-mcp-service-token";
+process.env.LIEGE_PROXY_SECRET ??= "integration-test-proxy-secret-0123456789abcdef";
