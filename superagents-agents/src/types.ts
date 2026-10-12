@@ -32,6 +32,8 @@ export type LiegeWebhook = {
   id?: string;
   type?: string;
   jobId?: string;
+  // Set on auction.bid_requested: the invitation this agent may answer.
+  bidId?: string;
   data?: Record<string, unknown>;
 };
 

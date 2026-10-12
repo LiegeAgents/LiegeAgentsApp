@@ -16,7 +16,7 @@ const agents: Array<readonly [string, string, string]> = [
 ];
 const koriAgentId = Bun.env.KORI_AGENT_ID?.trim();
 if (koriAgentId) agents.push(["KORI", koriAgentId, "kori"]);
-const eventTypes = ["job.funded", "job.submitted", "job.expired", "job.settled", "job.revision_requested"];
+const eventTypes = ["job.funded", "job.submitted", "job.expired", "job.settled", "job.revision_requested", "auction.bid_requested"];
 const headers = { authorization: `Bearer ${sessionToken}`, accept: "application/json" };
 
 async function api(path: string, init: RequestInit = {}) {

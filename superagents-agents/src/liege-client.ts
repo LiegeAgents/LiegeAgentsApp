@@ -1,5 +1,6 @@
 import { config } from "./config.js";
 import type { JobAttachment } from "./attachments.js";
+import type { BidAnswer, BidInvitation } from "./bidding.js";
 import type { LiegeJob } from "./types.js";
 
 const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
@@ -18,9 +19,12 @@ const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
     error?: { code?: string; message?: string };
   };
   if (!response.ok)
-    throw Object.assign(new Error(body.error?.message ?? `Liege API returned ${response.status}.`), {
-      code: body.error?.code,
-    });
+    throw Object.assign(
+      new Error(body.error?.message ?? `Liege API returned ${response.status}.`),
+      {
+        code: body.error?.code,
+      },
+    );
   return (body.data ?? body) as T;
 };
 
@@ -55,6 +59,21 @@ export async function getAttachments(jobId: string) {
   });
   return Promise.all(
     list.map((item) => request<JobAttachment>(`${path}/${encodeURIComponent(item.id)}`)),
+  );
+}
+
+export async function getBid(bidId: string) {
+  return request<BidInvitation>(`/v1/super-agents/bids/${encodeURIComponent(bidId)}`);
+}
+
+export async function submitBid(bidId: string, answer: BidAnswer) {
+  return request<{ id: string; status: string }>(
+    `/v1/super-agents/bids/${encodeURIComponent(bidId)}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(answer),
+    },
   );
 }
 

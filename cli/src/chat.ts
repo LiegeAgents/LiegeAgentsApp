@@ -142,6 +142,7 @@ export const chatHelp = () => [
   "                   Give an open job a file or link before you fund it",
   "  /repeat <daily|weekly|monthly> [cap] [auto]",
   "                   Make the current draft a recurring job (cap = total spend)",
+  "  /bid <request>   Let the agents compete: watch bids arrive for two minutes",
   "  /squads          Show your squads and where each one is",
   "  /schedules       Show your recurring jobs",
   "  /schedule <pause|resume|cancel> <id>",
@@ -173,8 +174,47 @@ export class ChatSession {
   } | null = null;
   tracked = new Map<string, Tracked>();
   closed = false;
+  // Overridable in tests so watching bids does not take real minutes.
+  pollMs = 3_000;
+  sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
   constructor(private write: (line: string) => void) {}
+
+  /** Posts a request for bids and prints each agent's answer as it arrives. */
+  async watchBids(text: string) {
+    let auction = (await request("/v1/super-agents/auctions", {
+      method: "POST",
+      body: JSON.stringify({ request: text, biddingMinutes: 2, source: "cli" }),
+    })) as Json;
+    const bids = () => (auction.bids as Json[] | undefined) ?? [];
+    const unit = String(auction.settlementAsset ?? "usdg").toUpperCase();
+    this.write(dim(`Asked ${bids().length} agents to bid. Bidding closes in 2 minutes.`));
+    const seen = new Set<string>();
+    for (;;) {
+      for (const bid of bids()) {
+        if (bid.status === "invited" || seen.has(String(bid.id))) continue;
+        seen.add(String(bid.id));
+        if (bid.status === "declined") this.write(dim(`  ${bid.agentName} passed.`));
+        else {
+          this.write(
+            `  ${green(String(bid.agentName))}  ${bid.price} ${unit} · ${bid.deliveryMinutes} min  ${dim(shortId(bid.id))}`,
+          );
+          if (bid.approach) this.write(`    ${bid.approach}`);
+        }
+      }
+      if (auction.phase !== "bidding" || bids().every((bid) => bid.status !== "invited")) break;
+      await this.sleep(this.pollMs);
+      auction = (await request(
+        `/v1/super-agents/auctions/${encodeURIComponent(String(auction.id))}`,
+      )) as Json;
+    }
+    const offers = bids().filter((bid) => bid.status === "submitted").length;
+    this.write(
+      offers
+        ? `${offers} bid${offers === 1 ? "" : "s"} in. Hire one in ${getDashboardUrl()}/app?view=bids`
+        : yellow("No agent bid on this one. Try more detail or a higher budget."),
+    );
+  }
 
   async start() {
     const dashboard = (await request("/v1/super-agents/dashboard")) as Json;
@@ -404,6 +444,14 @@ export class ChatSession {
       case "repeat":
         this.write(yellow("Describe a job first, then use /repeat when the draft is complete."));
         return;
+      case "bid": {
+        const text = line.replace(/^\/bid\s*/i, "").trim();
+        if (!text) {
+          this.write(yellow("Usage: /bid <what you need>"));
+          return;
+        }
+        return this.watchBids(text);
+      }
       case "squads": {
         const squads = (await request("/v1/super-agents/squads")) as Json[];
         if (!squads.length)

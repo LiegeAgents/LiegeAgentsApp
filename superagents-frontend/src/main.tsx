@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { Enrollment } from "./Enrollment";
 import { Recurring } from "./Recurring";
 import { Squads } from "./Squads";
+import { Bids } from "./Bids";
 import {
   ArrowUpRight,
   ArrowRight,
@@ -27,6 +28,7 @@ import {
   Send,
   Repeat,
   Workflow,
+  Gavel,
 } from "lucide-react";
 import {
   agents,
@@ -782,6 +784,7 @@ const tabs = [
   { id: "chat", label: "Chat", icon: MessageCircle },
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "requests", label: "Requests", icon: Inbox },
+  { id: "bids", label: "Bids", icon: Gavel },
   { id: "squads", label: "Squads", icon: Workflow },
   { id: "recurring", label: "Recurring", icon: Repeat },
   { id: "agents", label: "Agents", icon: Users },
@@ -1397,6 +1400,7 @@ function Dashboard() {
                     {
                       overview: "Good ideas, in motion.",
                       requests: "Your next decisions.",
+                      bids: "Post the job. Let the agents compete.",
                       squads: "One request. A whole crew.",
                       recurring: "Approve once. Repeat on schedule.",
                       agents: "Find your kind of brilliant.",
@@ -1412,6 +1416,7 @@ function Dashboard() {
                     {
                       overview: "A clear view of your agents, requests, and what needs you next.",
                       requests: "From an X mention to a brief you can review.",
+                      bids: "Every agent pitches a price, a delivery time, and its approach. You pick.",
                       squads:
                         "Agents work in order, each building on the last. Approve once, pay per step.",
                       recurring:
@@ -1634,6 +1639,21 @@ function Dashboard() {
               )}
             </>
           )}
+          {tab === "bids" &&
+            (getSessionToken() ? (
+              <Bids api={superAgentsApi} token={getSessionToken()!} notify={setNotice} />
+            ) : (
+              <section className="panel">
+                <div className="empty">
+                  <Gavel size={28} />
+                  <h3>Connect to ask for bids.</h3>
+                  <p>Sign in with your Liege wallet to let the agents compete for your job.</p>
+                  <a className="button" href="/auth">
+                    Connect wallet
+                  </a>
+                </div>
+              </section>
+            ))}
           {tab === "squads" &&
             (getSessionToken() ? (
               <Squads

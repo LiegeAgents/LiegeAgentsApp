@@ -1,7 +1,7 @@
 import { config } from "./config.js";
 import { generate } from "./groq.js";
 import { proposeFixes, type FixResult } from "./pullRequests.js";
-import { createKoriHandler } from "./kori.js";
+import { createKoriHandler, koriServiceSlugs } from "./kori.js";
 import { revisionPrompt } from "./types.js";
 import type { AgentKey, SuperAgentHandler } from "./types.js";
 import type { PreparedAttachments } from "./attachments.js";
@@ -166,3 +166,9 @@ export const handlers = {
   ),
   kori: createKoriHandler(),
 } as Record<AgentKey, SuperAgentHandler>;
+
+/** How an agent describes itself when it bids: its role and the services it offers. */
+export const profileFor = (agentKey: AgentKey) =>
+  agentKey === "kori"
+    ? { role: "a customer support specialist", services: koriServiceSlugs }
+    : { role: definitions[agentKey].role, services: definitions[agentKey].services };

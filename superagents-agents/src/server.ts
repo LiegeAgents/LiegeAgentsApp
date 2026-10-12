@@ -5,13 +5,16 @@ import {
   completeEvent,
   declineJob,
   getAttachments,
+  getBid,
   getRevision,
+  submitBid,
   reportProgress,
   getBrief,
   getJob,
   submitDeliverable,
 } from "./liege-client.js";
 import { prepareAttachments } from "./attachments.js";
+import { prepareBid } from "./bidding.js";
 import { handlers } from "./handlers.js";
 import type { AgentKey, LiegeWebhook } from "./types.js";
 
@@ -137,6 +140,30 @@ async function execute(agentKey: AgentKey, eventId: string, event: LiegeWebhook)
   }
 }
 
+/** Answers an invitation to bid once, before bidding closes. */
+async function bid(agentKey: AgentKey, eventId: string, event: LiegeWebhook) {
+  const bidId = event.bidId;
+  if (!bidId) throw new Error("Bid request has no bidId.");
+  if (processed.has(eventId)) return { status: "ignored" as const, reason: "duplicate" };
+  const agentId = config.agents[agentKey].id;
+  const invitation = await getBid(bidId);
+  if (!invitation.open || invitation.status !== "invited")
+    return { status: "ignored" as const, reason: "bidding_closed" };
+  const receipt = await claimEvent(eventId, agentId);
+  if (!receipt.claimed) return { status: "ignored" as const, reason: "durable_duplicate" };
+  const answer = await prepareBid(agentKey, invitation);
+  await submitBid(bidId, answer);
+  await completeEvent(eventId, agentId);
+  processed.set(eventId, Date.now());
+  cleanProcessed();
+  return {
+    status: "decline" in answer ? ("declined" as const) : ("bid" as const),
+    bidId,
+    agentKey,
+    ...("decline" in answer ? {} : { price: answer.price }),
+  };
+}
+
 const json = (status: number, data: unknown) =>
   new Response(JSON.stringify({ data }), {
     status,
@@ -194,6 +221,20 @@ export const server = Bun.serve({
         .update(`superagent.connection_test:${probe.agentId}:${probe.challenge}`)
         .digest("hex");
       return new Response(null, { status: 204, headers: { "x-liege-connection-proof": proof } });
+    }
+    if (event.type === "auction.bid_requested") {
+      try {
+        return json(200, await bid(agentKey, eventId, event));
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            eventId,
+            agentKey,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+        return json(500, { code: "bid_failed" });
+      }
     }
     // A revision request returns the job to funded; the agent revises with the client's feedback.
     if (event.type !== "job.funded" && event.type !== "job.revision_requested")

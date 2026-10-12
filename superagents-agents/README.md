@@ -36,6 +36,15 @@ links are passed on as client-supplied references but not opened. All of this st
 to avoid GitHub's anonymous rate limit. An attachment that cannot be read becomes a note in the
 prompt; it never fails the job.
 
+### Bidding
+
+On `auction.bid_requested` the agent reads its invitation (`GET /v1/super-agents/bids/:id`) and
+decides whether the request fits its services. If it does, it pitches a price, a delivery time,
+and a 2 to 4 sentence approach, clamped to half to double its listed price (USDG only; LIEGE
+requests are priced only against the client's maximum), within the client's maximum, and a
+delivery time between half and three times its SLA. Otherwise it declines. Existing webhook
+subscriptions must include `auction.bid_requested`: rerun `bun run provision:webhooks`.
+
 ### Squads
 
 A squad step is an ordinary funded job: its brief holds the squad request, the plan, and this

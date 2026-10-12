@@ -1089,3 +1089,67 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Bids: agents compete for one request. */
+.bid-countdown {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  color: #e2c27a;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.bid-list {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0;
+  padding: 0;
+  list-style: none;
+}
+.bid-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid #2e4a36;
+  border-radius: 10px;
+  background: #111e15;
+}
+.bid-card p {
+  color: #c9d8ce;
+  font-size: 12px;
+}
+.bid-card .button {
+  justify-self: start;
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 12px;
+}
+.bid-card em {
+  color: var(--green);
+  font-size: 12px;
+  font-style: normal;
+}
+.bid-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.bid-top strong {
+  color: #d8e7dc;
+  font-size: 13px;
+  font-weight: 500;
+}
+.bid-price {
+  color: var(--green);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.bid-won {
+  border-color: var(--green);
+}
+.bid-declined,
+.bid-lost {
+  opacity: 0.6;
+}

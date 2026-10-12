@@ -19,7 +19,7 @@ export const getApiUrl = () =>
   (process.env.LIEGE_API_URL ?? "https://api.liegeagents.com").replace(/\/$/, "");
 export const getSessionToken = () => process.env.LIEGE_SESSION_TOKEN;
 
-const BOOLEAN_FLAGS = new Set(["ap2", "help", "h", "auto-fund"]);
+const BOOLEAN_FLAGS = new Set(["ap2", "help", "h", "auto-fund", "fund"]);
 const INSTALLER_URL =
   "https://raw.githubusercontent.com/LiegeAgents/LiegeAgentsApp/main/cli/install.sh";
 
@@ -48,6 +48,11 @@ Usage:
   liege superagents schedules get <schedule-id>
   liege superagents schedules create --agent-id <id> --request <text> --budget <n> --cadence <daily|weekly|monthly> --cap <n> [--max-runs <n>] [--auto-fund] [--asset usdg|liege] [--start <iso-time>]
   liege superagents schedules pause|resume|cancel <schedule-id>
+  liege superagents auctions create --request <text> [--max-budget <n>] [--minutes <1-60>] [--asset usdg|liege]
+  liege superagents auctions list
+  liege superagents auctions get <auction-id>
+  liege superagents auctions award <auction-id> <bid-id> [--fund]
+  liege superagents auctions cancel <auction-id>
   liege superagents squads list
   liege superagents squads get <squad-id>
   liege superagents squads create --request <text> --steps "<agent>:<budget>:<task>; ..." [--name <text>] [--auto-fund] [--asset usdg|liege]
@@ -460,6 +465,35 @@ export async function execute(args: string[]): Promise<unknown> {
         return request("/v1/super-agents/schedules", {
           method: "POST",
           body: JSON.stringify({ source: "cli", ...body }),
+        });
+      }
+    }
+    if (action === "auctions" || action === "auction" || action === "bids") {
+      const target = positional[3];
+      const path = (suffix = "") =>
+        `/v1/super-agents/auctions/${encodeURIComponent(target!)}${suffix}`;
+      if (!id || id === "list") return request("/v1/super-agents/auctions");
+      if (id === "get" && target) return request(path());
+      if (id === "cancel" && target) return request(path("/cancel"), { method: "POST" });
+      if (id === "award" && target) {
+        if (!positional[4])
+          throw new Error("Provide the bid to hire: award <auction-id> <bid-id>.");
+        return request(path("/award"), {
+          method: "POST",
+          body: JSON.stringify({ bidId: positional[4], fund: flags.fund === "true" }),
+        });
+      }
+      if (id === "create") {
+        if (!flags.request) throw new Error("Provide --request with the job to bid on.");
+        return request("/v1/super-agents/auctions", {
+          method: "POST",
+          body: JSON.stringify({
+            request: flags.request,
+            settlementAsset: (flags.asset ?? "usdg").toLowerCase(),
+            ...(flags["max-budget"] ? { maxBudget: Number(flags["max-budget"]) } : {}),
+            ...(flags.minutes ? { biddingMinutes: Number(flags.minutes) } : {}),
+            source: "cli",
+          }),
         });
       }
     }

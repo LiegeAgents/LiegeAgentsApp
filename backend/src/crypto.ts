@@ -123,6 +123,8 @@ export const payloadContext = (
     | "attachment"
     | "attachment-name"
     | "squad"
+    | "auction"
+    | "bid"
     | "webhook-secret"
     | "artifact"
     | "access-token"

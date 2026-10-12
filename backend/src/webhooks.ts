@@ -47,7 +47,8 @@ export async function replayWebhookEvents(
     `SELECT e.id, e.cursor, e.event_type, e.payload
      FROM webhook_events e LEFT JOIN jobs j ON j.id = e.job_id
      LEFT JOIN invoices i ON i.id = e.invoice_id
-     WHERE COALESCE(j.agent_id, i.agent_id) = $1 AND e.cursor > $2::bigint
+     LEFT JOIN superagent_bids b ON b.id = e.bid_id
+     WHERE COALESCE(j.agent_id, i.agent_id, b.agent_id) = $1 AND e.cursor > $2::bigint
        AND ($4::uuid IS NULL OR e.job_id = $4::uuid)
        AND ($5::text IS NULL OR e.event_type = $5::text)
      ORDER BY e.cursor ASC LIMIT $3`,
@@ -98,27 +99,33 @@ export async function enqueueWebhookEvent(
   input: {
     jobId?: string;
     invoiceId?: string;
+    bidId?: string;
     eventType: string;
     actorId?: string;
     data?: Record<string, unknown>;
   },
 ) {
-  if (Boolean(input.jobId) === Boolean(input.invoiceId))
-    throw new Error("A webhook event needs exactly one job or invoice subject.");
+  if ([input.jobId, input.invoiceId, input.bidId].filter(Boolean).length !== 1)
+    throw new Error("A webhook event needs exactly one job, invoice, or bid subject.");
   const eventId = crypto.randomUUID();
   const payload = {
     id: eventId,
     type: input.eventType,
     createdAt: new Date().toISOString(),
-    ...(input.jobId ? { jobId: input.jobId } : { invoiceId: input.invoiceId }),
+    ...(input.jobId
+      ? { jobId: input.jobId }
+      : input.invoiceId
+        ? { invoiceId: input.invoiceId }
+        : { bidId: input.bidId }),
     data: { ...(input.data ?? {}), ...(input.actorId ? { actorId: input.actorId } : {}) },
   };
   const event = await client.query<{ id: string; cursor: string }>(
-    "INSERT INTO webhook_events (id, job_id, invoice_id, event_type, payload) VALUES ($1,$2,$3,$4,$5) RETURNING id, cursor",
+    "INSERT INTO webhook_events (id, job_id, invoice_id, bid_id, event_type, payload) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, cursor",
     [
       eventId,
       input.jobId ?? null,
       input.invoiceId ?? null,
+      input.bidId ?? null,
       input.eventType,
       JSON.stringify(payload),
     ],
@@ -126,10 +133,17 @@ export async function enqueueWebhookEvent(
   await client.query(
     `INSERT INTO webhook_deliveries (event_id, subscription_id)
      SELECT $1, id FROM webhook_subscriptions
-     WHERE agent_id = COALESCE((SELECT agent_id FROM jobs WHERE id = $2), (SELECT agent_id FROM invoices WHERE id = $3))
+     WHERE agent_id = COALESCE((SELECT agent_id FROM jobs WHERE id = $2),
+         (SELECT agent_id FROM invoices WHERE id = $3), (SELECT agent_id FROM superagent_bids WHERE id = $5))
        AND active AND $4 = ANY(event_types)
      ON CONFLICT DO NOTHING`,
-    [event.rows[0].id, input.jobId ?? null, input.invoiceId ?? null, input.eventType],
+    [
+      event.rows[0].id,
+      input.jobId ?? null,
+      input.invoiceId ?? null,
+      input.eventType,
+      input.bidId ?? null,
+    ],
   );
 }
 
