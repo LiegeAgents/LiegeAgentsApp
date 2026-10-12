@@ -58,6 +58,10 @@ Usage:
   liege jobs decline <job-id> --reason <text>
   liege jobs revise <job-id> --feedback <text>
   liege jobs revision <job-id>
+  liege jobs attach <job-id> --file <path> | --url <url> [--commit <sha>]
+  liege jobs attachments <job-id>
+  liege jobs attachment <job-id> <attachment-id> [--out <path>]
+  liege jobs detach <job-id> <attachment-id>
   liege runner simulate <agent-id> '<json-workload>'
   liege runner authorize <agent-id> '<json-workload>' --simulation-id <id>
   liege runner execute '<json-workload>' --action-id <id> --simulation-id <id>
@@ -108,7 +112,7 @@ export async function request(path: string, init: RequestInit = {}, authenticate
   const send = () => {
     const headers = new Headers(init.headers);
     headers.set("accept", "application/json");
-    if (init.body) headers.set("content-type", "application/json");
+    if (init.body && !headers.has("content-type")) headers.set("content-type", "application/json");
     if (token) headers.set("authorization", `Bearer ${token}`);
     return fetch(`${getApiUrl()}${path}`, { ...init, headers });
   };
@@ -133,6 +137,48 @@ export async function request(path: string, init: RequestInit = {}, authenticate
     throw error;
   }
   return body?.data ?? body;
+}
+
+const ATTACHMENT_TYPES: Record<string, string> = {
+  pdf: "application/pdf",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  txt: "text/plain",
+  md: "text/markdown",
+  markdown: "text/markdown",
+  csv: "text/csv",
+  json: "text/plain",
+};
+
+/** The upload type for a file attachment, from its extension; the API checks the contents. */
+export function attachmentMediaType(path: string) {
+  const type = ATTACHMENT_TYPES[path.split(".").pop()?.toLowerCase() ?? ""];
+  if (!type)
+    throw new Error(
+      "Attach a PDF, PNG, JPEG, GIF, WebP, or text file (.txt, .md, .csv, .json), up to 3 MB.",
+    );
+  return type;
+}
+
+/** Attaches a local file or an https link to an open job's brief. */
+export async function attach(jobId: string, flags: Record<string, string | undefined>) {
+  const path = `/v1/jobs/${encodeURIComponent(jobId)}/attachments`;
+  if (flags.url)
+    return request(path, {
+      method: "POST",
+      body: JSON.stringify({ url: flags.url, ...(flags.commit ? { commit: flags.commit } : {}) }),
+    });
+  if (!flags.file) throw new Error("Provide --file <path> or --url <url> to attach.");
+  const file = Bun.file(flags.file);
+  if (!(await file.exists())) throw new Error(`No file at ${flags.file}.`);
+  return request(`${path}/file?name=${encodeURIComponent(basename(flags.file))}`, {
+    method: "POST",
+    headers: { "content-type": attachmentMediaType(flags.file) },
+    body: await file.arrayBuffer(),
+  });
 }
 
 export function print(value: unknown) {
@@ -452,6 +498,25 @@ export async function execute(args: string[]): Promise<unknown> {
   }
   if (resource === "jobs" && action === "revision" && id)
     return request(`/v1/jobs/${encodeURIComponent(id)}/revision`);
+  if (resource === "jobs" && action === "attach" && id) return attach(id, flags);
+  if (resource === "jobs" && action === "attachments" && id)
+    return request(`/v1/jobs/${encodeURIComponent(id)}/attachments`);
+  if (resource === "jobs" && action === "attachment" && id && positional[3]) {
+    const item = (await request(
+      `/v1/jobs/${encodeURIComponent(id)}/attachments/${encodeURIComponent(positional[3])}`,
+    )) as Json;
+    if (typeof item.data !== "string") return item;
+    const out = flags.out ?? basename(String(item.name));
+    await Bun.write(out, Buffer.from(item.data, "base64"));
+    return { ...item, data: undefined, savedTo: out };
+  }
+  if (resource === "jobs" && action === "detach" && id && positional[3]) {
+    await request(
+      `/v1/jobs/${encodeURIComponent(id)}/attachments/${encodeURIComponent(positional[3])}`,
+      { method: "DELETE" },
+    );
+    return { removed: positional[3] };
+  }
   if (resource === "jobs" && action === "decline" && id) {
     const reason = flags.reason?.trim();
     if (!reason) throw new Error("--reason is required when declining a job.");

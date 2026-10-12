@@ -1,6 +1,6 @@
 import { createInterface } from "node:readline";
 import { linkedAccessToken } from "./credentials.js";
-import { getApiUrl, getSessionToken, NOT_SIGNED_IN, request, type Json } from "./index.js";
+import { attach, getApiUrl, getSessionToken, NOT_SIGNED_IN, request, type Json } from "./index.js";
 
 // Interactive Super Agents chat (`liege --spg`). It only drafts proposals: approval,
 // funding, and signing stay in the Super Agents dashboard, exactly as for the web chatbot.
@@ -138,6 +138,8 @@ export const chatHelp = () => [
   "  /job <job-id>    Show one job",
   "  /revise <job-id> <feedback>",
   "                   Send delivered work back once for a revision",
+  "  /attach <job-id> <file-or-url> [commit]",
+  "                   Give an open job a file or link before you fund it",
   "  /repeat <daily|weekly|monthly> [cap] [auto]",
   "                   Make the current draft a recurring job (cap = total spend)",
   "  /schedules       Show your recurring jobs",
@@ -353,6 +355,23 @@ export class ChatSession {
           this.write(
             `  ${dim(String(job.id))}  ${String(job.status).padEnd(9)} ${String(job.title).slice(0, 60)}`,
           );
+        return;
+      }
+      case "attach": {
+        const [, target, commit] = line.trim().split(/\s+/).slice(1);
+        if (!arg || !target) {
+          this.write(yellow("Usage: /attach <job-id> <file-path-or-https-url> [commit]"));
+          return;
+        }
+        const added = (await attach(
+          arg,
+          /^https?:\/\//i.test(target) ? { url: target, commit } : { file: target },
+        )) as Json;
+        this.write(
+          green(
+            `Attached ${String(added.name)}. Fund the job when you're ready; the agent reads it first.`,
+          ),
+        );
         return;
       }
       case "revise": {

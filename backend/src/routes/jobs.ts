@@ -25,6 +25,7 @@ import {
 import { consumeExecutionGrant } from "../executionGrants.js";
 import { registerProgressRoutes } from "./jobProgress.js";
 import { registerRevisionRoutes } from "./jobRevisions.js";
+import { registerAttachmentRoutes } from "./jobAttachments.js";
 
 const decimalAmount = (positive = false) =>
   z
@@ -1344,3 +1345,4 @@ jobsRouter.post(
 
 registerProgressRoutes(jobsRouter, assertRuntimeAgentScope);
 registerRevisionRoutes(jobsRouter);
+registerAttachmentRoutes(jobsRouter);

@@ -982,6 +982,137 @@ paths:
         "400": { $ref: "#/components/responses/InvalidRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "409": { $ref: "#/components/responses/Conflict" }
+  /v1/jobs/{id}/attachments:
+    get:
+      operationId: listJobAttachments
+      summary: >-
+        List the files and links the client attached to the brief, oldest first. Parties only; a
+        runtime token needs briefs:read for its own agent.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Attachments, without their contents.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  { data: { type: array, items: { $ref: "#/components/schemas/JobAttachment" } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      operationId: addJobLink
+      summary: >-
+        Attach an https link to an open job's brief, optionally pinned to a commit (for example a
+        GitHub repository the agent should review). Client only, before funding; at most 5
+        attachments per job.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: { type: string, format: uri, maxLength: 2048 }
+                commit: { type: string, pattern: "^[0-9a-fA-F]{7,40}$" }
+      responses:
+        "201":
+          description: Link attached.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties: { data: { $ref: "#/components/schemas/JobAttachment" } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/jobs/{id}/attachments/file:
+    post:
+      operationId: uploadJobFile
+      summary: >-
+        Attach a file to an open job's brief, sent as the raw request body with its Content-Type.
+        PDF, PNG, JPEG, GIF, WebP, and UTF-8 text (plain, Markdown, CSV) up to 3 MB each and 10 MB
+        per job. Contents must match the declared type. Client only, before funding. Stored
+        encrypted.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: name, in: query, required: true, schema: { type: string, maxLength: 200 } }
+      requestBody:
+        required: true
+        content:
+          application/pdf: { schema: { type: string, format: binary } }
+          image/*: { schema: { type: string, format: binary } }
+          text/*: { schema: { type: string, format: binary } }
+      responses:
+        "201":
+          description: File attached.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties: { data: { $ref: "#/components/schemas/JobAttachment" } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { description: File or job attachments too large. }
+        "415": { description: Unsupported file type, or contents that do not match it. }
+
+  /v1/jobs/{id}/attachments/{attachmentId}:
+    get:
+      operationId: getJobAttachment
+      summary: >-
+        Read one attachment: a file's contents as base64 `data`, or a link's `url` and `commit`.
+        Parties only; a runtime token needs briefs:read for its own agent. Every read is audited.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: attachmentId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Attachment with its contents.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    allOf:
+                      - { $ref: "#/components/schemas/JobAttachment" }
+                      - type: object
+                        properties:
+                          data: { type: string, contentEncoding: base64 }
+                          url: { type: string, format: uri }
+                          commit: { type: string }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: removeJobAttachment
+      summary: Remove an attachment. Client only, before funding.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: attachmentId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Attachment removed. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
   /v1/jobs/{id}/progress:
     get:
       operationId: listJobProgress
@@ -2958,6 +3089,17 @@ components:
       }
 
   schemas:
+    JobAttachment:
+      type: object
+      required: [id, kind, name, mediaType, sizeBytes, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [file, link] }
+        name:
+          { type: string, description: "The file name, or the link (with @commit when pinned)." }
+        mediaType: { type: string }
+        sizeBytes: { type: integer }
+        createdAt: { type: string, format: date-time }
     JobProgress:
       type: object
       required: [id, stage, message, created_at]

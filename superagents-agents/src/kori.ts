@@ -69,8 +69,8 @@ export function createKoriHandler(generateReply: typeof generate = generate): Su
   return {
     agentKey: "kori",
     serviceSlugs: koriServiceSlugs,
-    async execute({ jobId, brief, requirements, revision }) {
-      const { text, count } = redactSecrets(revision ? `${brief}${revisionPrompt(revision)}` : brief);
+    async execute({ jobId, brief, requirements, revision, attachments }) {
+      const { text, count } = redactSecrets(`${brief}${attachments?.text ?? ""}${revision ? revisionPrompt(revision) : ""}`);
       const policy = (requirements ?? {}) as Record<string, unknown>;
       const serviceSlug = typeof policy.serviceSlug === "string" ? policy.serviceSlug : koriServiceSlugs[0];
       const raw = await generateReply(koriSystemPrompt, `Job ID: ${jobId}\nService: ${serviceSlug}\nCustomer message and context:\n${text} /no_think`);

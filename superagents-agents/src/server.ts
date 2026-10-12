@@ -4,12 +4,14 @@ import {
   claimEvent,
   completeEvent,
   declineJob,
+  getAttachments,
   getRevision,
   reportProgress,
   getBrief,
   getJob,
   submitDeliverable,
 } from "./liege-client.js";
+import { prepareAttachments } from "./attachments.js";
 import { handlers } from "./handlers.js";
 import type { AgentKey, LiegeWebhook } from "./types.js";
 
@@ -90,6 +92,15 @@ async function execute(agentKey: AgentKey, eventId: string, event: LiegeWebhook)
     );
     const brief = await getBrief(jobId);
     const revision = revising ? await getRevision(jobId) : undefined;
+    const files = await getAttachments(jobId);
+    if (files.length)
+      await reportProgress(
+        jobId,
+        "researching",
+        `${name} is reading your ${files.length} attachment${files.length === 1 ? "" : "s"}.`,
+        25,
+      );
+    const attachments = files.length ? await prepareAttachments(files) : undefined;
     await reportProgress(
       jobId,
       "drafting",
@@ -98,7 +109,13 @@ async function execute(agentKey: AgentKey, eventId: string, event: LiegeWebhook)
         : `${name} is working on your deliverable.`,
       40,
     );
-    const result = await handler.execute({ jobId, brief, requirements: policy, revision });
+    const result = await handler.execute({
+      jobId,
+      brief,
+      requirements: policy,
+      revision,
+      attachments,
+    });
     await reportProgress(
       jobId,
       "finalizing",

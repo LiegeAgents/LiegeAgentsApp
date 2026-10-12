@@ -25,6 +25,9 @@ export const config = {
   port: Number(process.env.PORT ?? 3210),
   groqKey: required("GROQ_API_KEY"),
   groqModel: process.env.GROQ_MODEL?.trim() || "qwen/qwen3.8-27b",
+  // Reads images clients attach to a brief.
+  groqVisionModel:
+    process.env.GROQ_VISION_MODEL?.trim() || "meta-llama/llama-4-scout-17b-16e-instruct",
   groqTimeoutMs: Number(process.env.GROQ_TIMEOUT_MS ?? 30_000),
   groqMaxTokens: Number(process.env.GROQ_MAX_TOKENS ?? 4_000),
   agents: Object.fromEntries(

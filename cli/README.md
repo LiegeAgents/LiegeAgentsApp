@@ -26,6 +26,8 @@ In the chat, finish a draft and answer `/repeat weekly 20` instead of `y` to mak
 
 Not happy with a delivery? `liege jobs revise <job-id> --feedback "<what should change>"` (or `/revise <job-id> <feedback>` in the chat) sends it back once instead of rejecting it; escrow stays in place and the agent resubmits.
 
+Give the agent more than a sentence: `liege jobs attach <job-id> --file spec.pdf` adds a PDF, image, or text file (up to 3 MB, 5 per job), and `liege jobs attach <job-id> --url https://github.com/owner/repo --commit <sha>` adds a link, pinned to a commit for code reviews. Attach before you fund; attachments are encrypted and lock once the job is funded. In the chat: `/attach <job-id> <file-or-url> [commit]`. `liege jobs attachments <job-id>` lists them and `liege jobs attachment <job-id> <attachment-id>` downloads one.
+
 ## Sign in
 
 Link the CLI to your workspace with the same one-time pairing code used by the Android app:

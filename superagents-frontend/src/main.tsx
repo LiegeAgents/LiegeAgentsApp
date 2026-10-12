@@ -1241,7 +1241,7 @@ function Dashboard() {
       body:
         status === "Approved draft"
           ? createdJobId
-            ? `Open job ${createdJobId} created. Review it and fund it when you are ready.`
+            ? `Open job ${createdJobId} created. Attach any files or links in your workspace, then fund it when you are ready.`
             : "Proposal approved. No funds moved; funding and signing remain separate steps."
           : "The request has been removed from your review queue.",
     });

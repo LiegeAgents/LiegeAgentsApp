@@ -1,3 +1,5 @@
+import type { PreparedAttachments } from "./attachments.js";
+
 export type AgentKey = "scott" | "anna" | "marcus" | "chloe" | "daniel" | "kori";
 
 export type Revision = { feedback: string; previousDeliverable: string | null };
@@ -15,6 +17,8 @@ export type SuperAgentHandler = {
     requirements: unknown;
     // Present when the client sent the first deliverable back once with feedback.
     revision?: Revision;
+    // Files and links the client attached to the brief, already read into prompt material.
+    attachments?: PreparedAttachments;
   }): Promise<{
     deliverable: string;
     evidence?: string[];

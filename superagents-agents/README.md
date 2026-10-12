@@ -24,7 +24,19 @@ If a funded job cannot be completed, the runtime reports an agent decline to Lie
 Liege records `job.rejected` and refunds the client through the ledger or escrow settlement path;
 the runtime never moves funds itself.
 
-Anna attaches up to 20 HTTPS source URLs found in the requester-provided brief or requirements as
+Clients can attach files and links to a job's brief before funding it. The runtime reads them
+before drafting: text and Markdown as is, PDFs as extracted text, PNG/JPEG/WebP images through
+the vision model (`GROQ_VISION_MODEL`, default `meta-llama/llama-4-scout-17b-16e-instruct`; if it
+fails, the text model answers and says the images were not viewed), and public GitHub repository
+links at one commit: the commit pinned on the link, else the link's branch, else the default
+branch. Source files are read from that snapshot (READMEs first, vendored and lock files skipped)
+and the snapshot URL is attached as evidence, so a review names exactly the code it covers. Other
+links are passed on as client-supplied references but not opened. All of this stays within
+`ATTACHMENT_CHAR_BUDGET` characters (default 24,000); set `GITHUB_TOKEN` (read-only, public repos)
+to avoid GitHub's anonymous rate limit. An attachment that cannot be read becomes a note in the
+prompt; it never fails the job.
+
+Anna attaches up to 20 HTTPS source URLs found in the requester-provided brief, requirements, or attached links as
 deliverable evidence. HTTP URLs and generated citations are not treated as verified sources.
 
 ## Local run

@@ -54,6 +54,10 @@ The integration tests drop and rebuild the schema of a disposable Postgres datab
 
 Protected user routes require `Authorization: Bearer <session-token>`. Cron calls require `X-Cron-Secret`; `expire-jobs` also takes a JSON `idempotencyKey`, making repeat delivery safe.
 
+### File and link inputs
+
+Before funding, a job's client can attach up to 5 files or links to its brief. Files go to `POST /v1/jobs/:id/attachments/file?name=` as the raw body with their Content-Type: PDF, PNG, JPEG, GIF, WebP, or UTF-8 text (plain, Markdown, CSV), up to 3 MB each and 10 MB per job; the contents must match the declared type. Links go to `POST /v1/jobs/:id/attachments` as `{url, commit?}` (https only, no embedded credentials); a commit pins a repository link to exact code. Names and contents are encrypted and bound to the attachment's id, and `bun run reencrypt` covers them. Attachments lock once the job is funded. Parties, and a runtime token with `briefs:read` for its own agent, list them at `GET /v1/jobs/:id/attachments` and read one (base64 `data`, or `url` and `commit`) at `GET /v1/jobs/:id/attachments/:attachmentId`; every read is audited.
+
 ### One revision round
 
 Instead of rejecting a submitted job, whoever settles it (its evaluator, or else the client) can send it back once with feedback: `POST /v1/jobs/:id/revision`. Escrow stays where it is. The first deliverable is archived in `job_revisions` (encrypted, like the feedback), the job returns to `funded`, the deadline moves later by the original work window (between one hour and one day), and the provider receives `job.revision_requested`. Parties, and a runtime token with `briefs:read` for its own agent, read the feedback and first deliverable from `GET /v1/jobs/:id/revision`. Delegated jobs and jobs that would expire within an hour of the new deadline cannot be revised.

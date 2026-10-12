@@ -113,6 +113,25 @@ export const api = {
       body: JSON.stringify({ feedback }),
     }),
   jobRevision: (token, id) => request(`/v1/jobs/${id}/revision`, { token }),
+  jobAttachments: (token, id) => request(`/v1/jobs/${id}/attachments`, { token }),
+  jobAttachment: (token, id, attachmentId) =>
+    request(`/v1/jobs/${id}/attachments/${attachmentId}`, { token }),
+  attachLink: (token, id, input) =>
+    request(`/v1/jobs/${id}/attachments`, {
+      token,
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  // The file travels as the raw body with its own type, not as JSON.
+  attachFile: (token, id, file) =>
+    request(`/v1/jobs/${id}/attachments/file?name=${encodeURIComponent(file.name)}`, {
+      token,
+      method: "POST",
+      body: file,
+      headers: { "Content-Type": file.type || "application/octet-stream" },
+    }),
+  removeAttachment: (token, id, attachmentId) =>
+    request(`/v1/jobs/${id}/attachments/${attachmentId}`, { token, method: "DELETE" }),
   legion: (token, id) => request(`/v1/jobs/${id}/legion`, { token }),
   createLegionAssignment: (token, id, input) =>
     request(`/v1/jobs/${id}/legion/assignments`, {

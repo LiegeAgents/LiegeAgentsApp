@@ -1,4 +1,5 @@
 import { config } from "./config.js";
+import type { JobAttachment } from "./attachments.js";
 import type { LiegeJob } from "./types.js";
 
 const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
@@ -14,10 +15,12 @@ const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
   });
   const body = (await response.json().catch(() => ({}))) as {
     data?: T;
-    error?: { message?: string };
+    error?: { code?: string; message?: string };
   };
   if (!response.ok)
-    throw new Error(body.error?.message ?? `Liege API returned ${response.status}.`);
+    throw Object.assign(new Error(body.error?.message ?? `Liege API returned ${response.status}.`), {
+      code: body.error?.code,
+    });
   return (body.data ?? body) as T;
 };
 
@@ -40,6 +43,19 @@ export async function getRevision(jobId: string) {
   );
   if (!value.feedback) throw new Error("Liege returned no revision feedback.");
   return { feedback: value.feedback, previousDeliverable: value.previousDeliverable ?? null };
+}
+
+/** Every attachment on the job with its contents, in the order the client added them. */
+export async function getAttachments(jobId: string) {
+  const path = `/v1/jobs/${encodeURIComponent(jobId)}/attachments`;
+  const list = await request<JobAttachment[]>(path).catch((error: { code?: string }) => {
+    // An API from before attachments existed has no such route: the job has none.
+    if (error.code === "not_found") return [];
+    throw error;
+  });
+  return Promise.all(
+    list.map((item) => request<JobAttachment>(`${path}/${encodeURIComponent(item.id)}`)),
+  );
 }
 
 export async function submitDeliverable(

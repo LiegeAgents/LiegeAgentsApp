@@ -21,6 +21,7 @@ printf '%s\n' "$help" | grep -Fq "liege --spg"
 printf '%s\n' "$help" | grep -Fq "liege login"
 printf '%s\n' "$help" | grep -Fq "liege superagents schedules create"
 printf '%s\n' "$help" | grep -Fq "liege jobs revise <job-id> --feedback <text>"
+printf '%s\n' "$help" | grep -Fq "liege jobs attach <job-id> --file <path> | --url <url> [--commit <sha>]"
 sh -n install.sh
 
 echo "CLI packaging smoke test passed."

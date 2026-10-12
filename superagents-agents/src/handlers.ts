@@ -68,22 +68,39 @@ export const handlerFor = (agentKey: GenericAgentKey): SuperAgentHandler => {
   return {
     agentKey,
     serviceSlugs: definition.services,
-    async execute({ jobId, brief, requirements, revision }) {
+    async execute({ jobId, brief, requirements, revision, attachments }) {
       const deliverable = await generate(
-        `You are ${definition.role} for Liege. Complete the approved job only; do not claim actions you did not perform. ${definition.format} Return a self-contained deliverable for the client.${agentKey === "anna" ? " Cite only HTTPS sources supplied in the brief or requirements, and label unsupported claims as inference." : ""}`,
-        `Job ID: ${jobId}\nRequirements: ${JSON.stringify(requirements ?? {})}\nBrief:\n${brief}${revision ? revisionPrompt(revision) : ""}`,
+        `You are ${definition.role} for Liege. Complete the approved job only; do not claim actions you did not perform. ${definition.format} Return a self-contained deliverable for the client.${agentKey === "anna" ? " Cite only HTTPS sources supplied in the brief, requirements, or attachments, and label unsupported claims as inference." : ""}`,
+        `Job ID: ${jobId}\nRequirements: ${JSON.stringify(requirements ?? {})}\nBrief:\n${brief}${attachments?.text ?? ""}${revision ? revisionPrompt(revision) : ""}`,
+        attachments?.images,
+      );
+      // Pinned repository snapshots the agent actually read are proof of what it reviewed.
+      const snapshots = (attachments?.evidence ?? []).filter((url) =>
+        /^https:\/\/github\.com\/[^/]+\/[^/]+\/tree\/[0-9a-f]{40}$/.test(url),
       );
       return {
         deliverable,
         ...(agentKey === "anna"
           ? {
               // Only client-supplied sources count; never links from a generated first draft.
-              evidence: extractEvidenceUrls(
-                `${brief}\n${JSON.stringify(requirements ?? {})}\n${revision?.feedback ?? ""}`,
-              ),
+              evidence: [
+                ...new Set([
+                  ...extractEvidenceUrls(
+                    `${brief}\n${JSON.stringify(requirements ?? {})}\n${revision?.feedback ?? ""}`,
+                  ),
+                  ...(attachments?.evidence ?? []),
+                ]),
+              ].slice(0, 20),
             }
-          : {}),
-        metadata: { model: "groq", agentKey, serviceSlugs: definition.services },
+          : snapshots.length
+            ? { evidence: snapshots.slice(0, 20) }
+            : {}),
+        metadata: {
+          model: "groq",
+          agentKey,
+          serviceSlugs: definition.services,
+          ...(attachments ? { attachmentNotes: attachments.notes } : {}),
+        },
       };
     },
   };

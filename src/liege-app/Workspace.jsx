@@ -36,6 +36,7 @@ import WorkspaceSearch from "./WorkspaceSearch";
 import { MarketplaceContent, agentUrl } from "./Marketplace";
 import { WalletButton, useWallet } from "./wallet/Wallet";
 import SocialLinks from "./SocialLinks";
+import JobAttachments from "./JobAttachments";
 import { api, agentForDisplay, jobForDisplay } from "./api";
 import "./live-jobs.css";
 
@@ -3444,6 +3445,13 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
         )}
         <h3>Private brief</h3>
         <p className="job-brief">{current.brief || "Loading…"}</p>
+        {detail && (
+          <JobAttachments
+            jobId={job.id}
+            token={token}
+            editable={isClient && String(detail.status).toLowerCase() === "open"}
+          />
+        )}
         <h3>Acceptance criteria</h3>
         <ul className="job-criteria">
           {criteria.map((item, index) => (
