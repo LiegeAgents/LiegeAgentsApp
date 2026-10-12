@@ -19,7 +19,7 @@ export const getApiUrl = () =>
   (process.env.LIEGE_API_URL ?? "https://api.liegeagents.com").replace(/\/$/, "");
 export const getSessionToken = () => process.env.LIEGE_SESSION_TOKEN;
 
-const BOOLEAN_FLAGS = new Set(["ap2", "help", "h", "auto-fund", "fund"]);
+const BOOLEAN_FLAGS = new Set(["ap2", "help", "h", "auto-fund", "fund", "no-comment"]);
 const INSTALLER_URL =
   "https://raw.githubusercontent.com/LiegeAgents/LiegeAgentsApp/main/cli/install.sh";
 
@@ -53,6 +53,10 @@ Usage:
   liege superagents auctions get <auction-id>
   liege superagents auctions award <auction-id> <bid-id> [--fund]
   liege superagents auctions cancel <auction-id>
+  liege superagents triggers create --agent-id <id> --repo <owner/repo> --budget <n> --cap <n> [--branch <name>] [--instructions <text>] [--auto-fund] [--no-comment] [--asset usdg|liege]
+  liege superagents triggers list
+  liege superagents triggers get <trigger-id>
+  liege superagents triggers pause|resume|cancel <trigger-id>
   liege superagents squads list
   liege superagents squads get <squad-id>
   liege superagents squads create --request <text> --steps "<agent>:<budget>:<task>; ..." [--name <text>] [--auto-fund] [--asset usdg|liege]
@@ -492,6 +496,36 @@ export async function execute(args: string[]): Promise<unknown> {
             settlementAsset: (flags.asset ?? "usdg").toLowerCase(),
             ...(flags["max-budget"] ? { maxBudget: Number(flags["max-budget"]) } : {}),
             ...(flags.minutes ? { biddingMinutes: Number(flags.minutes) } : {}),
+            source: "cli",
+          }),
+        });
+      }
+    }
+    if (action === "triggers" || action === "trigger") {
+      const target = positional[3];
+      const path = (suffix = "") =>
+        `/v1/super-agents/triggers/${encodeURIComponent(target!)}${suffix}`;
+      if (!id || id === "list") return request("/v1/super-agents/triggers");
+      if (id === "get" && target) return request(path());
+      if (id === "pause" && target) return request(path("/pause"), { method: "POST" });
+      if (id === "resume" && target) return request(path("/resume"), { method: "POST" });
+      if (id === "cancel" && target) return request(path(), { method: "DELETE" });
+      if (id === "create") {
+        const agentId = flags["agent-id"] ?? flags.agentId;
+        if (!agentId || !flags.repo || !flags.budget || !flags.cap)
+          throw new Error("Provide --agent-id, --repo, --budget and --cap.");
+        return request("/v1/super-agents/triggers", {
+          method: "POST",
+          body: JSON.stringify({
+            agentId,
+            repository: flags.repo,
+            ...(flags.branch ? { branch: flags.branch } : {}),
+            ...(flags.instructions ? { instructions: flags.instructions } : {}),
+            settlementAsset: (flags.asset ?? "usdg").toLowerCase(),
+            budgetAmount: Number(flags.budget),
+            spendCap: Number(flags.cap),
+            autoFund: flags["auto-fund"] === "true",
+            postComment: flags["no-comment"] !== "true",
             source: "cli",
           }),
         });

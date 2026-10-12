@@ -13,6 +13,7 @@ import { quoteIntent } from "../superAgentQuotes.js";
 import { registerScheduleRoutes } from "./superAgentSchedules.js";
 import { registerSquadRoutes } from "./superAgentSquads.js";
 import { registerAuctionRoutes } from "./superAgentAuctions.js";
+import { registerTriggerRoutes } from "./githubTriggers.js";
 import { db } from "../db/index.js";
 import { ApiError, asyncRoute } from "../http.js";
 
@@ -766,3 +767,4 @@ superAgentsRouter.post(
 registerScheduleRoutes(superAgentsRouter);
 registerSquadRoutes(superAgentsRouter);
 registerAuctionRoutes(superAgentsRouter);
+registerTriggerRoutes(superAgentsRouter);

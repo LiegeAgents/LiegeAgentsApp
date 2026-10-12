@@ -144,6 +144,7 @@ export const chatHelp = () => [
   "                   Make the current draft a recurring job (cap = total spend)",
   "  /bid <request>   Let the agents compete: watch bids arrive for two minutes",
   "  /squads          Show your squads and where each one is",
+  "  /triggers        Show the GitHub repositories your agents review",
   "  /schedules       Show your recurring jobs",
   "  /schedule <pause|resume|cancel> <id>",
   "  /new             Discard the current draft",
@@ -451,6 +452,22 @@ export class ChatSession {
           return;
         }
         return this.watchBids(text);
+      }
+      case "triggers": {
+        const triggers = (await request("/v1/super-agents/triggers")) as Json[];
+        if (!triggers.length)
+          this.write(
+            dim(`No repositories connected. Connect one in ${getDashboardUrl()}/app?view=github`),
+          );
+        for (const item of triggers.slice(0, 10)) {
+          const unit = String(item.settlement_asset).toUpperCase();
+          this.write(
+            `  ${dim(shortId(item.id))}  ${String(item.status).padEnd(9)} ${bold(`${item.repository}:${item.branch}`)} ${item.agent_name}, ${Number(item.committed_amount)}/${Number(item.spend_cap)} ${unit} used${item.verified_at ? "" : yellow(" · waiting for GitHub")}`,
+          );
+          for (const run of ((item.runs as Json[] | undefined) ?? []).slice(0, 3))
+            this.write(dim(`    #${run.pull_number} ${run.title}: ${run.outcome}`));
+        }
+        return;
       }
       case "squads": {
         const squads = (await request("/v1/super-agents/squads")) as Json[];

@@ -1153,3 +1153,89 @@
 .bid-lost {
   opacity: 0.6;
 }
+
+/* GitHub triggers: connect a repository and watch reviews arrive. */
+.recurring-form input.trigger-input {
+  width: 100%;
+  min-height: 44px;
+  margin-bottom: 18px;
+  padding: 10px 12px;
+  border: 1px solid #365841;
+  border-radius: 9px;
+  background: #101c14;
+  color: #e6ece7;
+}
+.trigger-connected {
+  color: var(--green);
+  font-size: 12px;
+}
+.trigger-waiting {
+  color: #e2c27a;
+  font-size: 12px;
+}
+.trigger-setup {
+  margin: 16px 22px;
+  padding: 16px;
+  border: 1px solid var(--green);
+  border-radius: 10px;
+  background: #111e15;
+}
+.trigger-setup header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.trigger-setup header button {
+  padding: 4px;
+  border: 0;
+  background: none;
+  color: #819889;
+  cursor: pointer;
+}
+.trigger-setup ol {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 18px;
+  color: #c9d8ce;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.trigger-setup a {
+  color: var(--green);
+}
+.trigger-setup code {
+  color: #e6ece7;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.setup-field {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+.setup-field span {
+  color: #819889;
+}
+.setup-field button {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 4px 8px;
+  border: 1px solid #2e4a36;
+  border-radius: 7px;
+  background: #101c14;
+  color: #d8e7dc;
+  font-size: 11px;
+  cursor: pointer;
+}
+@media (max-width: 640px) {
+  .setup-field {
+    grid-template-columns: 1fr auto;
+  }
+  .setup-field span {
+    grid-column: 1 / -1;
+  }
+}

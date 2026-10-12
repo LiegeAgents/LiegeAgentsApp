@@ -125,6 +125,7 @@ export const payloadContext = (
     | "squad"
     | "auction"
     | "bid"
+    | "github-trigger"
     | "webhook-secret"
     | "artifact"
     | "access-token"

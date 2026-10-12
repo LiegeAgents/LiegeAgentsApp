@@ -15,6 +15,7 @@ import {
 } from "./liege-client.js";
 import { prepareAttachments } from "./attachments.js";
 import { prepareBid } from "./bidding.js";
+import { githubPolicy, postReviewComment } from "./githubComments.js";
 import { handlers } from "./handlers.js";
 import type { AgentKey, LiegeWebhook } from "./types.js";
 
@@ -131,6 +132,24 @@ async function execute(agentKey: AgentKey, eventId: string, event: LiegeWebhook)
       90,
     );
     await submitDeliverable(jobId, result.deliverable, result.evidence ?? []);
+    // A GitHub-triggered review is also posted on its pull request. Best effort: the delivery in
+    // Liege is what the client pays for.
+    const github = githubPolicy(policy);
+    if (github?.postComment && config.marcusGithubToken)
+      await postReviewComment({
+        token: config.marcusGithubToken,
+        github,
+        agentName: name,
+        deliverable: result.deliverable,
+      }).catch((error) =>
+        console.warn(
+          JSON.stringify({
+            event: "github.comment_failed",
+            jobId,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        ),
+      );
     await completeEvent(eventId, configuredAgent.id);
     processed.set(eventId, Date.now());
     cleanProcessed();

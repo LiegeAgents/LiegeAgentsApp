@@ -45,6 +45,19 @@ const clip = (text: string, limit: number) =>
     ? text
     : `${text.slice(0, limit)}\n[… truncated: ${text.length - limit} more characters]`;
 
+/** owner, repo, and number from a github.com pull request link. */
+export function parseGitHubPull(url: string) {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "https:" || parsed.hostname !== "github.com") return null;
+  const match = parsed.pathname.match(/^\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/pull\/(\d+)\/?/);
+  return match ? { owner: match[1], repo: match[2], number: Number(match[3]) } : null;
+}
+
 /** owner, repo, and an optional ref and folder from a github.com repository link. */
 export function parseGitHubRepo(url: string) {
   let parsed: URL;
@@ -145,6 +158,62 @@ export async function readRepository(url: string, commit: string | undefined, bu
   };
 }
 
+/**
+ * Reads a pull request as a reviewer sees it: title, description, and each changed file's diff,
+ * within the budget. If the pull request moved past the commit the review was requested at, the
+ * text says so.
+ */
+export async function readPullRequest(url: string, commit: string | undefined, budget: number) {
+  const pull = parseGitHubPull(url);
+  if (!pull) return null;
+  const base = `/repos/${pull.owner}/${pull.repo}/pulls/${pull.number}`;
+  const details = await github<{
+    title: string;
+    body: string | null;
+    html_url: string;
+    base: { ref: string };
+    head: { sha: string };
+  }>(base);
+  const files = await github<
+    Array<{
+      filename: string;
+      status: string;
+      additions: number;
+      deletions: number;
+      patch?: string;
+    }>
+  >(`${base}/files?per_page=100`);
+  const moved = commit && !details.head.sha.startsWith(commit.toLowerCase());
+  const header = [
+    `Pull request #${pull.number} in ${pull.owner}/${pull.repo}: ${details.title}`,
+    `Base: ${details.base.ref}. Head: ${details.head.sha}.${moved ? ` The review was requested at ${commit}; the pull request has moved since.` : ""}`,
+    details.body ? `Description:\n${clip(details.body, 2_000)}` : "",
+    `Changed files: ${files.length}, +${files.reduce((sum, file) => sum + file.additions, 0)} -${files.reduce((sum, file) => sum + file.deletions, 0)}.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const sections: string[] = [];
+  let used = header.length;
+  for (const file of files) {
+    if (used >= budget) {
+      sections.push(`[… ${files.length - sections.length} more files not shown]`);
+      break;
+    }
+    const diff = file.patch
+      ? clip(file.patch, budget - used)
+      : "(no text diff: binary or too large)";
+    sections.push(
+      `--- ${file.filename} (${file.status}, +${file.additions} -${file.deletions}) ---\n${diff}`,
+    );
+    used += diff.length;
+  }
+  return {
+    url: details.html_url,
+    sha: details.head.sha,
+    text: `${header}\n\n${sections.join("\n\n")}`,
+  };
+}
+
 async function pdfText(data: string) {
   const document = await getDocumentProxy(new Uint8Array(Buffer.from(data, "base64")));
   const { text } = await extractText(document, { mergePages: true });
@@ -174,6 +243,14 @@ export async function prepareAttachments(
     try {
       if (item.kind === "link" && item.url) {
         evidence.push(item.url);
+        const pull = parseGitHubPull(item.url)
+          ? await readPullRequest(item.url, item.commit, Math.min(REPO_CHARS, remaining))
+          : null;
+        if (pull) {
+          remaining -= pull.text.length;
+          sections.push(`### Pull request: ${pull.url}\n${pull.text}`);
+          continue;
+        }
         const repository = parseGitHubRepo(item.url)
           ? await readRepository(item.url, item.commit, Math.min(REPO_CHARS, remaining))
           : null;

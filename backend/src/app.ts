@@ -23,6 +23,7 @@ import { parseTrustProxy, rateLimit, requestContext } from "./operations.js";
 import { getAcpStatus } from "./acp.js";
 import { mobileRouter } from "./routes/mobile.js";
 import { superAgentsRouter, xCallback } from "./routes/superAgents.js";
+import { githubHooksRouter } from "./routes/githubTriggers.js";
 import { runtimeRouter } from "./routes/runtime.js";
 import { stakingRouter } from "./routes/staking.js";
 
@@ -40,7 +41,11 @@ app.disable("x-powered-by");
 app.set("trust proxy", parseTrustProxy(env.TRUST_PROXY));
 // Before body parsing, so even a malformed-body error carries a request id.
 app.use(requestContext);
-app.use(express.json({ limit: "128kb" }));
+const jsonBody = express.json({ limit: "128kb" });
+// GitHub webhooks are verified against their exact bytes, so they skip JSON parsing.
+app.use((request, response, next) =>
+  request.path.startsWith("/v1/github/hooks/") ? next() : jsonBody(request, response, next),
+);
 app.use(rateLimit);
 app.get("/health", (_request, response) => response.json(healthPayload()));
 app.get("/install.sh", (_request, response) => {
@@ -110,6 +115,7 @@ export const routers = [
   ["/v1/mobile", mobileRouter],
   ["/v1/super-agents", superAgentsRouter],
   ["/v1/staking", stakingRouter],
+  ["/v1/github", githubHooksRouter],
 ] as const;
 for (const [path, router] of routers) app.use(path, router);
 // MCP's internal service routes are intentionally outside the public OpenAPI contract.

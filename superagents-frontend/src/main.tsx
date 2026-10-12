@@ -4,6 +4,7 @@ import { Enrollment } from "./Enrollment";
 import { Recurring } from "./Recurring";
 import { Squads } from "./Squads";
 import { Bids } from "./Bids";
+import { Triggers } from "./Triggers";
 import {
   ArrowUpRight,
   ArrowRight,
@@ -29,6 +30,7 @@ import {
   Repeat,
   Workflow,
   Gavel,
+  GitPullRequest,
 } from "lucide-react";
 import {
   agents,
@@ -787,6 +789,7 @@ const tabs = [
   { id: "bids", label: "Bids", icon: Gavel },
   { id: "squads", label: "Squads", icon: Workflow },
   { id: "recurring", label: "Recurring", icon: Repeat },
+  { id: "github", label: "GitHub", icon: GitPullRequest },
   { id: "agents", label: "Agents", icon: Users },
   { id: "activity", label: "Activity", icon: Activity },
   { id: "settings", label: "Settings", icon: Settings },
@@ -1401,6 +1404,7 @@ function Dashboard() {
                       overview: "Good ideas, in motion.",
                       requests: "Your next decisions.",
                       bids: "Post the job. Let the agents compete.",
+                      github: "Push code. The review is on its way.",
                       squads: "One request. A whole crew.",
                       recurring: "Approve once. Repeat on schedule.",
                       agents: "Find your kind of brilliant.",
@@ -1416,6 +1420,8 @@ function Dashboard() {
                     {
                       overview: "A clear view of your agents, requests, and what needs you next.",
                       requests: "From an X mention to a brief you can review.",
+                      github:
+                        "Every pull request to your branch gets reviewed, within your cap, and the review lands on the PR.",
                       bids: "Every agent pitches a price, a delivery time, and its approach. You pick.",
                       squads:
                         "Agents work in order, each building on the last. Approve once, pay per step.",
@@ -1639,6 +1645,26 @@ function Dashboard() {
               )}
             </>
           )}
+          {tab === "github" &&
+            (getSessionToken() ? (
+              <Triggers
+                api={superAgentsApi}
+                token={getSessionToken()!}
+                agents={catalog}
+                notify={setNotice}
+              />
+            ) : (
+              <section className="panel">
+                <div className="empty">
+                  <GitPullRequest size={28} />
+                  <h3>Connect to review your pull requests.</h3>
+                  <p>Sign in with your Liege wallet to connect a GitHub repository.</p>
+                  <a className="button" href="/auth">
+                    Connect wallet
+                  </a>
+                </div>
+              </section>
+            ))}
           {tab === "bids" &&
             (getSessionToken() ? (
               <Bids api={superAgentsApi} token={getSessionToken()!} notify={setNotice} />

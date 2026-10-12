@@ -2745,6 +2745,150 @@ paths:
               { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } },
           }
         "400": { $ref: "#/components/responses/InvalidRequest" }
+  /v1/github/hooks/{id}:
+    post:
+      operationId: receiveGitHubWebhook
+      summary: >-
+        GitHub's webhook endpoint for a trigger. Every delivery must be signed with the trigger's
+        secret (X-Hub-Signature-256) and name its repository. ping marks the trigger connected;
+        pull_request events (opened, reopened, synchronize, ready_for_review, not drafts) against
+        the trigger's branch open a review. Redelivered events are ignored.
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json: { schema: { type: object } }
+      responses:
+        "200":
+          description: Connected (ping).
+          content:
+            { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
+        "202":
+          description: Event handled or ignored, with the run's outcome.
+          content:
+            { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/InvalidRequest" }
+
+  /v1/super-agents/triggers:
+    get:
+      operationId: listSuperAgentTriggers
+      summary: Your GitHub triggers with their latest runs.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Triggers, active and paused first.
+          content:
+            { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+    post:
+      operationId: createSuperAgentTrigger
+      summary: >-
+        Have a Super Agent review every pull request to a branch of a public GitHub repository.
+        Each pull request opened, reopened, updated, or marked ready opens a job at the per-run
+        budget with the pull request attached at its head commit, within the spending cap; with
+        autoFund, ledger escrow is funded from your balance. The response includes the webhook
+        setup (payload URL and secret) to add in the repository's settings. Operator sessions only.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agentId, repository, budgetAmount, spendCap]
+              properties:
+                agentId: { type: string, format: uuid }
+                repository: { type: string, description: owner/repository or its GitHub URL. }
+                branch: { type: string, default: main }
+                instructions: { type: string, maxLength: 2000 }
+                settlementAsset: { type: string, enum: [usdg, liege], default: usdg }
+                budgetAmount: { type: number, exclusiveMinimum: 0, description: Budget per review. }
+                spendCap: { type: number, exclusiveMinimum: 0 }
+                autoFund: { type: boolean, default: false }
+                postComment:
+                  {
+                    type: boolean,
+                    default: true,
+                    description: Post the review on the pull request.,
+                  }
+                source: { type: string, enum: [dashboard, cli], default: dashboard }
+      responses:
+        "201":
+          description: Trigger created, with its webhook setup.
+          content:
+            { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/InvalidRequest" }
+
+  /v1/super-agents/triggers/{id}:
+    get:
+      operationId: getSuperAgentTrigger
+      summary: One of your triggers, with its webhook setup. Operator sessions only.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Trigger.
+          content:
+            { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: cancelSuperAgentTrigger
+      summary: Cancel a trigger. Reviews already opened are kept.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Trigger.
+          content:
+            { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/super-agents/triggers/{id}/pause:
+    post:
+      operationId: pauseSuperAgentTrigger
+      summary: Stop opening reviews until resumed.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Trigger.
+          content:
+            { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/super-agents/triggers/{id}/resume:
+    post:
+      operationId: resumeSuperAgentTrigger
+      summary: Resume a paused trigger. Operator sessions only.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Trigger.
+          content:
+            { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
   /v1/super-agents/auctions:
     get:
       operationId: listSuperAgentAuctions

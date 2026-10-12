@@ -36,6 +36,16 @@ links are passed on as client-supplied references but not opened. All of this st
 to avoid GitHub's anonymous rate limit. An attachment that cannot be read becomes a note in the
 prompt; it never fails the job.
 
+### GitHub-triggered reviews
+
+Jobs opened by a GitHub trigger carry the pull request as an attachment pinned to its head
+commit. For pull request links the runtime reads the pull request itself (title, description,
+and each changed file's diff within the attachment budget) rather than the repository, and says
+so if the pull request moved past the reviewed commit. Pull requests are reviewed, never turned
+into a fix branch. When the job's policy asks for it and `MARCUS_GITHUB_TOKEN` is set, the
+delivered review is also posted as a comment on the pull request after it is submitted to Liege;
+a failed comment never fails the job.
+
 ### Bidding
 
 On `auction.bid_requested` the agent reads its invitation (`GET /v1/super-agents/bids/:id`) and
