@@ -115,13 +115,16 @@ async function execute(agentKey: AgentKey, eventId: string, event: LiegeWebhook)
       requirements: policy,
       revision,
       attachments,
+      report: (stage, message, percent) => reportProgress(jobId, stage, message, percent),
     });
     await reportProgress(
       jobId,
       "finalizing",
-      result.evidence?.length
-        ? `Submitting the deliverable with ${result.evidence.length} source link${result.evidence.length === 1 ? "" : "s"} for your review.`
-        : "Submitting the deliverable for your review.",
+      result.metadata?.fix && (result.metadata.fix as { status?: string }).status === "pull_request"
+        ? `${name} opened a pull request with the fixes. Submitting the review.`
+        : result.evidence?.length
+          ? `Submitting the deliverable with ${result.evidence.length} source link${result.evidence.length === 1 ? "" : "s"} for your review.`
+          : "Submitting the deliverable for your review.",
       90,
     );
     await submitDeliverable(jobId, result.deliverable, result.evidence ?? []);

@@ -28,6 +28,10 @@ export const config = {
   // Reads images clients attach to a brief.
   groqVisionModel:
     process.env.GROQ_VISION_MODEL?.trim() || "meta-llama/llama-4-scout-17b-16e-instruct",
+  // A GitHub account Marcus uses to publish fixes from its own fork. Without it he only reviews.
+  get marcusGithubToken() {
+    return process.env.MARCUS_GITHUB_TOKEN?.trim() ?? "";
+  },
   groqTimeoutMs: Number(process.env.GROQ_TIMEOUT_MS ?? 30_000),
   groqMaxTokens: Number(process.env.GROQ_MAX_TOKENS ?? 4_000),
   agents: Object.fromEntries(

@@ -1,7 +1,10 @@
+import { config } from "./config.js";
 import { generate } from "./groq.js";
+import { proposeFixes, type FixResult } from "./pullRequests.js";
 import { createKoriHandler } from "./kori.js";
 import { revisionPrompt } from "./types.js";
 import type { AgentKey, SuperAgentHandler } from "./types.js";
+import type { PreparedAttachments } from "./attachments.js";
 
 type GenericAgentKey = Exclude<AgentKey, "kori">;
 
@@ -63,17 +66,63 @@ const definitions: Record<GenericAgentKey, { services: string[]; role: string; f
   },
 };
 
+/**
+ * Marcus turns his review of an attached repository into a pull request. Publishing is best
+ * effort: a failure is reported in the deliverable and never fails the review itself.
+ */
+async function fixRepository(
+  jobId: string,
+  review: string,
+  attachments: PreparedAttachments | undefined,
+  report: ((stage: "reviewing", message: string, percent: number) => Promise<void>) | undefined,
+): Promise<FixResult | { status: "failed"; reason: string } | null> {
+  const snapshot = attachments?.repositories?.find((repository) => repository.files.length);
+  if (!snapshot || !config.marcusGithubToken) return null;
+  await report?.("reviewing", "Marcus is writing fixes and checking that they parse.", 70);
+  try {
+    return await proposeFixes({ jobId, review, snapshot, token: config.marcusGithubToken });
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        event: "fix.failed",
+        jobId,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+    return {
+      status: "failed",
+      reason:
+        "Marcus could not prepare a pull request this time; the review above stands on its own.",
+    };
+  }
+}
+
+const fixSection = (fix: FixResult | { status: "failed"; reason: string }) => {
+  if ("url" in fix)
+    return `\n\n## Fixes\n${
+      fix.status === "pull_request"
+        ? `I opened a pull request with these fixes: ${fix.url}`
+        : `The fixes are ready on a branch. Open the pull request in one click: ${fix.url}`
+    }\n${fix.edits.map((edit) => `- ${edit.path}: ${edit.reason || "see the diff"}`).join("\n")}\n\nEvery changed file was parsed before committing (${fix.checked} file${fix.checked === 1 ? "" : "s"}); your tests were not run, so run them before merging.${
+      fix.skipped.length ? `\nNot applied: ${fix.skipped.join(" ")}` : ""
+    }`;
+  return `\n\n## Fixes\n${fix.reason}${"skipped" in fix && fix.skipped.length ? ` ${fix.skipped.join(" ")}` : ""}`;
+};
+
 export const handlerFor = (agentKey: GenericAgentKey): SuperAgentHandler => {
   const definition = definitions[agentKey];
   return {
     agentKey,
     serviceSlugs: definition.services,
-    async execute({ jobId, brief, requirements, revision, attachments }) {
-      const deliverable = await generate(
+    async execute({ jobId, brief, requirements, revision, attachments, report }) {
+      let deliverable = await generate(
         `You are ${definition.role} for Liege. Complete the approved job only; do not claim actions you did not perform. ${definition.format} Return a self-contained deliverable for the client.${agentKey === "anna" ? " Cite only HTTPS sources supplied in the brief, requirements, or attachments, and label unsupported claims as inference." : ""}`,
         `Job ID: ${jobId}\nRequirements: ${JSON.stringify(requirements ?? {})}\nBrief:\n${brief}${attachments?.text ?? ""}${revision ? revisionPrompt(revision) : ""}`,
         attachments?.images,
       );
+      const fix =
+        agentKey === "marcus" ? await fixRepository(jobId, deliverable, attachments, report) : null;
+      if (fix) deliverable += fixSection(fix);
       // Pinned repository snapshots the agent actually read are proof of what it reviewed.
       const snapshots = (attachments?.evidence ?? []).filter((url) =>
         /^https:\/\/github\.com\/[^/]+\/[^/]+\/tree\/[0-9a-f]{40}$/.test(url),
@@ -92,14 +141,19 @@ export const handlerFor = (agentKey: GenericAgentKey): SuperAgentHandler => {
                 ]),
               ].slice(0, 20),
             }
-          : snapshots.length
-            ? { evidence: snapshots.slice(0, 20) }
+          : snapshots.length || (fix && "url" in fix)
+            ? {
+                evidence: [...(fix && "url" in fix ? [fix.url] : []), ...snapshots].slice(0, 20),
+              }
             : {}),
         metadata: {
           model: "groq",
           agentKey,
           serviceSlugs: definition.services,
           ...(attachments ? { attachmentNotes: attachments.notes } : {}),
+          ...(fix
+            ? { fix: { status: fix.status, ...("url" in fix ? { url: fix.url } : {}) } }
+            : {}),
         },
       };
     },

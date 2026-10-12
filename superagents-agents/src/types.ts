@@ -19,6 +19,8 @@ export type SuperAgentHandler = {
     revision?: Revision;
     // Files and links the client attached to the brief, already read into prompt material.
     attachments?: PreparedAttachments;
+    // Reports a milestone to the client; never throws.
+    report?: (stage: "reviewing", message: string, percent: number) => Promise<void>;
   }): Promise<{
     deliverable: string;
     evidence?: string[];

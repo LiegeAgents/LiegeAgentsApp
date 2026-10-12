@@ -2,7 +2,7 @@ import { config } from "./config.js";
 
 type Image = { mediaType: string; data: string };
 
-async function complete(model: string, system: string, user: string | unknown[]) {
+async function complete(model: string, system: string, user: string | unknown[], json = false) {
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: { authorization: `Bearer ${config.groqKey}`, "content-type": "application/json" },
@@ -14,6 +14,7 @@ async function complete(model: string, system: string, user: string | unknown[])
         { role: "system", content: system },
         { role: "user", content: user },
       ],
+      ...(json ? { response_format: { type: "json_object" } } : {}),
     }),
     signal: AbortSignal.timeout(config.groqTimeoutMs),
   });
@@ -54,4 +55,15 @@ export async function generate(system: string, user: string, images: Image[] = [
       `${user}\n\n(The ${images.length} attached image${images.length === 1 ? "" : "s"} could not be viewed; say so where it matters.)`,
     );
   }
+}
+
+/** A JSON object from the text model, for structured output such as code edits. */
+export async function generateJson(system: string, user: string): Promise<unknown> {
+  const content = await complete(config.groqModel, system, user, true);
+  // Reasoning models may wrap the object in a think block or a code fence.
+  const body = content
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .trim()
+    .replace(/^```(?:json)?\s*|\s*```$/g, "");
+  return JSON.parse(body);
 }

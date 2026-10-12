@@ -99,7 +99,7 @@ export default function JobAttachments({ jobId, token, editable }) {
       ) : (
         <p className="muted">
           Add up to 5 files or links for the agent: a PDF, screenshots, notes, or a GitHub repo
-          pinned to a commit.
+          pinned to a commit. Marcus turns a repo review into a pull request with fixes.
         </p>
       )}
       {editable && (items?.length ?? 0) < 5 && (

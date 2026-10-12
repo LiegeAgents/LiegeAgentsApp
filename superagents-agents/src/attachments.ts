@@ -12,6 +12,14 @@ export type JobAttachment = {
   commit?: string;
 };
 
+/** A repository read at one commit; `files` holds only files read in full, so they can be edited. */
+export type RepositorySnapshot = {
+  owner: string;
+  repo: string;
+  sha: string;
+  files: Array<{ path: string; mode: string; content: string }>;
+};
+
 export type PreparedAttachments = {
   /** Readable contents for the prompt: text, PDF text, repository files, and link lists. */
   text: string;
@@ -20,6 +28,7 @@ export type PreparedAttachments = {
   /** Client-supplied https links, including pinned repository snapshots that were read. */
   evidence: string[];
   notes: string[];
+  repositories: RepositorySnapshot[];
 };
 
 const ITEM_CHARS = 12_000;
@@ -85,7 +94,7 @@ export async function readRepository(url: string, commit: string | undefined, bu
   );
   const sha = resolved.sha;
   const tree = await github<{
-    tree: Array<{ path: string; type: string; size?: number }>;
+    tree: Array<{ path: string; type: string; mode: string; size?: number }>;
     truncated?: boolean;
   }>(`${base}/git/trees/${sha}?recursive=1`);
   const prefix = repo.folder ? `${repo.folder.replace(/\/$/, "")}/` : "";
@@ -108,6 +117,7 @@ export async function readRepository(url: string, commit: string | undefined, bu
       );
     });
   const sections: string[] = [];
+  const files: RepositorySnapshot["files"] = [];
   let used = 0;
   for (const entry of candidates.slice(0, 40)) {
     if (used >= budget) break;
@@ -119,12 +129,17 @@ export async function readRepository(url: string, commit: string | undefined, bu
       { redirect: "error", signal: AbortSignal.timeout(10_000) },
     );
     if (!response.ok) continue;
-    const body = clip(await response.text(), budget - used);
+    const content = await response.text();
+    const body = clip(content, budget - used);
+    if (body === content) files.push({ path: entry.path, mode: entry.mode, content });
     sections.push(`--- ${entry.path} ---\n${body}`);
     used += body.length;
   }
   return {
+    owner: repo.owner,
+    repo: repo.repo,
     sha,
+    files,
     snapshot: `https://github.com/${repo.owner}/${repo.repo}/tree/${sha}`,
     text: `Repository ${repo.owner}/${repo.repo}${prefix ? ` (${prefix})` : ""} at commit ${sha}, ${sections.length} of ${candidates.length} source files shown:\n${sections.join("\n\n")}`,
   };
@@ -148,6 +163,7 @@ export async function prepareAttachments(
   const images: PreparedAttachments["images"] = [];
   const evidence: string[] = [];
   const notes: string[] = [];
+  const repositories: RepositorySnapshot[] = [];
   let remaining = budget;
   const add = (title: string, body: string, limit = ITEM_CHARS) => {
     const text = clip(body, Math.max(0, Math.min(limit, remaining)));
@@ -163,6 +179,12 @@ export async function prepareAttachments(
           : null;
         if (repository) {
           evidence.push(repository.snapshot);
+          repositories.push({
+            owner: repository.owner,
+            repo: repository.repo,
+            sha: repository.sha,
+            files: repository.files,
+          });
           // Budget was applied while reading; the section is already within it.
           remaining -= repository.text.length;
           sections.push(`### Linked repository: ${item.url}\n${repository.text}`);
@@ -195,5 +217,6 @@ export async function prepareAttachments(
     images,
     evidence: [...new Set(evidence)],
     notes,
+    repositories,
   };
 }

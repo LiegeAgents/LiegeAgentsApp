@@ -36,6 +36,26 @@ links are passed on as client-supplied references but not opened. All of this st
 to avoid GitHub's anonymous rate limit. An attachment that cannot be read becomes a note in the
 prompt; it never fails the job.
 
+### Marcus opens pull requests
+
+When a code review job has a GitHub repository attached and `MARCUS_GITHUB_TOKEN` is set, Marcus
+turns his review into fixes. The model proposes exact find-and-replace edits to files Marcus read
+in full; an edit is applied only if its text occurs exactly once, and every changed file must
+still parse (TypeScript and JavaScript through Bun's transpiler, JSON through the JSON parser).
+CI, build, shell, lock, and `package.json` files are never edited, and at most 5 files change.
+Nothing from the repository is executed, so the PR says plainly that tests were not run.
+
+The fix is committed on top of the reviewed commit on a branch of the bot account's own fork; the
+bot never pushes to the client's repository. If the repository's default branch has a
+`.liege.yml` containing `pull_requests: true`, Marcus opens the pull request himself. Otherwise
+the deliverable carries a one-click link to open it, so the bot cannot be used to send unsolicited
+pull requests. The pull request URL is attached as evidence. Publishing is best effort: if
+GitHub or the model fails, the review is still delivered.
+
+`MARCUS_GITHUB_TOKEN` is a token for a dedicated bot account (for example a classic token with
+the `public_repo` scope), not a personal account. Running the repository's tests waits for a
+runner host that is safe for untrusted code (see `backend/RUNNER-DEPLOYMENT.md`).
+
 Anna attaches up to 20 HTTPS source URLs found in the requester-provided brief, requirements, or attached links as
 deliverable evidence. HTTP URLs and generated citations are not treated as verified sources.
 
