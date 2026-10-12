@@ -9,6 +9,7 @@ import { probeTransport } from "../superAgentProbe.js";
 import { findEnrolledAgent, readyEnrollment } from "../superAgentEnrollment.js";
 import { openSuperAgentJob } from "../superAgentSchedules.js";
 import { latestProgressColumn } from "../jobProgress.js";
+import { quoteIntent } from "../superAgentQuotes.js";
 import { registerScheduleRoutes } from "./superAgentSchedules.js";
 import { db } from "../db/index.js";
 import { ApiError, asyncRoute } from "../http.js";
@@ -16,7 +17,11 @@ import { ApiError, asyncRoute } from "../http.js";
 export const superAgentsRouter = Router();
 
 const textInput = z.object({ text: z.string().trim().min(1).max(10_000) });
-const intentInput = textInput.extend({ source: z.enum(["dashboard", "cli"]).default("dashboard") });
+const intentInput = textInput.extend({
+  source: z.enum(["dashboard", "cli"]).default("dashboard"),
+  // Accepting a quote's suggested budget (or typing one) without restating it in the text.
+  budgetAmount: z.number().finite().positive().optional(),
+});
 const decisionInput = z.object({ decision: z.enum(["approved", "rejected"]) });
 const claimInput = z.object({ claimToken: z.string().min(24).max(200) });
 const intentShape = z.object({
@@ -601,7 +606,8 @@ superAgentsRouter.post(
   requireSessionOrMobileAuth("mobile:read"),
   asyncRoute(async (request, response) => {
     const input = textInput.parse(request.body);
-    response.json({ data: await parseSuperAgentIntent(input.text) });
+    const parsed = await parseSuperAgentIntent(input.text);
+    response.json({ data: { ...parsed, quote: await quoteIntent(parsed) } });
   }),
 );
 
@@ -610,7 +616,15 @@ superAgentsRouter.post(
   requireSessionOrMobileAuth("mobile:approve"),
   asyncRoute(async (request, response) => {
     const input = intentInput.parse(request.body);
-    const parsed = await parseSuperAgentIntent(input.text);
+    const parsedText = await parseSuperAgentIntent(input.text);
+    const parsed =
+      input.budgetAmount === undefined
+        ? parsedText
+        : {
+            ...parsedText,
+            budgetAmount: input.budgetAmount,
+            budgetUsdg: parsedText.settlementAsset === "usdg" ? input.budgetAmount : null,
+          };
     const asset = parsed.settlementAsset;
     const budget = intentAmount(parsed);
     const agent = await findEnrolledAgent(parsed.agentName, asset);
@@ -648,7 +662,9 @@ superAgentsRouter.post(
       requestId: request.requestId,
       metadata: { source: input.source, matched: Boolean(agent) },
     });
-    response.status(201).json({ data: { ...result.rows[0], agent: agent ?? null } });
+    response.status(201).json({
+      data: { ...result.rows[0], agent: agent ?? null, quote: await quoteIntent(parsed) },
+    });
   }),
 );
 

@@ -2509,7 +2509,9 @@ paths:
   /v1/super-agents/intents/parse:
     post:
       operationId: parseSuperAgentIntent
-      summary: Parse a request into a proposal without creating or funding a job.
+      summary: >-
+        Parse a request into a proposal and quote it (service, delivery estimate, suggested budget)
+        without creating or funding a job. The response adds a `quote` (SuperAgentQuote).
       security: [{ bearerAuth: [] }]
       requestBody:
         {
@@ -2912,6 +2914,43 @@ components:
         message: { type: string }
         percent: { type: [integer, "null"] }
         created_at: { type: string, format: date-time }
+    SuperAgentIntentInput:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string, minLength: 1, maxLength: 10000 }
+        source:
+          type: string
+          enum: [dashboard, cli]
+          default: dashboard
+          description: Proposal creation only.
+        budgetAmount:
+          type: number
+          exclusiveMinimum: 0
+          description: >-
+            Proposal creation only. Sets the budget without restating it in the text, for example
+            to accept a quote's suggested budget.
+    SuperAgentQuote:
+      type: [object, "null"]
+      description: >-
+        The matched agent's service, delivery estimate, and budget. suggestedBudget is the agent's
+        listed price and is offered only for USDG below the self-settlement limit; LIEGE budgets
+        are never derived from USD prices. Null when no discoverable agent matches.
+      properties:
+        agentId: { type: string, format: uuid }
+        agentName: { type: string }
+        serviceName: { type: string }
+        serviceDescription: { type: string }
+        slaMinutes: { type: integer }
+        deliveryBy: { type: string, format: date-time }
+        deliveryFromRequest: { type: boolean }
+        listedPriceUsd: { type: [number, "null"] }
+        asset: { type: string, enum: [usdg, liege] }
+        requestedBudget: { type: [number, "null"] }
+        suggestedBudget: { type: [number, "null"] }
+        budget: { type: [number, "null"] }
+        budgetSource: { type: [string, "null"], enum: [request, listed_price, null] }
+        notes: { type: array, items: { type: string } }
     SuperAgentEnvelope:
       type: object
       required: [data]

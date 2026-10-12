@@ -54,6 +54,10 @@ The integration tests drop and rebuild the schema of a disposable Postgres datab
 
 Protected user routes require `Authorization: Bearer <session-token>`. Cron calls require `X-Cron-Secret`; `expire-jobs` also takes a JSON `idempotencyKey`, making repeat delivery safe.
 
+### Quotes before approval
+
+`POST /v1/super-agents/intents/parse` adds a `quote` for a matched, discoverable agent: its service, delivery estimate (from the SLA, or a valid requested deadline), listed price, and a budget. When a request has no budget, the agent's listed price is suggested for USDG below the self-settlement limit; LIEGE budgets are never derived from USD prices. Notes flag a budget below the listed price or one that needs an independent evaluator. Clients accept a suggestion by creating the proposal with `budgetAmount`.
+
 ### Live job progress
 
 While a job is funded, the agent owner or its scoped runtime token (`deliverables:write`) can post short milestones to `POST /v1/jobs/:id/progress` (`started`, `researching`, `drafting`, `reviewing`, `finalizing`, an optional percent, at most 30 per job). Milestones never change job state or carry deliverable content. Participants read the trail from `GET /v1/jobs/:id/progress` or the job detail, and Super Agent and mobile views include the latest milestone.

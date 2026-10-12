@@ -17,7 +17,27 @@ type Draft = {
   budgetAmount: number | null;
   budgetUsdg: number | null;
   deadlineAt: string | null;
+  quote?: Quote | null;
 };
+
+export type Quote = {
+  agentId: string;
+  agentName: string;
+  serviceName: string;
+  slaMinutes: number;
+  deliveryBy: string;
+  listedPriceUsd: number | null;
+  asset: "usdg" | "liege";
+  suggestedBudget: number | null;
+  notes: string[];
+};
+
+const minutes = (value: number) =>
+  value < 120
+    ? `${value} min`
+    : value < 2880
+      ? `${Math.round(value / 60)} h`
+      : `${Math.round(value / 1440)} days`;
 
 type Agent = { id: string; name: string; slug?: string; price_usd?: string; sla_minutes?: number };
 
@@ -55,7 +75,11 @@ const sameName = (agent: Agent, name: string) => {
 };
 
 export function describeDraft(draft: Draft, agents: Agent[]) {
-  const budget = budgetOf(draft);
+  const quote = draft.quote ?? null;
+  const stated = budgetOf(draft);
+  // With no budget in the request, the agent's listed price is offered for confirmation.
+  const suggested = !stated && quote?.suggestedBudget ? quote.suggestedBudget : null;
+  const budget = stated ?? suggested;
   const agent = draft.agentName
     ? (agents.find((item) => sameName(item, draft.agentName!)) ?? null)
     : null;
@@ -64,14 +88,25 @@ export function describeDraft(draft: Draft, agents: Agent[]) {
   else if (agents.length && !agent)
     missing.push(`an available agent (${draft.agentName} is not an enrolled Super Agent)`);
   if (!budget) missing.push(`a ${draft.settlementAsset.toUpperCase()} budget`);
+  const unit = draft.settlementAsset.toUpperCase();
   const lines = [
-    bold("Draft proposal"),
-    `  Agent     ${agent?.name ?? draft.agentName ?? dim("not specified")}`,
+    bold(quote ? "Quote" : "Draft proposal"),
+    `  Agent     ${agent?.name ?? quote?.agentName ?? draft.agentName ?? dim("not specified")}`,
+    ...(quote ? [`  Service   ${quote.serviceName}`] : []),
     `  Request   ${draft.request}`,
-    `  Budget    ${budget ? `${budget} ${draft.settlementAsset.toUpperCase()}` : dim("not specified")}`,
-    `  Deadline  ${draft.deadlineAt ?? dim(agent?.sla_minutes ? `service SLA (${agent.sla_minutes} min)` : "service SLA")}`,
+    `  Budget    ${
+      stated
+        ? `${stated} ${unit}`
+        : suggested
+          ? `${suggested} ${unit} ${dim("(suggested: the agent's listed price)")}`
+          : dim("not specified")
+    }`,
+    quote
+      ? `  Delivery  by ${new Date(quote.deliveryBy).toLocaleString()} ${dim(`(~${minutes(quote.slaMinutes)})`)}`
+      : `  Deadline  ${draft.deadlineAt ?? dim(agent?.sla_minutes ? `service SLA (${agent.sla_minutes} min)` : "service SLA")}`,
+    ...(quote?.notes ?? []).map((note) => yellow(`  ${note}`)),
   ];
-  return { lines, missing, complete: missing.length === 0, agent, budget };
+  return { lines, missing, complete: missing.length === 0, agent, budget, suggested };
 }
 
 const CADENCES = ["daily", "weekly", "monthly"] as const;
@@ -120,6 +155,7 @@ export class ChatSession {
     draft: Draft;
     agent: Agent | null;
     budget: number | null;
+    suggested: number | null;
   } | null = null;
   tracked = new Map<string, Tracked>();
   closed = false;
@@ -140,7 +176,7 @@ export class ChatSession {
     );
   }
 
-  async handle(raw: string) {
+  async handle(raw: string): Promise<void> {
     const line = raw.trim();
     if (!line) return;
     if (this.awaitingConfirmation) return this.confirm(line);
@@ -150,32 +186,45 @@ export class ChatSession {
       method: "POST",
       body: JSON.stringify({ text }),
     })) as Draft;
-    const { lines, missing, complete, agent, budget } = describeDraft(draft, this.agents);
+    const { lines, missing, complete, agent, budget, suggested } = describeDraft(
+      draft,
+      this.agents,
+    );
     lines.forEach((item) => this.write(item));
     if (!complete) {
       this.pendingText = text;
       this.write(yellow(`Still needed: ${missing.join(" and ")}. Reply with the details.`));
       return;
     }
-    this.awaitingConfirmation = { text, draft, agent, budget };
-    this.write(`Send this proposal to your dashboard for approval? ${dim("[y/N]")}`);
+    this.awaitingConfirmation = { text, draft, agent, budget, suggested };
+    this.write(
+      suggested
+        ? `Use the suggested ${suggested} ${draft.settlementAsset.toUpperCase()} and send this proposal for approval? ${dim("[y/N] — or reply with your own budget")}`
+        : `Send this proposal to your dashboard for approval? ${dim("[y/N]")}`,
+    );
     this.write(dim("Or make it recurring: /repeat weekly 20 (20 = total spending cap)."));
   }
 
-  private async confirm(line: string) {
+  private async confirm(line: string): Promise<void> {
     const pending = this.awaitingConfirmation!;
     const { text } = pending;
     this.awaitingConfirmation = null;
     if (/^\/repeat\b/i.test(line)) return this.repeat(line, pending);
     if (!/^y(es)?$/i.test(line)) {
       this.pendingText = text;
+      // Anything other than a plain "no" refines the draft, e.g. "budget 8 USDG".
+      if (!/^n(o)?$/i.test(line) && !line.startsWith("/")) return this.handle(line);
       this.write(dim("Not sent. Add details to refine the draft, or /new to start over."));
       return;
     }
     this.pendingText = null;
     const intent = (await request("/v1/super-agents/intents", {
       method: "POST",
-      body: JSON.stringify({ text, source: "cli" }),
+      body: JSON.stringify({
+        text,
+        source: "cli",
+        ...(pending.suggested ? { budgetAmount: pending.suggested } : {}),
+      }),
     })) as Json;
     this.tracked.set(String(intent.id), { intentStatus: "pending", jobId: null, jobStatus: null });
     this.write(green(`Proposal ${intent.id} is waiting for your approval.`));

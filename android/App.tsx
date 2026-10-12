@@ -551,6 +551,10 @@ function Workspace({
   const [superAgentWorkspace, setSuperAgentWorkspace] = useState<SuperAgentWorkspace | null>(null);
   const [superAgentText, setSuperAgentText] = useState("");
   const [superAgentContext, setSuperAgentContext] = useState("");
+  // A quote waiting for "yes": the request text and the agent's listed price to use as budget.
+  const [superAgentQuote, setSuperAgentQuote] = useState<{ text: string; budget: number } | null>(
+    null,
+  );
   const [superAgentMessages, setSuperAgentMessages] = useState<SuperAgentChatMessage[]>([]);
   const [superAgentBusy, setSuperAgentBusy] = useState(false);
   const [superAgentDecisionId, setSuperAgentDecisionId] = useState("");
@@ -657,7 +661,16 @@ function Workspace({
   const createSuperAgentRequest = async () => {
     const text = superAgentText.trim();
     if (!text || superAgentBusy) return;
-    const intentText = superAgentContext ? `${superAgentContext}\n${text}` : text;
+    const acceptedQuote =
+      superAgentQuote && /^(y|yes|ok|okay|sure|use it|sounds good)\b/i.test(text)
+        ? superAgentQuote
+        : null;
+    const intentText = acceptedQuote
+      ? acceptedQuote.text
+      : superAgentContext
+        ? `${superAgentContext}\n${text}`
+        : text;
+    setSuperAgentQuote(null);
     const userMessage: SuperAgentChatMessage = {
       id: `user-${Date.now()}`,
       role: "user",
@@ -738,7 +751,38 @@ function Workspace({
         { method: "POST", body: JSON.stringify({ text: intentText }) },
         token,
       );
-      const budget = parsed.budgetAmount ?? parsed.budgetUsdg;
+      const budget = parsed.budgetAmount ?? parsed.budgetUsdg ?? acceptedQuote?.budget;
+      const quote = parsed.quote as
+        | {
+            agentName: string;
+            serviceName: string;
+            slaMinutes: number;
+            deliveryBy: string;
+            suggestedBudget: number | null;
+            notes: string[];
+          }
+        | null
+        | undefined;
+      const quoteText = quote
+        ? [
+            `${quote.agentName} · ${quote.serviceName}`,
+            `Delivery by ${new Date(quote.deliveryBy).toLocaleString()} (about ${quote.slaMinutes < 120 ? `${quote.slaMinutes} minutes` : `${Math.round(quote.slaMinutes / 60)} hours`}).`,
+            ...quote.notes,
+          ].join("\n")
+        : "";
+      if (parsed.agentName && (!budget || budget <= 0) && quote?.suggestedBudget) {
+        setSuperAgentContext(intentText);
+        setSuperAgentQuote({ text: intentText, budget: quote.suggestedBudget });
+        setSuperAgentMessages((messages) => [
+          ...messages,
+          {
+            id: `assistant-${Date.now()}`,
+            role: "assistant",
+            text: `${quoteText}\nSuggested budget: ${quote.suggestedBudget} ${String(parsed.settlementAsset || "usdg").toUpperCase()} (their listed price).\n\nReply “yes” to use it, or tell me your own budget.`,
+          },
+        ]);
+        return;
+      }
       if (!parsed.agentName || !budget || budget <= 0) {
         setSuperAgentContext(intentText);
         if (!parsed.agentName && superAgentWorkspace?.agents.length) {
@@ -777,7 +821,13 @@ function Workspace({
       }
       const created = await call(
         "/v1/super-agents/intents",
-        { method: "POST", body: JSON.stringify({ text: intentText }) },
+        {
+          method: "POST",
+          body: JSON.stringify({
+            text: intentText,
+            ...(acceptedQuote ? { budgetAmount: acceptedQuote.budget } : {}),
+          }),
+        },
         token,
       );
       setSuperAgentContext("");
@@ -787,7 +837,7 @@ function Workspace({
         {
           id: `assistant-${Date.now()}`,
           role: "assistant",
-          text: `I matched ${agentName} to your request. Review the proposal before creating its job draft. No funds move until you fund the job in Liege.`,
+          text: `I matched ${agentName} to your request.${quoteText ? `\n${quoteText}\n` : " "}Review the proposal before creating its job draft. No funds move until you fund the job in Liege.`,
           actionLabel: "Review proposal",
         },
       ]);

@@ -785,6 +785,26 @@ const tabs = [
   { id: "activity", label: "Activity", icon: Activity },
   { id: "settings", label: "Settings", icon: Settings },
 ];
+type Quote = {
+  agentName: string;
+  serviceName: string;
+  slaMinutes: number;
+  deliveryBy: string;
+  suggestedBudget: number | null;
+  notes: string[];
+};
+const durationLabel = (minutes: number) =>
+  minutes < 120
+    ? `${minutes} minutes`
+    : minutes < 2880
+      ? `${Math.round(minutes / 60)} hours`
+      : `${Math.round(minutes / 1440)} days`;
+const describeQuote = (quote: Quote) =>
+  [
+    `${quote.agentName} · ${quote.serviceName}`,
+    `Delivery by ${new Date(quote.deliveryBy).toLocaleString()} (about ${durationLabel(quote.slaMinutes)}).`,
+    ...quote.notes,
+  ].join("\n");
 type DiscoverableAgent = {
   id: string;
   name: string;
@@ -809,12 +829,18 @@ function SuperAgentChat({
   ]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pendingQuote, setPendingQuote] = useState<{ text: string; budget: number } | null>(null);
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    const value = text.trim();
-    if (!value || busy) return;
+    const typed = text.trim();
+    if (!typed || busy) return;
     setText("");
-    setMessages((current) => [...current, { role: "user", text: value }]);
+    setMessages((current) => [...current, { role: "user", text: typed }]);
+    // A quote waiting for confirmation: "yes" accepts the suggested budget; anything else refines.
+    const accepting = pendingQuote && /^(y|yes|ok|okay|sure|use it|sounds good)\b/i.test(typed);
+    const value = pendingQuote && !accepting ? `${pendingQuote.text}\n${typed}` : typed;
+    const acceptedQuote = accepting ? pendingQuote : null;
+    setPendingQuote(null);
     setBusy(true);
     try {
       const availabilityQuestion =
@@ -832,7 +858,7 @@ function SuperAgentChat({
         !/\b(hire|assign|budget|usd[g]?|liege)\b/i.test(value);
       const formatAgent = (agent: DiscoverableAgent) =>
         `${agent.name}${agent.category ? ` — ${agent.category}` : ""}${agent.description ? `: ${agent.description}` : agent.capabilities?.length ? `: ${agent.capabilities.join(", ")}` : ""}`;
-      if (availabilityQuestion || agentInfoQuestion) {
+      if (!acceptedQuote && (availabilityQuestion || agentInfoQuestion)) {
         const matches = specialty
           ? directory.filter((agent) =>
               [agent.category, agent.description, ...(agent.capabilities ?? [])]
@@ -855,17 +881,31 @@ function SuperAgentChat({
       }
       const token = getSessionToken();
       const api = superAgentsApi;
+      const proposalText = acceptedQuote ? acceptedQuote.text : value;
       const response = token
         ? await fetch(`${api}/v1/super-agents/intents/parse`, {
             method: "POST",
             headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-            body: JSON.stringify({ text: value }),
+            body: JSON.stringify({ text: proposalText }),
           })
         : null;
       const parsed = response?.ok ? (await response.json()).data : null;
       if (!response?.ok) throw new Error("Could not read your message.");
-      const parsedBudget = parsed?.budgetAmount ?? parsed?.budgetUsdg;
+      const quote: Quote | null = parsed?.quote ?? null;
+      const parsedBudget =
+        parsed?.budgetAmount ?? parsed?.budgetUsdg ?? acceptedQuote?.budget ?? null;
       const parsedAsset = String(parsed?.settlementAsset || "usdg").toUpperCase();
+      if (parsed?.agentName && !parsedBudget && quote?.suggestedBudget) {
+        setPendingQuote({ text: proposalText, budget: quote.suggestedBudget });
+        setMessages((current) => [
+          ...current,
+          {
+            role: "assistant",
+            text: `${describeQuote(quote)}\nSuggested budget: ${quote.suggestedBudget} ${parsedAsset} (their listed price).\n\nReply “yes” to use it, or tell me your own budget.`,
+          },
+        ]);
+        return;
+      }
       if (!parsed?.agentName || !parsedBudget) {
         if (!parsed?.agentName && directory.length) {
           const available = directory.map((agent) => formatAgent(agent)).join("\n\n");
@@ -891,7 +931,10 @@ function SuperAgentChat({
         ? await fetch(`${api}/v1/super-agents/intents`, {
             method: "POST",
             headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-            body: JSON.stringify({ text: value }),
+            body: JSON.stringify({
+              text: proposalText,
+              ...(acceptedQuote ? { budgetAmount: acceptedQuote.budget } : {}),
+            }),
           })
         : null;
       const match =
@@ -920,7 +963,7 @@ function SuperAgentChat({
         {
           role: "assistant",
           text: match
-            ? `I’d route this to ${match}${budget ? ` with a ${budget} ${parsedAsset} budget` : ""}. ${created ? "A proposal is waiting in Requests for your review." : "I’ve prepared a proposal for your review."} No job was funded and no wallet action was taken.`
+            ? `I’d route this to ${match}${budget ? ` with a ${budget} ${parsedAsset} budget` : ""}. ${quote ? `${describeQuote(quote)}\n` : ""}${created ? "A proposal is waiting in Requests for your review." : "I’ve prepared a proposal for your review."} No job was funded and no wallet action was taken.`
             : "I understand the request. Add an agent name or service and an optional budget, then I’ll prepare a reviewable proposal.",
         },
       ]);
