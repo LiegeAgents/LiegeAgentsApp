@@ -48,6 +48,10 @@ Usage:
   liege superagents schedules get <schedule-id>
   liege superagents schedules create --agent-id <id> --request <text> --budget <n> --cadence <daily|weekly|monthly> --cap <n> [--max-runs <n>] [--auto-fund] [--asset usdg|liege] [--start <iso-time>]
   liege superagents schedules pause|resume|cancel <schedule-id>
+  liege superagents squads list
+  liege superagents squads get <squad-id>
+  liege superagents squads create --request <text> --steps "<agent>:<budget>:<task>; ..." [--name <text>] [--auto-fund] [--asset usdg|liege]
+  liege superagents squads cancel <squad-id>
   liege jobs list [--status <status>] [--asset <usdg|liege>] [--limit <n>]
   liege jobs get <job-id>
   liege jobs simulate '<json-job>'
@@ -179,6 +183,30 @@ export async function attach(jobId: string, flags: Record<string, string | undef
     headers: { "content-type": attachmentMediaType(flags.file) },
     body: await file.arrayBuffer(),
   });
+}
+
+type SquadAgent = { id: string; name: string };
+
+/**
+ * Squad steps from "Anna:2:Research the market; Daniel:3:Plan the launch". An agent is named by
+ * its id or the start of its name.
+ */
+export function squadSteps(spec: string, agents: SquadAgent[]) {
+  return spec
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const [who = "", budget = "", ...task] = part.split(":");
+      const name = who.trim().toLowerCase();
+      const agent = agents.find(
+        (item) => item.id === who.trim() || item.name.toLowerCase().startsWith(name),
+      );
+      if (!name || !agent) throw new Error(`No Super Agent matches "${who.trim()}".`);
+      if (!(Number(budget) > 0) || !task.join(":").trim())
+        throw new Error(`Write each step as <agent>:<budget>:<task>, not "${part}".`);
+      return { agentId: agent.id, task: task.join(":").trim(), budgetAmount: Number(budget) };
+    });
 }
 
 export function print(value: unknown) {
@@ -430,6 +458,38 @@ export async function execute(args: string[]): Promise<unknown> {
             "Provide --agent-id, --request, --budget, --cadence and --cap, or a JSON schedule.",
           );
         return request("/v1/super-agents/schedules", {
+          method: "POST",
+          body: JSON.stringify({ source: "cli", ...body }),
+        });
+      }
+    }
+    if (action === "squads" || action === "squad") {
+      const target = positional[3];
+      if (!id || id === "list") return request("/v1/super-agents/squads");
+      if (id === "get" && target)
+        return request(`/v1/super-agents/squads/${encodeURIComponent(target)}`);
+      if (id === "cancel" && target)
+        return request(`/v1/super-agents/squads/${encodeURIComponent(target)}/cancel`, {
+          method: "POST",
+        });
+      if (id === "create") {
+        let body: Json;
+        if (target?.startsWith("{")) body = jsonArgument(target, "squad");
+        else {
+          if (!flags.request || !flags.steps)
+            throw new Error(
+              'Provide --request and --steps "<agent>:<budget>:<task>; ...", or a JSON squad.',
+            );
+          const dashboard = (await request("/v1/super-agents/dashboard")) as Json;
+          body = {
+            request: flags.request,
+            ...(flags.name ? { name: flags.name } : {}),
+            settlementAsset: (flags.asset ?? "usdg").toLowerCase(),
+            autoFund: flags["auto-fund"] === "true",
+            steps: squadSteps(flags.steps, (dashboard.agents as SquadAgent[] | undefined) ?? []),
+          };
+        }
+        return request("/v1/super-agents/squads", {
           method: "POST",
           body: JSON.stringify({ source: "cli", ...body }),
         });

@@ -76,6 +76,7 @@ export async function openSuperAgentJob(
     request: string;
     deadlineAt?: string | null;
     policy: Record<string, unknown>;
+    title?: string;
   },
 ) {
   const agent = await readySuperAgent(
@@ -94,7 +95,7 @@ export async function openSuperAgentJob(
       : new Date(Date.now() + agent.sla_minutes * 60_000);
   const expires = new Date(deadline.getTime() + 7 * 86_400_000);
   const jobId = randomUUID();
-  const title = `${agent.name}: ${input.request}`.slice(0, 160);
+  const title = (input.title ?? `${agent.name}: ${input.request}`).slice(0, 160);
   const created = await client.query(
     `INSERT INTO jobs (id, client_id, agent_id, evaluator_id, kind, title, brief_ciphertext, brief_hash,
        acceptance_criteria, settlement_asset, budget_amount, evaluator_fee_amount, budget_usdg,

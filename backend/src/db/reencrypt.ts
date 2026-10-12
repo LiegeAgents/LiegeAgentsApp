@@ -30,6 +30,7 @@ const payload = (
     | "revision"
     | "attachment"
     | "attachment-name"
+    | "squad"
     | "artifact",
   id = table === "jobs" ? "id" : "job_id",
 ) => ({
@@ -51,6 +52,7 @@ const targets: Target[] = [
   // A job has several attachments, so each is bound to its own id.
   payload("job_attachments", "name_ciphertext", "attachment-name", "id"),
   payload("job_attachments", "content_ciphertext", "attachment", "id"),
+  payload("superagent_squads", "request_ciphertext", "squad", "id"),
   {
     table: "escrow_wallets",
     id: "job_id",

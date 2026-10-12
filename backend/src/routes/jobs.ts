@@ -26,6 +26,7 @@ import { consumeExecutionGrant } from "../executionGrants.js";
 import { registerProgressRoutes } from "./jobProgress.js";
 import { registerRevisionRoutes } from "./jobRevisions.js";
 import { registerAttachmentRoutes } from "./jobAttachments.js";
+import { advanceSquad } from "../superAgentSquads.js";
 
 const decimalAmount = (positive = false) =>
   z
@@ -1037,6 +1038,8 @@ jobsRouter.post(
         eventType: "job.submitted",
         actorId: request.auth!.userId,
       });
+      // A squad step hands its deliverable to the next agent as soon as it is delivered.
+      await advanceSquad(client, job.id, payload);
       await client.query("COMMIT");
       response.json({ data: publicJob(result.rows[0]) });
     } catch (error) {

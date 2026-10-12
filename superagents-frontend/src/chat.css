@@ -927,3 +927,165 @@
 .live-progress p {
   color: #d8e7dc;
 }
+
+/* Squads: a crew builder beside the running pipelines. */
+.squad-templates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.squad-template {
+  display: grid;
+  gap: 3px;
+  padding: 11px 12px;
+  border: 1px solid #2e4a36;
+  border-radius: 10px;
+  background: #111e15;
+  color: #d8e7dc;
+  text-align: left;
+  cursor: pointer;
+}
+.squad-template:hover,
+.squad-template:focus-visible {
+  border-color: var(--green);
+}
+.squad-template strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+.squad-template small {
+  color: #819889;
+  font-size: 11px;
+}
+.recurring-form input.squad-name,
+.squad-step-fields input,
+.squad-step-fields select {
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 11px;
+  border: 1px solid #365841;
+  border-radius: 9px;
+  background: #101c14;
+  color: #e6ece7;
+}
+.recurring-form input.squad-name {
+  margin-bottom: 18px;
+}
+.squad-steps {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.squad-steps li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.squad-step-number {
+  display: grid;
+  flex: 0 0 26px;
+  height: 26px;
+  margin-top: 7px;
+  place-items: center;
+  border-radius: 50%;
+  background: #1a2a20;
+  color: var(--green);
+  font-size: 12px;
+}
+.squad-step-fields {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 90px;
+  gap: 8px;
+}
+.squad-step-fields input,
+.squad-step-fields select {
+  margin: 0 !important;
+}
+.squad-remove {
+  margin-top: 9px;
+  padding: 4px;
+  border: 0;
+  background: none;
+  color: #819889;
+  cursor: pointer;
+}
+.squad-add {
+  margin-bottom: 18px;
+}
+.squad-total strong {
+  display: block;
+  min-height: 44px;
+  padding-top: 10px;
+  color: #e6ece7;
+  font-size: 16px;
+  font-weight: 500;
+}
+.squad-pipeline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0;
+  padding: 0;
+  list-style: none;
+}
+.squad-stage {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+.squad-stage > svg {
+  flex: 0 0 auto;
+  color: #5d7566;
+}
+.squad-stage > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  max-width: 220px;
+  padding: 9px 11px;
+  border: 1px solid #2e4a36;
+  border-radius: 10px;
+  background: #111e15;
+}
+.squad-stage strong {
+  color: #d8e7dc;
+  font-size: 13px;
+  font-weight: 500;
+}
+.squad-stage small {
+  overflow: hidden;
+  color: #819889;
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+.squad-stage em {
+  color: #819889;
+  font-size: 11px;
+  font-style: normal;
+}
+.squad-stage-funded > div {
+  border-color: var(--green);
+}
+.squad-stage-funded em,
+.squad-stage-submitted em,
+.squad-stage-completed em {
+  color: var(--green);
+}
+.squad-stage-open em {
+  color: #e2c27a;
+}
+.squad-stage-rejected em,
+.squad-stage-expired em {
+  color: #f08a7a;
+}
+@media (max-width: 640px) {
+  .squad-step-fields {
+    grid-template-columns: 1fr;
+  }
+}

@@ -36,6 +36,12 @@ links are passed on as client-supplied references but not opened. All of this st
 to avoid GitHub's anonymous rate limit. An attachment that cannot be read becomes a note in the
 prompt; it never fails the job.
 
+### Squads
+
+A squad step is an ordinary funded job: its brief holds the squad request, the plan, and this
+agent's part, and earlier steps' deliverables arrive as Markdown attachments, read like any other
+attachment. Nothing in the runtime changes per squad.
+
 ### Marcus opens pull requests
 
 When a code review job has a GitHub repository attached and `MARCUS_GITHUB_TOKEN` is set, Marcus

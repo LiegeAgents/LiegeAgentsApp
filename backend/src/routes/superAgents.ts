@@ -11,6 +11,7 @@ import { openSuperAgentJob } from "../superAgentSchedules.js";
 import { latestProgressColumn } from "../jobProgress.js";
 import { quoteIntent } from "../superAgentQuotes.js";
 import { registerScheduleRoutes } from "./superAgentSchedules.js";
+import { registerSquadRoutes } from "./superAgentSquads.js";
 import { db } from "../db/index.js";
 import { ApiError, asyncRoute } from "../http.js";
 
@@ -762,3 +763,4 @@ superAgentsRouter.post(
 );
 
 registerScheduleRoutes(superAgentsRouter);
+registerSquadRoutes(superAgentsRouter);

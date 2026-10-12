@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import express, { type Request, type Router } from "express";
+import type { PoolClient } from "pg";
 import { z } from "zod";
 import { requireAuth } from "../auth.js";
 import { audit } from "../audit.js";
@@ -120,6 +121,43 @@ async function readableJob(request: Request, jobId: string) {
 }
 
 /**
+ * Stores one encrypted attachment. Callers check who may attach and the job's limits. The
+ * statement time keeps attachments added in one transaction in the order they were added.
+ */
+export async function insertAttachment(
+  client: PoolClient,
+  input: {
+    jobId: string;
+    createdBy: string;
+    kind: "file" | "link";
+    mediaType: string;
+    name: string;
+    content: string;
+    size: number;
+  },
+) {
+  const id = randomUUID();
+  const inserted = await client.query<AttachmentRow>(
+    `INSERT INTO job_attachments (id, job_id, created_by, kind, media_type, size_bytes, name_ciphertext,
+       content_ciphertext, content_hash, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,clock_timestamp())
+     RETURNING id, kind, media_type, size_bytes, name_ciphertext, created_at`,
+    [
+      id,
+      input.jobId,
+      input.createdBy,
+      input.kind,
+      input.mediaType,
+      input.size,
+      encryptPayload(input.name, payloadContext(id, "attachment-name")),
+      encryptPayload(input.content, payloadContext(id, "attachment")),
+      payloadDigest(input.content),
+    ],
+  );
+  return inserted.rows[0];
+}
+
+/**
  * Adds one attachment for the client of an open job. Attachments are fixed once the job is
  * funded, so the agent always works from the inputs the client paid for.
  */
@@ -170,24 +208,8 @@ async function addAttachment(
         "attachment_limit",
         `A job's attachments can total at most ${MAX_TOTAL_BYTES / 1024 / 1024} MB.`,
       );
-    const id = randomUUID();
-    const inserted = await client.query<AttachmentRow>(
-      `INSERT INTO job_attachments (id, job_id, created_by, kind, media_type, size_bytes, name_ciphertext,
-         content_ciphertext, content_hash)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-       RETURNING id, kind, media_type, size_bytes, name_ciphertext, created_at`,
-      [
-        id,
-        jobId,
-        userId,
-        attachment.kind,
-        attachment.mediaType,
-        attachment.size,
-        encryptPayload(attachment.name, payloadContext(id, "attachment-name")),
-        encryptPayload(attachment.content, payloadContext(id, "attachment")),
-        payloadDigest(attachment.content),
-      ],
-    );
+    const inserted = await insertAttachment(client, { jobId, createdBy: userId, ...attachment });
+    const id = inserted.id;
     await audit(client, {
       actorId: userId,
       action: "job.attachment_added",
@@ -202,7 +224,7 @@ async function addAttachment(
       },
     });
     await client.query("COMMIT");
-    return describe(inserted.rows[0]);
+    return describe(inserted);
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;

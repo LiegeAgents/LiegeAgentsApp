@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Enrollment } from "./Enrollment";
 import { Recurring } from "./Recurring";
+import { Squads } from "./Squads";
 import {
   ArrowUpRight,
   ArrowRight,
@@ -25,6 +26,7 @@ import {
   MessageCircle,
   Send,
   Repeat,
+  Workflow,
 } from "lucide-react";
 import {
   agents,
@@ -780,6 +782,7 @@ const tabs = [
   { id: "chat", label: "Chat", icon: MessageCircle },
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "requests", label: "Requests", icon: Inbox },
+  { id: "squads", label: "Squads", icon: Workflow },
   { id: "recurring", label: "Recurring", icon: Repeat },
   { id: "agents", label: "Agents", icon: Users },
   { id: "activity", label: "Activity", icon: Activity },
@@ -1394,6 +1397,7 @@ function Dashboard() {
                     {
                       overview: "Good ideas, in motion.",
                       requests: "Your next decisions.",
+                      squads: "One request. A whole crew.",
                       recurring: "Approve once. Repeat on schedule.",
                       agents: "Find your kind of brilliant.",
                       activity: "Every step, accounted for.",
@@ -1408,6 +1412,8 @@ function Dashboard() {
                     {
                       overview: "A clear view of your agents, requests, and what needs you next.",
                       requests: "From an X mention to a brief you can review.",
+                      squads:
+                        "Agents work in order, each building on the last. Approve once, pay per step.",
                       recurring:
                         "Weekly briefs, daily digests, monthly reviews — always within your cap.",
                       agents: "Meet the flagship team, or start shaping your own Super Agent.",
@@ -1628,6 +1634,26 @@ function Dashboard() {
               )}
             </>
           )}
+          {tab === "squads" &&
+            (getSessionToken() ? (
+              <Squads
+                api={superAgentsApi}
+                token={getSessionToken()!}
+                agents={catalog}
+                notify={setNotice}
+              />
+            ) : (
+              <section className="panel">
+                <div className="empty">
+                  <Workflow size={28} />
+                  <h3>Connect to start a squad.</h3>
+                  <p>Sign in with your Liege wallet to approve a crew of agents in one step.</p>
+                  <a className="button" href="/auth">
+                    Connect wallet
+                  </a>
+                </div>
+              </section>
+            ))}
           {tab === "recurring" &&
             (getSessionToken() ? (
               <Recurring

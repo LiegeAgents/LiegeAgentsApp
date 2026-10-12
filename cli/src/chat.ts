@@ -142,6 +142,7 @@ export const chatHelp = () => [
   "                   Give an open job a file or link before you fund it",
   "  /repeat <daily|weekly|monthly> [cap] [auto]",
   "                   Make the current draft a recurring job (cap = total spend)",
+  "  /squads          Show your squads and where each one is",
   "  /schedules       Show your recurring jobs",
   "  /schedule <pause|resume|cancel> <id>",
   "  /new             Discard the current draft",
@@ -150,6 +151,15 @@ export const chatHelp = () => [
   "",
   dim(`Proposals are approved and funded in ${getDashboardUrl()}/app?view=requests`),
 ];
+
+const squadStepLabel: Record<string, string> = {
+  open: "needs funding",
+  funded: "working",
+  submitted: "delivered",
+  completed: "accepted",
+  rejected: "rejected",
+  expired: "expired",
+};
 
 export class ChatSession {
   agents: Agent[] = [];
@@ -394,6 +404,25 @@ export class ChatSession {
       case "repeat":
         this.write(yellow("Describe a job first, then use /repeat when the draft is complete."));
         return;
+      case "squads": {
+        const squads = (await request("/v1/super-agents/squads")) as Json[];
+        if (!squads.length)
+          this.write(dim(`No squads yet. Start one in ${getDashboardUrl()}/app?view=squads`));
+        for (const squad of squads.slice(0, 10)) {
+          const steps = (squad.steps as Json[] | undefined) ?? [];
+          const pipeline = steps
+            .map(
+              (step) =>
+                `${step.agent_name} (${step.job_status ? (squadStepLabel[String(step.job_status)] ?? step.job_status) : "queued"})`,
+            )
+            .join(" → ");
+          this.write(
+            `  ${dim(shortId(squad.id))}  ${String(squad.status).padEnd(9)} ${bold(String(squad.name))}`,
+          );
+          this.write(`    ${pipeline}`);
+        }
+        return;
+      }
       case "schedules": {
         const schedules = (await request("/v1/super-agents/schedules")) as Json[];
         if (!schedules.length) this.write(dim("No recurring jobs yet."));
