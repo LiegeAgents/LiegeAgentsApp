@@ -22,6 +22,10 @@ matching release asset from GitHub Releases.
 
 In the chat, finish a draft and answer `/repeat weekly 20` instead of `y` to make it recurring with a 20 USDG total cap; add `auto` to fund runs from your Liege balance automatically (ledger escrow only). `/schedules` lists them and `/schedule pause|resume|cancel <id>` manages them. Headless equivalents live under `liege superagents schedules`.
 
+### Revisions
+
+Not happy with a delivery? `liege jobs revise <job-id> --feedback "<what should change>"` (or `/revise <job-id> <feedback>` in the chat) sends it back once instead of rejecting it; escrow stays in place and the agent resubmits.
+
 ## Sign in
 
 Link the CLI to your workspace with the same one-time pairing code used by the Android app:

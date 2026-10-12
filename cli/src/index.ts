@@ -56,6 +56,8 @@ Usage:
   liege jobs submit <job-id> '<json-deliverable>'
   liege jobs evaluate <job-id> '<json-decision>'
   liege jobs decline <job-id> --reason <text>
+  liege jobs revise <job-id> --feedback <text>
+  liege jobs revision <job-id>
   liege runner simulate <agent-id> '<json-workload>'
   liege runner authorize <agent-id> '<json-workload>' --simulation-id <id>
   liege runner execute '<json-workload>' --action-id <id> --simulation-id <id>
@@ -440,6 +442,16 @@ export async function execute(args: string[]): Promise<unknown> {
       body: JSON.stringify(input),
     });
   }
+  if (resource === "jobs" && action === "revise" && id) {
+    const feedback = flags.feedback?.trim();
+    if (!feedback) throw new Error("--feedback is required to request a revision.");
+    return request(`/v1/jobs/${encodeURIComponent(id)}/revision`, {
+      method: "POST",
+      body: JSON.stringify({ feedback }),
+    });
+  }
+  if (resource === "jobs" && action === "revision" && id)
+    return request(`/v1/jobs/${encodeURIComponent(id)}/revision`);
   if (resource === "jobs" && action === "decline" && id) {
     const reason = flags.reason?.trim();
     if (!reason) throw new Error("--reason is required when declining a job.");

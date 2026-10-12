@@ -1,3 +1,4 @@
+import { revisionPrompt } from "./types.js";
 import { generate } from "./groq.js";
 import type { SuperAgentHandler } from "./types.js";
 
@@ -68,8 +69,8 @@ export function createKoriHandler(generateReply: typeof generate = generate): Su
   return {
     agentKey: "kori",
     serviceSlugs: koriServiceSlugs,
-    async execute({ jobId, brief, requirements }) {
-      const { text, count } = redactSecrets(brief);
+    async execute({ jobId, brief, requirements, revision }) {
+      const { text, count } = redactSecrets(revision ? `${brief}${revisionPrompt(revision)}` : brief);
       const policy = (requirements ?? {}) as Record<string, unknown>;
       const serviceSlug = typeof policy.serviceSlug === "string" ? policy.serviceSlug : koriServiceSlugs[0];
       const raw = await generateReply(koriSystemPrompt, `Job ID: ${jobId}\nService: ${serviceSlug}\nCustomer message and context:\n${text} /no_think`);

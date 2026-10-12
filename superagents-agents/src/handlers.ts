@@ -1,5 +1,6 @@
 import { generate } from "./groq.js";
 import { createKoriHandler } from "./kori.js";
+import { revisionPrompt } from "./types.js";
 import type { AgentKey, SuperAgentHandler } from "./types.js";
 
 type GenericAgentKey = Exclude<AgentKey, "kori">;
@@ -67,15 +68,20 @@ export const handlerFor = (agentKey: GenericAgentKey): SuperAgentHandler => {
   return {
     agentKey,
     serviceSlugs: definition.services,
-    async execute({ jobId, brief, requirements }) {
+    async execute({ jobId, brief, requirements, revision }) {
       const deliverable = await generate(
         `You are ${definition.role} for Liege. Complete the approved job only; do not claim actions you did not perform. ${definition.format} Return a self-contained deliverable for the client.${agentKey === "anna" ? " Cite only HTTPS sources supplied in the brief or requirements, and label unsupported claims as inference." : ""}`,
-        `Job ID: ${jobId}\nRequirements: ${JSON.stringify(requirements ?? {})}\nBrief:\n${brief}`,
+        `Job ID: ${jobId}\nRequirements: ${JSON.stringify(requirements ?? {})}\nBrief:\n${brief}${revision ? revisionPrompt(revision) : ""}`,
       );
       return {
         deliverable,
         ...(agentKey === "anna"
-          ? { evidence: extractEvidenceUrls(`${brief}\n${JSON.stringify(requirements ?? {})}`) }
+          ? {
+              // Only client-supplied sources count; never links from a generated first draft.
+              evidence: extractEvidenceUrls(
+                `${brief}\n${JSON.stringify(requirements ?? {})}\n${revision?.feedback ?? ""}`,
+              ),
+            }
           : {}),
         metadata: { model: "groq", agentKey, serviceSlugs: definition.services },
       };

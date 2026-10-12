@@ -11,6 +11,11 @@ deadline before Groq is called. Until a dedicated scoped worker token is enabled
 `LIEGE_RUNTIME_TOKEN` as a scoped runtime credential:
 rotate it if the runtime is compromised.
 
+When a client sends a delivery back once with feedback (`job.revision_requested`), the agent
+revises using the brief, the feedback, and its first deliverable, then resubmits. Anna's evidence
+still comes only from client-supplied links, never from her generated first draft. Existing
+webhook subscriptions must include `job.revision_requested`: rerun `bun run provision:webhooks`.
+
 While it works, the runtime reports short milestones to `POST /v1/jobs/:id/progress` (picked up,
 working on the deliverable, submitting). They mark real steps only, are shown to the client in
 the dashboard, CLI chat, and Android app, and a failed report never delays or fails the job.

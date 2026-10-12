@@ -24,6 +24,7 @@ import {
 } from "../capacity.js";
 import { consumeExecutionGrant } from "../executionGrants.js";
 import { registerProgressRoutes } from "./jobProgress.js";
+import { registerRevisionRoutes } from "./jobRevisions.js";
 
 const decimalAmount = (positive = false) =>
   z
@@ -1342,3 +1343,4 @@ jobsRouter.post(
 );
 
 registerProgressRoutes(jobsRouter, assertRuntimeAgentScope);
+registerRevisionRoutes(jobsRouter);

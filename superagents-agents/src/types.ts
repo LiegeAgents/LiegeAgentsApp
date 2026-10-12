@@ -1,9 +1,21 @@
 export type AgentKey = "scott" | "anna" | "marcus" | "chloe" | "daniel" | "kori";
 
+export type Revision = { feedback: string; previousDeliverable: string | null };
+
+/** The revision instructions appended to a job prompt; shared by every handler. */
+export const revisionPrompt = (revision: Revision) =>
+  `\n\nThe client reviewed your first deliverable and asked for one revision.\nClient feedback:\n${revision.feedback}\n\nYour first deliverable:\n${revision.previousDeliverable ?? "(not available)"}\n\nReturn a complete, self-contained revised deliverable that addresses the feedback.`;
+
 export type SuperAgentHandler = {
   agentKey: AgentKey;
   serviceSlugs: string[];
-  execute(input: { jobId: string; brief: string; requirements: unknown }): Promise<{
+  execute(input: {
+    jobId: string;
+    brief: string;
+    requirements: unknown;
+    // Present when the client sent the first deliverable back once with feedback.
+    revision?: Revision;
+  }): Promise<{
     deliverable: string;
     evidence?: string[];
     metadata?: Record<string, unknown>;

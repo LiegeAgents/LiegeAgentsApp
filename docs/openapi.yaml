@@ -929,6 +929,59 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /v1/jobs/{id}/revision:
+    get:
+      operationId: getJobRevision
+      summary: >-
+        Read the revision request: the settler's feedback and the first deliverable it refers to.
+        Parties only; a runtime token needs briefs:read for its own agent.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Revision request.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      feedback: { type: string }
+                      previousDeliverable: { type: [string, "null"] }
+                      previousEvidence: { type: array, items: { type: string } }
+                      previousSubmittedAt: { type: string, format: date-time }
+                      deadlineAt: { type: string, format: date-time }
+                      requestedAt: { type: string, format: date-time }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+    post:
+      operationId: requestJobRevision
+      summary: >-
+        Send a submitted job back once with feedback instead of rejecting it. Only the settler (the
+        evaluator, or else the client) may ask. Escrow is untouched; the job returns to funded with
+        a later deadline and the provider receives job.revision_requested. Not available for
+        delegated jobs or jobs that expire within an hour of the new deadline.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [feedback]
+              properties: { feedback: { type: string, minLength: 1, maxLength: 10000 } }
+      responses:
+        "200":
+          description: Revision requested.
+          content: { application/json: { schema: { type: object, required: [data] } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /v1/jobs/{id}/progress:
     get:
       operationId: listJobProgress

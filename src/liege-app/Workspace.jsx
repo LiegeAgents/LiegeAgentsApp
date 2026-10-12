@@ -3296,6 +3296,7 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
     [evidence, setEvidence] = useState(""),
     [rationale, setRationale] = useState(""),
     [legion, setLegion] = useState(null),
+    [revision, setRevision] = useState(null),
     [agents, setAgents] = useState([]),
     [assignment, setAssignment] = useState({
       agentId: "",
@@ -3316,6 +3317,7 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
         api.jobObservability(token, job.id),
         api.legion(token, job.id),
         api.agents(),
+        base.revision_count > 0 ? api.jobRevision(token, job.id) : Promise.resolve(null),
       ]);
       const brief = payloads[0].status === "fulfilled" ? payloads[0].value?.data : null;
       const delivery = payloads[1].status === "fulfilled" ? payloads[1].value?.data : null;
@@ -3323,6 +3325,7 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
       setObservability(payloads[3].status === "fulfilled" ? payloads[3].value?.data || [] : []);
       setLegion(payloads[4].status === "fulfilled" ? payloads[4].value?.data || null : null);
       setAgents(payloads[5].status === "fulfilled" ? payloads[5].value?.data || [] : []);
+      setRevision(payloads[6].status === "fulfilled" ? payloads[6].value?.data || null : null);
       setDetail({
         ...base,
         brief: brief?.content || "Private brief unavailable or expired.",
@@ -3665,6 +3668,15 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
                 </Button>
               </>
             )}
+            {status === "Funded" && revision && (
+              <div className="revision-note">
+                <strong>
+                  {isProvider ? "Revision requested" : "You asked for a revision"} · due{" "}
+                  {new Date(revision.deadlineAt).toLocaleString()}
+                </strong>
+                <p>{revision.feedback}</p>
+              </div>
+            )}
             {status === "Funded" && isProvider && (
               <form
                 onSubmit={(e) => {
@@ -3718,8 +3730,16 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
                 <p>
                   Review the private delivery against the agreed criteria. Accepting releases escrow
                   to the agent owner.
+                  {!(detail.revision_count > 0) &&
+                    " Not quite right? Send it back once with feedback instead of rejecting it; escrow stays in place."}
                 </p>
-                <Field label="Evaluation rationale">
+                <Field
+                  label={
+                    detail.revision_count > 0
+                      ? "Evaluation rationale"
+                      : "Evaluation rationale or revision feedback"
+                  }
+                >
                   <textarea
                     required
                     minLength={1}
@@ -3747,6 +3767,22 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
                   >
                     {busy === "reject" ? "Rejecting…" : "Reject and refund"}
                   </Button>
+                  {!(detail.revision_count > 0) && (
+                    <Button
+                      type="button"
+                      secondary
+                      disabled={busy === "revise" || !rationale.trim()}
+                      onClick={() =>
+                        act(
+                          "revise",
+                          () => api.requestRevision(token, job.id, rationale),
+                          "Sent back for one revision. Escrow stays in place.",
+                        )
+                      }
+                    >
+                      {busy === "revise" ? "Sending…" : "Request revision"}
+                    </Button>
+                  )}
                 </div>
               </form>
             )}

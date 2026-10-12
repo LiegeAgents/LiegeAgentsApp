@@ -23,7 +23,7 @@ type Target = {
 const payload = (
   table: string,
   column: string,
-  field: "brief" | "deliverable" | "rationale" | "artifact",
+  field: "brief" | "deliverable" | "rationale" | "revision" | "artifact",
   id = table === "jobs" ? "id" : "job_id",
 ) => ({
   table,
@@ -38,6 +38,9 @@ const targets: Target[] = [
   payload("submissions", "deliverable_ciphertext", "deliverable"),
   payload("evaluations", "rationale_ciphertext", "rationale"),
   payload("evaluation_decisions", "rationale_ciphertext", "rationale", "task_id"),
+  // One revision per job, so job_id identifies the row.
+  payload("job_revisions", "feedback_ciphertext", "revision"),
+  payload("job_revisions", "previous_deliverable_ciphertext", "deliverable"),
   {
     table: "escrow_wallets",
     id: "job_id",

@@ -4,6 +4,7 @@ import {
   claimEvent,
   completeEvent,
   declineJob,
+  getRevision,
   reportProgress,
   getBrief,
   getJob,
@@ -80,10 +81,24 @@ async function execute(agentKey: AgentKey, eventId: string, event: LiegeWebhook)
     }
     // Milestones mark real steps only; the agents do not claim work they have not done.
     const name = agentKey.charAt(0).toUpperCase() + agentKey.slice(1);
-    await reportProgress(jobId, "started", `${name} picked up your job.`, 10);
+    const revising = event.type === "job.revision_requested";
+    await reportProgress(
+      jobId,
+      "started",
+      revising ? `${name} received your revision feedback.` : `${name} picked up your job.`,
+      10,
+    );
     const brief = await getBrief(jobId);
-    await reportProgress(jobId, "drafting", `${name} is working on your deliverable.`, 40);
-    const result = await handler.execute({ jobId, brief, requirements: policy });
+    const revision = revising ? await getRevision(jobId) : undefined;
+    await reportProgress(
+      jobId,
+      "drafting",
+      revising
+        ? `${name} is revising your deliverable based on your feedback.`
+        : `${name} is working on your deliverable.`,
+      40,
+    );
+    const result = await handler.execute({ jobId, brief, requirements: policy, revision });
     await reportProgress(
       jobId,
       "finalizing",
@@ -160,7 +175,8 @@ export const server = Bun.serve({
         .digest("hex");
       return new Response(null, { status: 204, headers: { "x-liege-connection-proof": proof } });
     }
-    if (event.type !== "job.funded")
+    // A revision request returns the job to funded; the agent revises with the client's feedback.
+    if (event.type !== "job.funded" && event.type !== "job.revision_requested")
       return json(202, { status: "ignored", reason: event.type ?? "unknown_event" });
     try {
       return json(200, await execute(agentKey, eventId, event));

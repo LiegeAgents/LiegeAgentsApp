@@ -119,6 +119,7 @@ export const payloadContext = (
     | "brief"
     | "deliverable"
     | "rationale"
+    | "revision"
     | "webhook-secret"
     | "artifact"
     | "access-token"

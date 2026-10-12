@@ -34,6 +34,14 @@ export async function getBrief(jobId: string) {
   return brief;
 }
 
+export async function getRevision(jobId: string) {
+  const value = await request<{ feedback?: string; previousDeliverable?: string | null }>(
+    `/v1/jobs/${encodeURIComponent(jobId)}/revision`,
+  );
+  if (!value.feedback) throw new Error("Liege returned no revision feedback.");
+  return { feedback: value.feedback, previousDeliverable: value.previousDeliverable ?? null };
+}
+
 export async function submitDeliverable(
   jobId: string,
   deliverable: string,

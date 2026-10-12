@@ -136,6 +136,8 @@ export const chatHelp = () => [
   "  /proposals       Show your recent proposals and their status",
   "  /jobs            Show your recent Super Agent jobs",
   "  /job <job-id>    Show one job",
+  "  /revise <job-id> <feedback>",
+  "                   Send delivered work back once for a revision",
   "  /repeat <daily|weekly|monthly> [cap] [auto]",
   "                   Make the current draft a recurring job (cap = total spend)",
   "  /schedules       Show your recurring jobs",
@@ -353,6 +355,23 @@ export class ChatSession {
           );
         return;
       }
+      case "revise": {
+        const feedback = line.replace(/^\/revise\s+\S+\s*/i, "").trim();
+        if (!arg || !feedback) {
+          this.write(yellow("Usage: /revise <job-id> <what should change>"));
+          return;
+        }
+        const job = (await request(`/v1/jobs/${encodeURIComponent(arg)}/revision`, {
+          method: "POST",
+          body: JSON.stringify({ feedback }),
+        })) as Json;
+        this.write(
+          green(
+            `Sent back for one revision. The agent has until ${new Date(String(job.deadline_at)).toLocaleString()}; escrow stays in place.`,
+          ),
+        );
+        return;
+      }
       case "repeat":
         this.write(yellow("Describe a job first, then use /repeat when the draft is complete."));
         return;
@@ -385,6 +404,9 @@ export class ChatSession {
           `  Budget    ${job.budget_amount ?? job.budget_usdg} ${String(job.settlement_asset ?? "usdg").toUpperCase()}`,
         );
         if (job.deadline_at) this.write(`  Deadline  ${job.deadline_at}`);
+        if (Number(job.revision_count) > 0) this.write(`  Revision  requested once`);
+        else if (job.status === "submitted")
+          this.write(dim(`  Not quite right? /revise ${arg} <feedback> sends it back once.`));
         const trail = (job.progress as Progress[] | undefined) ?? [];
         if (trail.length) {
           this.write(`  Progress`);
