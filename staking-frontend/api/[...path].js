@@ -16,6 +16,14 @@ const dropped = new Set([
 
 export default async function handler(request) {
   const url = new URL(request.url);
+  // Vercel's explicit rewrite routes nested `/api/*` paths through this catch-all function.
+  // Depending on the rewrite phase, the function URL can be the internal route rather than
+  // the original path, so preserve the incoming path in a private query parameter.
+  const proxyPath = url.searchParams.get("__proxyPath");
+  const requestPath = proxyPath ? `/api/${proxyPath}` : url.pathname;
+  const query = new URLSearchParams(url.searchParams);
+  query.delete("__proxyPath");
+  const search = query.size ? `?${query.toString()}` : "";
   const headers = new Headers();
   for (const [name, value] of request.headers)
     if (!dropped.has(name) && !name.startsWith("x-forwarded-") && !name.startsWith("x-vercel-"))
@@ -27,7 +35,7 @@ export default async function handler(request) {
     headers.set("x-liege-client-ip", visitorIp.trim());
   }
   const method = request.method.toUpperCase();
-  const response = await fetch(`${upstream}${url.pathname.replace(/^\/api/, "")}${url.search}`, {
+  const response = await fetch(`${upstream}${requestPath.replace(/^\/api/, "")}${search}`, {
     method,
     headers,
     body: method === "GET" || method === "HEAD" ? undefined : await request.arrayBuffer(),
