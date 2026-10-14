@@ -1190,8 +1190,8 @@ paths:
   /v1/jobs/{id}/funding-quote:
     post:
       operationId: quoteFunding
-      summary: Quote the USDG amount and ETH gas reserve to deposit into the job's escrow wallet.
-      description: Client only; the job must be open and in on-chain escrow mode.
+      summary: Get the escrow address and required funding details for an open job.
+      description: Client only. Returns token and gas details for legacy on-chain escrow, or deterministic Veilora factory terms for threshold escrow.
       security: [{ bearerAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/JobId"
@@ -1231,6 +1231,9 @@ paths:
                       quoteId: { type: string, format: uuid }
                       gasReserveWei: { type: string, pattern: "^[0-9]+$" }
                       ethUsdPrice: { type: number }
+                      escrowMode: { type: string, enum: [onchain, veilora] }
+                      factoryAddress: { $ref: "#/components/schemas/Address" }
+                      terms: { type: object }
                       expiresAt: { type: string, format: date-time }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -1256,6 +1259,7 @@ paths:
               description: Required for on-chain escrow; ignored for ledger escrow.
               properties:
                 quoteId: { type: string, format: uuid }
+                factoryTxHash: { $ref: "#/components/schemas/TransactionHash" }
                 tokenTxHash: { $ref: "#/components/schemas/TransactionHash" }
                 usdgTxHash: { $ref: "#/components/schemas/TransactionHash" }
                 gasTxHash: { $ref: "#/components/schemas/TransactionHash" }
@@ -1293,6 +1297,9 @@ paths:
                     description: Required unless deliverableCiphertext is given.,
                   }
                 deliverableCiphertext: { type: string, minLength: 1, maxLength: 100000 }
+                deliverableCommit: { $ref: "#/components/schemas/TransactionHash" }
+                deliverableSalt: { $ref: "#/components/schemas/TransactionHash" }
+                submitTxHash: { $ref: "#/components/schemas/TransactionHash" }
                 evidence:
                   type: array
                   maxItems: 20
@@ -1369,10 +1376,49 @@ paths:
                     description: Required unless rationaleCiphertext is given.,
                   }
                 rationaleCiphertext: { type: string, minLength: 1, maxLength: 100000 }
+                signature:
+                  {
+                    type: string,
+                    pattern: "^0x[0-9a-fA-F]{130}$",
+                    description: Required when settling a Veilora escrow job.,
+                  }
       responses:
         "413": { $ref: "#/components/responses/PayloadTooLarge" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "200": { $ref: "#/components/responses/JobResult" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/jobs/{id}/evaluate-preview:
+    post:
+      operationId: previewVeiloraOutcome
+      summary: Prepare the evaluator's typed-data signature for a Veilora escrow outcome.
+      description: Returns the current outcome digest and payout plan. The assigned evaluator signs this preview, then submits the signature to the evaluate operation.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [outcome]
+              properties:
+                outcome: { type: string, enum: [accepted, rejected] }
+      responses:
+        "200":
+          description: Outcome digest, typed data, and proposed legion payouts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { type: object }
         "400": { $ref: "#/components/responses/InvalidRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
