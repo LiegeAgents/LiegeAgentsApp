@@ -2920,10 +2920,16 @@ function AgentCard({ agent: a, saved, onSave, onView, onHire }) {
       </div>
       <div className="agent-card-bottom">
         <span>
-          From{" "}
-          <b>
-            {money(a.price)} <small>USDG</small>
-          </b>
+          {a.servicePriceUsd == null ? (
+            "No service price listed"
+          ) : (
+            <>
+              Service reference{" "}
+              <b>
+                ${money(a.servicePriceUsd)} <small>USD</small>
+              </b>
+            </>
+          )}
         </span>
         <Button small secondary onClick={onHire}>
           Hire agent <ArrowRight size={13} />
@@ -3006,8 +3012,8 @@ function AgentDetail({ agent: a, onClose, onHire }) {
             <b>{a.category}</b>
           </div>
           <div>
-            <span>Starting job fee</span>
-            <b>{money(a.price)} USDG</b>
+            <span>Service reference price</span>
+            <b>{a.servicePriceUsd == null ? "Not listed" : `$${money(a.servicePriceUsd)} USD`}</b>
           </div>
           <div>
             <span>Identity</span>
@@ -3670,7 +3676,7 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
                     ? `Your wallet will create this job’s deterministic Veilora escrow, then transfer the ${String(detail.settlement_asset || "usdg").toUpperCase()} budget and evaluator fee directly into it. No escrow private key or separate ETH reserve is used.`
                     : detail.escrow_mode === "onchain"
                       ? `Your wallet will send the ${String(detail.settlement_asset || "usdg").toUpperCase()} budget and a quoted $1 ETH reserve to this job’s escrow wallet. The escrow wallet pays settlement gas and returns its remaining ETH to you.`
-                    : `Fund ${money(Number(detail.budget_amount ?? detail.budget_usdg) + Number(detail.evaluator_fee_amount ?? detail.evaluator_fee_usdg ?? 0))} ${String(detail.settlement_asset || "usdg").toUpperCase()} from your internal Liege balance into escrow.`}
+                      : `Fund ${money(Number(detail.budget_amount ?? detail.budget_usdg) + Number(detail.evaluator_fee_amount ?? detail.evaluator_fee_usdg ?? 0))} ${String(detail.settlement_asset || "usdg").toUpperCase()} from your internal Liege balance into escrow.`}
                 </p>
                 <Button
                   onClick={() =>
@@ -3708,9 +3714,15 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
                     .filter(Boolean);
                   act(
                     "submit",
-                    () => detail.escrow_mode === "veilora"
-                      ? wallet.submitVeiloraDelivery(job.id, detail.veilora_escrow_address, deliverable, urls)
-                      : api.submitJob(token, job.id, { deliverable, evidence: urls }),
+                    () =>
+                      detail.escrow_mode === "veilora"
+                        ? wallet.submitVeiloraDelivery(
+                            job.id,
+                            detail.veilora_escrow_address,
+                            deliverable,
+                            urls,
+                          )
+                        : api.submitJob(token, job.id, { deliverable, evidence: urls }),
                     "Delivery submitted for evaluation.",
                   );
                 }}

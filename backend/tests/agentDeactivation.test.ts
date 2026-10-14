@@ -53,6 +53,18 @@ describe.skipIf(!databaseAvailable)("agent deactivation", () => {
     const { slug } = (await db.query("SELECT slug FROM agents WHERE id = $1", [agentId])).rows[0];
     expect((await findEnrolledAgent("Research Agent"))?.id).toBe(agentId);
 
+    const marketplaceAgent = (await api().get("/v1/agents").expect(200)).body.data.find(
+      (agent: { id: string }) => agent.id === agentId,
+    );
+    expect(marketplaceAgent.services).toEqual([
+      expect.objectContaining({
+        id: serviceId,
+        slug: "research-brief",
+        name: "Research brief",
+        price_usd: 5,
+      }),
+    ]);
+
     const response = await api()
       .post(`/v1/agents/${agentId}/deactivate`)
       .set(bearer(owner))

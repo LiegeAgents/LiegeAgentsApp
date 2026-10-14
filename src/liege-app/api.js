@@ -107,7 +107,11 @@ export const api = {
   evaluateJob: (token, id, input) =>
     request(`/v1/jobs/${id}/evaluate`, { token, method: "POST", body: JSON.stringify(input) }),
   veiloraOutcomePreview: (token, id, input) =>
-    request(`/v1/jobs/${id}/evaluate-preview`, { token, method: "POST", body: JSON.stringify(input) }),
+    request(`/v1/jobs/${id}/evaluate-preview`, {
+      token,
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
   requestRevision: (token, id, feedback) =>
     request(`/v1/jobs/${id}/revision`, {
       token,
@@ -250,6 +254,10 @@ const display = {
 };
 export function agentForDisplay(agent) {
   const [icon, color] = display[agent.category] || ["flow", "#18e299"];
+  const services = Array.isArray(agent.services) ? agent.services : [];
+  const servicePrices = services
+    .map((service) => Number(service.price_usd))
+    .filter((price) => Number.isFinite(price) && price > 0);
   const configuredSymbol =
     typeof agent.metadata?.symbol === "string" ? agent.metadata.symbol.trim().toUpperCase() : "";
   return {
@@ -262,6 +270,8 @@ export function agentForDisplay(agent) {
         .toUpperCase() ||
       "AGNT",
     tags: Array.isArray(agent.capabilities) ? agent.capabilities : [],
+    services,
+    servicePriceUsd: servicePrices.length ? Math.min(...servicePrices) : null,
     icon,
     color,
     price: Number(agent.metadata?.startingJobFeeUsdg || 0),

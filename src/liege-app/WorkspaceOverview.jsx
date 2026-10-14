@@ -1,47 +1,466 @@
-import React,{useMemo} from 'react'
-import {ArrowRight,ArrowUpRight,Plus,BriefcaseBusiness,ShieldCheck,Wallet,Bookmark,Clock,AlertCircle,ReceiptText,Activity,UsersRound as UsersRoundIcon} from 'lucide-react'
-import {AgentIcon} from './ProductArt'
-import {Button,Empty,Status} from './UI'
-import {money} from './data'
-import './superagents-banner.css'
+import React, { useMemo } from "react";
+import {
+  ArrowRight,
+  ArrowUpRight,
+  Plus,
+  BriefcaseBusiness,
+  ShieldCheck,
+  Wallet,
+  Bookmark,
+  Clock,
+  AlertCircle,
+  ReceiptText,
+  Activity,
+  UsersRound as UsersRoundIcon,
+} from "lucide-react";
+import { AgentIcon } from "./ProductArt";
+import { Button, Empty, Status } from "./UI";
+import { money } from "./data";
+import "./superagents-banner.css";
 
-const activeStatuses=new Set(['Open','Funded','Submitted'])
-const shortDate=value=>value?new Date(value).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'—'
+const activeStatuses = new Set(["Open", "Funded", "Submitted"]);
+const shortDate = (value) =>
+  value ? new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—";
 
-export default function WorkspaceOverview({state,agents,account,attention={invoices:[],evaluations:[],accounts:[]},activity=[],onCreate,onJob,onAgent,onHire,navigate,onSaved}){
- const jobs=state.jobs||[]
- const active=jobs.filter(job=>activeStatuses.has(job.status))
- const completed=jobs.filter(job=>job.status==='Completed')
- const escrow=active.reduce((total,job)=>total+Number(job.budget||0),0)
- const escrowUsdg=active.filter(job=>String(job.asset||'usdg').toLowerCase()==='usdg').reduce((total,job)=>total+Number(job.budget||0),0)
- const escrowLiege=active.filter(job=>String(job.asset||'usdg').toLowerCase()==='liege').reduce((total,job)=>total+Number(job.budget||0),0)
- const availableUsdg=Number(account?.balances?.availableUsdg||0)
- const availableLiege=Number(account?.balances?.availableLiege||0)
- const attentionItems=[
-  ...attention.invoices.filter(invoice=>invoice.status==='issued' && new Date(invoice.expiresAt||0).getTime()-Date.now()<7*864e5).map(invoice=>({type:'invoice',label:'Invoice expires soon',title:invoice.description||invoice.publicId,meta:`${Number(invoice.amount??invoice.amountUsdg??0).toLocaleString()} ${(invoice.asset||'usdg').toUpperCase()}`,action:()=>navigate('invoices'),Icon:ReceiptText})),
-  ...attention.evaluations.filter(task=>['assigned','submitted'].includes(String(task.status).toLowerCase())).map(task=>({type:'evaluation',label:'Evaluation needs review',title:task.title||task.job_title||'Assigned evaluation',meta:String(task.status).replace(/^./,x=>x.toUpperCase()),action:()=>navigate('evaluations'),Icon:Activity})),
- ]
-  const recentActivity=activity.slice(0,5)
- const ownedControls=attention.accounts.map(item=>{const agent=agents.find(value=>value.id===item.agentId);return {...item,agentName:agent?.name||'Agent account'}})
- const activityLabel=type=>({admin_credit:'Balance credited',job_funding:'Job funded',invoice_payment:'Invoice paid',invoice_refund:'Invoice refunded',job_settlement:'Job settled',job_expiry:'Job expired'}[type]||String(type||'Account activity').replaceAll('_',' '))
- const metrics=[
-  {label:'Active jobs',value:active.length,detail:'Open, funded, or in review',Icon:BriefcaseBusiness,action:()=>navigate('jobs')},
-  {label:'Escrowed',value:money(escrow),unit:'USDG / LIEGE',detail:'Across active jobs',Icon:Wallet,action:()=>navigate('jobs')},
-  {label:'Available balance',value:money(account?.balances?.availableUsdg||0),unit:'USDG',detail:account?'Internal Liege balance':'Sign in to load balance',Icon:ShieldCheck,action:()=>navigate('jobs')},
-  {label:'Saved agents',value:state.saved.length,detail:'Your browser shortlist',Icon:Bookmark,action:onSaved},
- ]
- const recent=useMemo(()=>[...jobs].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)).slice(0,5),[jobs])
- return <div className="overview-premium">
-  <a className="superagents-workspace-banner" href="https://superagents.liegeagents.com"><span className="superagents-banner-mark"><UsersRoundIcon/></span><span><strong>Meet Super Agents</strong><small>Explore the preview of your agents, X requests, and approval workspace.</small></span><span className="superagents-banner-link">Open Super Agents <ArrowUpRight size={16}/></span></a>
-  <div className="overview-heading"><div><span className="eyebrow"><span/> WORKSPACE / OVERVIEW</span><h1>Your work, in motion<span>.</span></h1><p>Live jobs, agents, and balances from your Liege account.</p></div><div className="overview-heading-actions"><span className="overview-date"><Clock size={12}/>{new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</span><div><Button secondary onClick={()=>navigate('agents')}>Explore agents <ArrowUpRight size={14}/></Button><Button onClick={onCreate}><Plus size={15}/>Create a job</Button></div></div></div>
-  <div className="premium-metrics">{metrics.map(({label,value,unit,detail,Icon,action},index)=><section className="premium-surface premium-metric" key={label}><div className="metric-label"><span>{label}</span><Icon size={15}/></div><button className="metric-value" onClick={action}>{value}<small>{unit}</small><ArrowUpRight size={16}/></button><div className="metric-bottom"><span><i/> {detail}</span><span className="metric-number">0{index+1}</span></div></section>)}</div>
-  {attentionItems.length>0&&<section className="premium-surface attention-panel"><div className="premium-panel-head"><div><span className="panel-overline">ACTION QUEUE</span><h2>Needs your attention <span>{attentionItems.length}</span></h2></div><AlertCircle size={17} className="attention-icon"/></div><div className="attention-list">{attentionItems.slice(0,4).map((item,index)=><button className="attention-row" key={`${item.type}-${index}`} onClick={item.action}><span className="attention-row-icon"><item.Icon size={15}/></span><span><strong>{item.title}</strong><small>{item.label} · {item.meta}</small></span><ArrowRight size={14}/></button>)}</div>{attentionItems.length>4&&<button className="attention-more" onClick={()=>navigate('invoices')}>View all actions <ArrowUpRight size={13}/></button>}</section>}
-  <div className="overview-columns"><div className="overview-primary">
-   <section className="premium-surface work-ledger"><div className="premium-panel-head"><div><span className="panel-overline">LIVE JOBS</span><h2>Your job desk <span>{jobs.length}</span></h2></div><button className="subtle-link" onClick={()=>navigate('jobs')}>View all <ArrowUpRight size={14}/></button></div><div className="premium-job-list">{recent.length?recent.map(job=>{const agent=agents.find(value=>value.id===job.agent);return <button className="premium-job-row" key={job.id} onClick={()=>onJob(job)}><AgentIcon agent={agent} size={21}/><span className="premium-job-title"><strong>{job.title}</strong><small>{agent?.name||job.agent}<i/> {job.id}</small></span><span className="premium-job-progress"><Status value={job.status}/></span><span className="premium-job-budget"><b>{money(job.budget)} <small>{String(job.asset || "usdg").toUpperCase()}</small></b><span>Due {shortDate(job.deadline)}</span></span><ArrowRight size={14}/></button>}):<Empty title="No live jobs yet" action={<Button onClick={onCreate}>Create a job</Button>}>Publish or select an active marketplace agent to begin.</Empty>}</div></section>
-  </div><div className="overview-secondary"><section className="premium-surface escrow-overview"><div className="premium-panel-head"><div><span className="panel-overline">ACCOUNT</span><h2>Balances & escrow</h2></div><ShieldCheck size={17} className="balance-shield"/></div><div className="asset-balance-grid"><div className="asset-balance-card"><span className="asset-balance-label"><i className="asset-dot usdg"/>USDG</span><strong>{money(availableUsdg)}</strong><small>Available balance</small><span className="asset-balance-escrow">{money(escrowUsdg)} escrowed</span></div><div className="asset-balance-card"><span className="asset-balance-label"><i className="asset-dot liege"/>LIEGE</span><strong>{money(availableLiege)}</strong><small>Available balance</small><span className="asset-balance-escrow">{money(escrowLiege)} escrowed</span></div></div><div className="escrow-note"><ShieldCheck size={13}/><span>Balances are read from your signed Liege account.</span></div></section></div></div>
-  <section className="premium-surface activity-panel"><div className="premium-panel-head"><div><span className="panel-overline">ACCOUNT LEDGER</span><h2>Recent activity</h2></div><button className="subtle-link" onClick={()=>navigate('receipts')}>View receipts <ArrowUpRight size={14}/></button></div>{recentActivity.length?<div className="activity-list">{recentActivity.map((entry,index)=>{const amount=Number(entry.net_usdg||0),positive=amount>=0;return <button className="activity-row" key={entry.id||index} onClick={()=>navigate('receipts')}><span className={`activity-dot ${positive?'positive':'negative'}`}/><span className="activity-copy"><strong>{activityLabel(entry.type)}</strong><small>{entry.reference||'Ledger transaction'} · {entry.created_at?new Date(entry.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'Recently'}</small></span><span className={`activity-amount ${positive?'positive':'negative'}`}>{positive?'+':''}{money(amount)} <small>USDG</small></span><ArrowRight size={13}/></button>})}</div>:<Empty title="No account activity yet">Ledger entries will appear after your first deposit, job, or invoice.</Empty>}</section>
-  {ownedControls.length>0&&<section className="premium-surface control-panel"><div className="premium-panel-head"><div><span className="panel-overline">AGENT CONTROLS</span><h2>Runtime status</h2></div><button className="subtle-link" onClick={()=>navigate('settings')}>Manage controls <ArrowUpRight size={14}/></button></div><div className="control-list">{ownedControls.slice(0,4).map(item=><button className="control-row" key={item.agentId} onClick={()=>navigate('settings')}><span className={`control-status ${item.status||'active'}`}/><span className="control-copy"><strong>{item.agentName}</strong><small>{item.status==='killed'?item.killReason||'Execution disabled':item.status==='paused'?'Paused by owner':'Ready for approved actions'}</small></span><span className={`control-label ${item.status||'active'}`}>{item.status||'active'}</span><ArrowRight size={13}/></button>)}</div></section>}
-  <div className="agent-discovery-heading"><div><span className="panel-overline">LIVE MARKETPLACE</span><h2>Available agents.</h2></div><button onClick={()=>navigate('agents')}>Explore agent market <ArrowRight size={15}/></button></div>
-  {agents.length?<div className="discovery-grid">{agents.slice(0,3).map(agent=><section className="premium-surface discovery-card" key={agent.id} style={{'--agent-color':agent.color}}><div className="discovery-top"><AgentIcon agent={agent} size={23}/><span>{agent.category}</span><button className="icon-button" aria-label={'View '+agent.name} onClick={()=>onAgent(agent)}><ArrowUpRight size={16}/></button></div><button className="discovery-name" onClick={()=>onAgent(agent)}>{agent.name}<span>{agent.symbol}</span></button><p>{agent.description}</p><div className="discovery-bottom"><span>From <b>{money(agent.price)}</b> USDG / job</span><button onClick={()=>onHire(agent)}>Hire <ArrowRight size={13}/></button></div></section>)}</div>:<Empty title="No active agents yet" action={<Button secondary onClick={()=>navigate('launch')}>Publish an agent</Button>}>New agent profiles will appear here as their owners publish them.</Empty>}
- </div>
+export default function WorkspaceOverview({
+  state,
+  agents,
+  account,
+  attention = { invoices: [], evaluations: [], accounts: [] },
+  activity = [],
+  onCreate,
+  onJob,
+  onAgent,
+  onHire,
+  navigate,
+  onSaved,
+}) {
+  const jobs = state.jobs || [];
+  const active = jobs.filter((job) => activeStatuses.has(job.status));
+  const completed = jobs.filter((job) => job.status === "Completed");
+  const escrow = active.reduce((total, job) => total + Number(job.budget || 0), 0);
+  const escrowUsdg = active
+    .filter((job) => String(job.asset || "usdg").toLowerCase() === "usdg")
+    .reduce((total, job) => total + Number(job.budget || 0), 0);
+  const escrowLiege = active
+    .filter((job) => String(job.asset || "usdg").toLowerCase() === "liege")
+    .reduce((total, job) => total + Number(job.budget || 0), 0);
+  const availableUsdg = Number(account?.balances?.availableUsdg || 0);
+  const availableLiege = Number(account?.balances?.availableLiege || 0);
+  const attentionItems = [
+    ...attention.invoices
+      .filter(
+        (invoice) =>
+          invoice.status === "issued" &&
+          new Date(invoice.expiresAt || 0).getTime() - Date.now() < 7 * 864e5,
+      )
+      .map((invoice) => ({
+        type: "invoice",
+        label: "Invoice expires soon",
+        title: invoice.description || invoice.publicId,
+        meta: `${Number(invoice.amount ?? invoice.amountUsdg ?? 0).toLocaleString()} ${(invoice.asset || "usdg").toUpperCase()}`,
+        action: () => navigate("invoices"),
+        Icon: ReceiptText,
+      })),
+    ...attention.evaluations
+      .filter((task) => ["assigned", "submitted"].includes(String(task.status).toLowerCase()))
+      .map((task) => ({
+        type: "evaluation",
+        label: "Evaluation needs review",
+        title: task.title || task.job_title || "Assigned evaluation",
+        meta: String(task.status).replace(/^./, (x) => x.toUpperCase()),
+        action: () => navigate("evaluations"),
+        Icon: Activity,
+      })),
+  ];
+  const recentActivity = activity.slice(0, 5);
+  const ownedControls = attention.accounts.map((item) => {
+    const agent = agents.find((value) => value.id === item.agentId);
+    return { ...item, agentName: agent?.name || "Agent account" };
+  });
+  const activityLabel = (type) =>
+    ({
+      admin_credit: "Balance credited",
+      job_funding: "Job funded",
+      invoice_payment: "Invoice paid",
+      invoice_refund: "Invoice refunded",
+      job_settlement: "Job settled",
+      job_expiry: "Job expired",
+    })[type] || String(type || "Account activity").replaceAll("_", " ");
+  const metrics = [
+    {
+      label: "Active jobs",
+      value: active.length,
+      detail: "Open, funded, or in review",
+      Icon: BriefcaseBusiness,
+      action: () => navigate("jobs"),
+    },
+    {
+      label: "Escrowed",
+      value: money(escrow),
+      unit: "USDG / LIEGE",
+      detail: "Across active jobs",
+      Icon: Wallet,
+      action: () => navigate("jobs"),
+    },
+    {
+      label: "Available balance",
+      value: money(account?.balances?.availableUsdg || 0),
+      unit: "USDG",
+      detail: account ? "Internal Liege balance" : "Sign in to load balance",
+      Icon: ShieldCheck,
+      action: () => navigate("jobs"),
+    },
+    {
+      label: "Saved agents",
+      value: state.saved.length,
+      detail: "Your browser shortlist",
+      Icon: Bookmark,
+      action: onSaved,
+    },
+  ];
+  const recent = useMemo(
+    () =>
+      [...jobs].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, 5),
+    [jobs],
+  );
+  return (
+    <div className="overview-premium">
+      <a className="superagents-workspace-banner" href="https://superagents.liegeagents.com">
+        <span className="superagents-banner-mark">
+          <UsersRoundIcon />
+        </span>
+        <span>
+          <strong>Meet Super Agents</strong>
+          <small>Explore the preview of your agents, X requests, and approval workspace.</small>
+        </span>
+        <span className="superagents-banner-link">
+          Open Super Agents <ArrowUpRight size={16} />
+        </span>
+      </a>
+      <div className="overview-heading">
+        <div>
+          <span className="eyebrow">
+            <span /> WORKSPACE / OVERVIEW
+          </span>
+          <h1>
+            Your work, in motion<span>.</span>
+          </h1>
+          <p>Live jobs, agents, and balances from your Liege account.</p>
+        </div>
+        <div className="overview-heading-actions">
+          <span className="overview-date">
+            <Clock size={12} />
+            {new Date().toLocaleDateString("en-US", {
+              month: "long",
+              day: "numeric",
+              year: "numeric",
+            })}
+          </span>
+          <div>
+            <Button secondary onClick={() => navigate("agents")}>
+              Explore agents <ArrowUpRight size={14} />
+            </Button>
+            <Button onClick={onCreate}>
+              <Plus size={15} />
+              Create a job
+            </Button>
+          </div>
+        </div>
+      </div>
+      <div className="premium-metrics">
+        {metrics.map(({ label, value, unit, detail, Icon, action }, index) => (
+          <section className="premium-surface premium-metric" key={label}>
+            <div className="metric-label">
+              <span>{label}</span>
+              <Icon size={15} />
+            </div>
+            <button className="metric-value" onClick={action}>
+              {value}
+              <small>{unit}</small>
+              <ArrowUpRight size={16} />
+            </button>
+            <div className="metric-bottom">
+              <span>
+                <i /> {detail}
+              </span>
+              <span className="metric-number">0{index + 1}</span>
+            </div>
+          </section>
+        ))}
+      </div>
+      {attentionItems.length > 0 && (
+        <section className="premium-surface attention-panel">
+          <div className="premium-panel-head">
+            <div>
+              <span className="panel-overline">ACTION QUEUE</span>
+              <h2>
+                Needs your attention <span>{attentionItems.length}</span>
+              </h2>
+            </div>
+            <AlertCircle size={17} className="attention-icon" />
+          </div>
+          <div className="attention-list">
+            {attentionItems.slice(0, 4).map((item, index) => (
+              <button className="attention-row" key={`${item.type}-${index}`} onClick={item.action}>
+                <span className="attention-row-icon">
+                  <item.Icon size={15} />
+                </span>
+                <span>
+                  <strong>{item.title}</strong>
+                  <small>
+                    {item.label} · {item.meta}
+                  </small>
+                </span>
+                <ArrowRight size={14} />
+              </button>
+            ))}
+          </div>
+          {attentionItems.length > 4 && (
+            <button className="attention-more" onClick={() => navigate("invoices")}>
+              View all actions <ArrowUpRight size={13} />
+            </button>
+          )}
+        </section>
+      )}
+      <div className="overview-columns">
+        <div className="overview-primary">
+          <section className="premium-surface work-ledger">
+            <div className="premium-panel-head">
+              <div>
+                <span className="panel-overline">LIVE JOBS</span>
+                <h2>
+                  Your job desk <span>{jobs.length}</span>
+                </h2>
+              </div>
+              <button className="subtle-link" onClick={() => navigate("jobs")}>
+                View all <ArrowUpRight size={14} />
+              </button>
+            </div>
+            <div className="premium-job-list">
+              {recent.length ? (
+                recent.map((job) => {
+                  const agent = agents.find((value) => value.id === job.agent);
+                  return (
+                    <button className="premium-job-row" key={job.id} onClick={() => onJob(job)}>
+                      <AgentIcon agent={agent} size={21} />
+                      <span className="premium-job-title">
+                        <strong>{job.title}</strong>
+                        <small>
+                          {agent?.name || job.agent}
+                          <i /> {job.id}
+                        </small>
+                      </span>
+                      <span className="premium-job-progress">
+                        <Status value={job.status} />
+                      </span>
+                      <span className="premium-job-budget">
+                        <b>
+                          {money(job.budget)}{" "}
+                          <small>{String(job.asset || "usdg").toUpperCase()}</small>
+                        </b>
+                        <span>Due {shortDate(job.deadline)}</span>
+                      </span>
+                      <ArrowRight size={14} />
+                    </button>
+                  );
+                })
+              ) : (
+                <Empty
+                  title="No live jobs yet"
+                  action={<Button onClick={onCreate}>Create a job</Button>}
+                >
+                  Publish or select an active marketplace agent to begin.
+                </Empty>
+              )}
+            </div>
+          </section>
+        </div>
+        <div className="overview-secondary">
+          <section className="premium-surface escrow-overview">
+            <div className="premium-panel-head">
+              <div>
+                <span className="panel-overline">ACCOUNT</span>
+                <h2>Balances & escrow</h2>
+              </div>
+              <ShieldCheck size={17} className="balance-shield" />
+            </div>
+            <div className="asset-balance-grid">
+              <div className="asset-balance-card">
+                <span className="asset-balance-label">
+                  <i className="asset-dot usdg" />
+                  USDG
+                </span>
+                <strong>{money(availableUsdg)}</strong>
+                <small>Available balance</small>
+                <span className="asset-balance-escrow">{money(escrowUsdg)} escrowed</span>
+              </div>
+              <div className="asset-balance-card">
+                <span className="asset-balance-label">
+                  <i className="asset-dot liege" />
+                  LIEGE
+                </span>
+                <strong>{money(availableLiege)}</strong>
+                <small>Available balance</small>
+                <span className="asset-balance-escrow">{money(escrowLiege)} escrowed</span>
+              </div>
+            </div>
+            <div className="escrow-note">
+              <ShieldCheck size={13} />
+              <span>Balances are read from your signed Liege account.</span>
+            </div>
+          </section>
+        </div>
+      </div>
+      <section className="premium-surface activity-panel">
+        <div className="premium-panel-head">
+          <div>
+            <span className="panel-overline">ACCOUNT LEDGER</span>
+            <h2>Recent activity</h2>
+          </div>
+          <button className="subtle-link" onClick={() => navigate("receipts")}>
+            View receipts <ArrowUpRight size={14} />
+          </button>
+        </div>
+        {recentActivity.length ? (
+          <div className="activity-list">
+            {recentActivity.map((entry, index) => {
+              const amount = Number(entry.net_usdg || 0),
+                positive = amount >= 0;
+              return (
+                <button
+                  className="activity-row"
+                  key={entry.id || index}
+                  onClick={() => navigate("receipts")}
+                >
+                  <span className={`activity-dot ${positive ? "positive" : "negative"}`} />
+                  <span className="activity-copy">
+                    <strong>{activityLabel(entry.type)}</strong>
+                    <small>
+                      {entry.reference || "Ledger transaction"} ·{" "}
+                      {entry.created_at
+                        ? new Date(entry.created_at).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                          })
+                        : "Recently"}
+                    </small>
+                  </span>
+                  <span className={`activity-amount ${positive ? "positive" : "negative"}`}>
+                    {positive ? "+" : ""}
+                    {money(amount)} <small>USDG</small>
+                  </span>
+                  <ArrowRight size={13} />
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <Empty title="No account activity yet">
+            Ledger entries will appear after your first deposit, job, or invoice.
+          </Empty>
+        )}
+      </section>
+      {ownedControls.length > 0 && (
+        <section className="premium-surface control-panel">
+          <div className="premium-panel-head">
+            <div>
+              <span className="panel-overline">AGENT CONTROLS</span>
+              <h2>Runtime status</h2>
+            </div>
+            <button className="subtle-link" onClick={() => navigate("settings")}>
+              Manage controls <ArrowUpRight size={14} />
+            </button>
+          </div>
+          <div className="control-list">
+            {ownedControls.slice(0, 4).map((item) => (
+              <button
+                className="control-row"
+                key={item.agentId}
+                onClick={() => navigate("settings")}
+              >
+                <span className={`control-status ${item.status || "active"}`} />
+                <span className="control-copy">
+                  <strong>{item.agentName}</strong>
+                  <small>
+                    {item.status === "killed"
+                      ? item.killReason || "Execution disabled"
+                      : item.status === "paused"
+                        ? "Paused by owner"
+                        : "Ready for approved actions"}
+                  </small>
+                </span>
+                <span className={`control-label ${item.status || "active"}`}>
+                  {item.status || "active"}
+                </span>
+                <ArrowRight size={13} />
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+      <div className="agent-discovery-heading">
+        <div>
+          <span className="panel-overline">LIVE MARKETPLACE</span>
+          <h2>Available agents.</h2>
+        </div>
+        <button onClick={() => navigate("agents")}>
+          Explore agent market <ArrowRight size={15} />
+        </button>
+      </div>
+      {agents.length ? (
+        <div className="discovery-grid">
+          {agents.slice(0, 3).map((agent) => (
+            <section
+              className="premium-surface discovery-card"
+              key={agent.id}
+              style={{ "--agent-color": agent.color }}
+            >
+              <div className="discovery-top">
+                <AgentIcon agent={agent} size={23} />
+                <span>{agent.category}</span>
+                <button
+                  className="icon-button"
+                  aria-label={"View " + agent.name}
+                  onClick={() => onAgent(agent)}
+                >
+                  <ArrowUpRight size={16} />
+                </button>
+              </div>
+              <button className="discovery-name" onClick={() => onAgent(agent)}>
+                {agent.name}
+                <span>{agent.symbol}</span>
+              </button>
+              <p>{agent.description}</p>
+              <div className="discovery-bottom">
+                <span>
+                  {agent.servicePriceUsd == null ? (
+                    "No service price listed"
+                  ) : (
+                    <>
+                      Services from <b>${money(agent.servicePriceUsd)} USD</b>
+                    </>
+                  )}
+                </span>
+                <button onClick={() => onHire(agent)}>
+                  Hire <ArrowRight size={13} />
+                </button>
+              </div>
+            </section>
+          ))}
+        </div>
+      ) : (
+        <Empty
+          title="No active agents yet"
+          action={
+            <Button secondary onClick={() => navigate("launch")}>
+              Publish an agent
+            </Button>
+          }
+        >
+          New agent profiles will appear here as their owners publish them.
+        </Empty>
+      )}
+    </div>
+  );
 }

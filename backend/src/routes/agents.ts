@@ -50,7 +50,15 @@ agentsRouter.get(
       })
       .parse(request.query);
     const result = await db.query(
-      `SELECT a.id, a.slug, a.name, a.description, a.category, a.capabilities, a.settlement_assets, a.reputation_score, a.created_at, u.wallet_address AS owner_wallet
+      `SELECT a.id, a.slug, a.name, a.description, a.category, a.capabilities, a.settlement_assets, a.reputation_score, a.created_at, u.wallet_address AS owner_wallet,
+              COALESCE((
+                SELECT json_agg(json_build_object(
+                  'id', s.id, 'slug', s.slug, 'name', s.name,
+                  'price_usd', s.price_usd, 'settlement_assets', s.settlement_assets
+                ) ORDER BY s.created_at ASC)
+                FROM commerce_services s
+                WHERE s.agent_id = a.id AND s.active
+              ), '[]'::json) AS services
      FROM agents a JOIN users u ON u.id = a.owner_id WHERE a.active AND ($1::text IS NULL OR a.category = $1)
        AND ($2::uuid IS NULL OR a.id < $2) ORDER BY a.id DESC LIMIT $3`,
       [query.category ?? null, query.cursor ?? null, query.limit + 1],
