@@ -562,7 +562,15 @@ function Profile({ agent: a, saved, onSave, onHire }) {
                 {a.services.map((service) => (
                   <div key={service.id}>
                     <dt>{service.name}</dt>
-                    <dd>${money(service.price_usd)} USD</dd>
+                    <dd>
+                      <span>${money(service.price_usd)} USD reference</span>
+                      <small className="service-settlement-assets">
+                        Accepts{" "}
+                        {(service.settlement_assets || [])
+                          .map((asset) => asset.toUpperCase())
+                          .join(" · ") || "no settlement asset listed"}
+                      </small>
+                    </dd>
                   </div>
                 ))}
               </dl>

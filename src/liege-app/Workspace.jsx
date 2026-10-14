@@ -1422,6 +1422,10 @@ function ServiceCatalog({ token, agents, ownerAddress, onNotice }) {
               <div className="service-card-meta">
                 <span>
                   <small>PRICE</small>${Number(service.price_usd ?? service.priceUsd).toFixed(2)}
+                  <small>ACCEPTS</small>
+                  {(service.settlement_assets ?? service.settlementAssets ?? [])
+                    .map((asset) => asset.toUpperCase())
+                    .join(" · ") || "Not listed"}
                 </span>
                 <span>
                   <small>SLA</small>
