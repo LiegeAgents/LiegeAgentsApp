@@ -106,6 +106,8 @@ export const api = {
     request(`/v1/jobs/${id}/submit`, { token, method: "POST", body: JSON.stringify(input) }),
   evaluateJob: (token, id, input) =>
     request(`/v1/jobs/${id}/evaluate`, { token, method: "POST", body: JSON.stringify(input) }),
+  veiloraOutcomePreview: (token, id, input) =>
+    request(`/v1/jobs/${id}/evaluate-preview`, { token, method: "POST", body: JSON.stringify(input) }),
   requestRevision: (token, id, feedback) =>
     request(`/v1/jobs/${id}/revision`, {
       token,

@@ -3357,6 +3357,17 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
       setBusy("");
     }
   };
+  const evaluateJob = async (outcome) => {
+    if (detail?.escrow_mode !== "veilora")
+      return api.evaluateJob(token, job.id, { outcome, rationale });
+    const preview = await api.veiloraOutcomePreview(token, job.id, { outcome });
+    const typedData = preview.data.typedData;
+    const signature = await wallet.signTypedData({
+      ...typedData,
+      message: { ...typedData.message, nonce: BigInt(typedData.message.nonce) },
+    });
+    return api.evaluateJob(token, job.id, { outcome, rationale, signature });
+  };
   const current = detail || job,
     status = String(current.status || job.status).replace(/^./, (x) => x.toUpperCase()),
     isClient = detail?.client_id === account?.id,
@@ -3655,8 +3666,10 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
             {status === "Open" && isClient && (
               <>
                 <p>
-                  {detail.escrow_mode === "onchain"
-                    ? `Your wallet will send the ${String(detail.settlement_asset || "usdg").toUpperCase()} budget and a quoted $1 ETH reserve to this job’s escrow wallet. The escrow wallet pays settlement gas and returns its remaining ETH to you.`
+                  {detail.escrow_mode === "veilora"
+                    ? `Your wallet will create this job’s deterministic Veilora escrow, then transfer the ${String(detail.settlement_asset || "usdg").toUpperCase()} budget and evaluator fee directly into it. No escrow private key or separate ETH reserve is used.`
+                    : detail.escrow_mode === "onchain"
+                      ? `Your wallet will send the ${String(detail.settlement_asset || "usdg").toUpperCase()} budget and a quoted $1 ETH reserve to this job’s escrow wallet. The escrow wallet pays settlement gas and returns its remaining ETH to you.`
                     : `Fund ${money(Number(detail.budget_amount ?? detail.budget_usdg) + Number(detail.evaluator_fee_amount ?? detail.evaluator_fee_usdg ?? 0))} ${String(detail.settlement_asset || "usdg").toUpperCase()} from your internal Liege balance into escrow.`}
                 </p>
                 <Button
@@ -3664,7 +3677,7 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
                     act(
                       "fund",
                       () =>
-                        detail.escrow_mode === "onchain"
+                        ["onchain", "veilora"].includes(detail.escrow_mode)
                           ? wallet.fundEscrow(job.id)
                           : api.fundJob(token, job.id),
                       "Job funded and moved into escrow.",
@@ -3695,7 +3708,9 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
                     .filter(Boolean);
                   act(
                     "submit",
-                    () => api.submitJob(token, job.id, { deliverable, evidence: urls }),
+                    () => detail.escrow_mode === "veilora"
+                      ? wallet.submitVeiloraDelivery(job.id, detail.veilora_escrow_address, deliverable, urls)
+                      : api.submitJob(token, job.id, { deliverable, evidence: urls }),
                     "Delivery submitted for evaluation.",
                   );
                 }}
@@ -3730,7 +3745,7 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
                   e.preventDefault();
                   act(
                     "evaluate",
-                    () => api.evaluateJob(token, job.id, { outcome: "accepted", rationale }),
+                    () => evaluateJob("accepted"),
                     "Job accepted and escrow settled.",
                   );
                 }}
@@ -3768,7 +3783,7 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
                     onClick={() =>
                       act(
                         "reject",
-                        () => api.evaluateJob(token, job.id, { outcome: "rejected", rationale }),
+                        () => evaluateJob("rejected"),
                         "Job rejected and escrow refunded to the client.",
                       )
                     }

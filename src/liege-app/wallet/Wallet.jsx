@@ -8,10 +8,11 @@ import {
   useChainId,
   useDisconnect,
   useSignMessage,
+  useSignTypedData,
   useSendTransaction,
   useWriteContract,
 } from "wagmi";
-import { erc20Abi } from "viem";
+import { createPublicClient, encodeAbiParameters, erc20Abi, http, keccak256, parseAbi, stringToHex } from "viem";
 import { Wallet, LoaderCircle } from "lucide-react";
 import { api, createWalletSession } from "../api";
 import "./wallet.css";
@@ -25,6 +26,20 @@ const robinhoodChain = {
     default: { name: "Robinhood Chain Explorer", url: "https://robinhoodchain.blockscout.com" },
   },
 };
+const rpcClient = createPublicClient({ chain: robinhoodChain, transport: http(robinhoodChain.rpcUrls.default.http[0]) });
+const veiloraFactoryAbi = parseAbi([
+  "function predictEscrow((uint32 factoryVersion,bytes32 jobId,address asset,uint256 budget,uint256 evaluatorFee,address client,address provider,address evaluator,address liegeSigner,uint16 legionCapBps,uint64 acceptBy,uint64 submitBy,uint64 evaluateWithin,uint64 expiresAt,bytes32 briefCommit,address[] legionRecipients) terms) view returns (address)",
+  "function isEscrow(address escrow) view returns (bool)",
+  "function create((uint32 factoryVersion,bytes32 jobId,address asset,uint256 budget,uint256 evaluatorFee,address client,address provider,address evaluator,address liegeSigner,uint16 legionCapBps,uint64 acceptBy,uint64 submitBy,uint64 evaluateWithin,uint64 expiresAt,bytes32 briefCommit,address[] legionRecipients) terms) returns (address)",
+]);
+const veiloraEscrowAbi = parseAbi([
+  "function termsHash() view returns (bytes32)",
+  "function providerNonce() view returns (uint256)",
+  "function accepted() view returns (bool)",
+  "function submittedAt() view returns (uint64)",
+  "function accept(bytes signature,uint64 deadline)",
+  "function markSubmitted(bytes32 deliverableCommit,bytes signature,uint64 deadline)",
+]);
 const walletConfig = getDefaultConfig({
   appName: "Liege",
   projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "walletconnect-project-id-required",
@@ -56,6 +71,7 @@ function LiegeWalletProvider({ children }) {
     chainId = useChainId(),
     { disconnect: disconnectWallet } = useDisconnect(),
     { signMessageAsync } = useSignMessage(),
+    { signTypedDataAsync } = useSignTypedData(),
     { sendTransactionAsync } = useSendTransaction(),
     { writeContractAsync } = useWriteContract();
   const [apiSession, setApiSession] = useState(null),
@@ -129,6 +145,56 @@ function LiegeWalletProvider({ children }) {
     const amountRaw = data?.tokenAmountRaw || data?.usdgAmountRaw;
     if (!tokenAddress || !amountRaw)
       throw new Error("On-chain token escrow is not configured yet.");
+    if (data.escrowMode === "veilora") {
+      const terms = {
+        ...data.terms,
+        budget: BigInt(data.terms.budget),
+        evaluatorFee: BigInt(data.terms.evaluatorFee),
+        acceptBy: BigInt(data.terms.acceptBy),
+        submitBy: BigInt(data.terms.submitBy),
+        evaluateWithin: BigInt(data.terms.evaluateWithin),
+        expiresAt: BigInt(data.terms.expiresAt),
+      };
+      const predicted = await rpcClient.readContract({
+        address: data.factoryAddress,
+        abi: veiloraFactoryAbi,
+        functionName: "predictEscrow",
+        args: [terms],
+      });
+      if (predicted.toLowerCase() !== data.escrowAddress.toLowerCase())
+        throw new Error("The predicted escrow does not match Liege's funding quote. Refresh the job and try again.");
+      let factoryTxHash;
+      const created = await rpcClient.readContract({
+        address: data.factoryAddress,
+        abi: veiloraFactoryAbi,
+        functionName: "isEscrow",
+        args: [predicted],
+      });
+      if (!created) {
+        factoryTxHash = await writeContractAsync({
+          address: data.factoryAddress,
+          abi: veiloraFactoryAbi,
+          functionName: "create",
+          args: [terms],
+        });
+        await rpcClient.waitForTransactionReceipt({ hash: factoryTxHash, confirmations: 1 });
+      }
+      const tokenHash = await writeContractAsync({
+        address: tokenAddress,
+        abi: erc20Abi,
+        functionName: "transfer",
+        args: [data.escrowAddress, BigInt(amountRaw)],
+      });
+      const funding = { quoteId: data.quoteId, factoryTxHash, tokenTxHash: tokenHash };
+      localStorage.setItem(key, JSON.stringify(funding));
+      try {
+        const result = await api.fundJob("cookie", jobId, funding);
+        localStorage.removeItem(key);
+        return result;
+      } catch (error) {
+        throw new Error("Your escrow and token transfer were sent and are being verified. Retry this funding action shortly; do not send another transfer.");
+      }
+    }
     const gasHash = await sendTransactionAsync({
       to: data.escrowAddress,
       value: BigInt(data.gasReserveWei),
@@ -151,7 +217,43 @@ function LiegeWalletProvider({ children }) {
       );
     }
   };
+  const submitVeiloraDelivery = async (jobId, escrowAddress, deliverable, evidence = []) => {
+    if (!ready || !address) throw new Error("Connect your provider wallet on Robinhood Chain before submitting.");
+    const pendingKey = `liege.pending-delivery.${jobId}`;
+    let proof = null;
+    try { proof = JSON.parse(localStorage.getItem(pendingKey) || "null"); } catch {}
+    if (!proof) {
+      const termsHash = await rpcClient.readContract({ address: escrowAddress, abi: veiloraEscrowAbi, functionName: "termsHash" });
+      const deadline = BigInt(Math.floor(Date.now() / 1000) + 300);
+      const domain = { name: "VeiloraEscrow", version: "1", chainId: 4663, verifyingContract: escrowAddress };
+      const types = { ProviderAction: [
+        { name: "action", type: "bytes32" }, { name: "termsHash", type: "bytes32" },
+        { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint64" },
+      ] };
+      const actionHash = (action) => keccak256(stringToHex(action));
+      const accepted = await rpcClient.readContract({ address: escrowAddress, abi: veiloraEscrowAbi, functionName: "accepted" });
+      if (!accepted) {
+        const nonce = await rpcClient.readContract({ address: escrowAddress, abi: veiloraEscrowAbi, functionName: "providerNonce" });
+        const signature = await signTypedDataAsync({ domain, types, primaryType: "ProviderAction", message: { action: actionHash("ACCEPT"), termsHash, nonce, deadline } });
+        const hash = await writeContractAsync({ address: escrowAddress, abi: veiloraEscrowAbi, functionName: "accept", args: [signature, deadline] });
+        await rpcClient.waitForTransactionReceipt({ hash, confirmations: 1 });
+      }
+      const saltBytes = crypto.getRandomValues(new Uint8Array(32));
+      const salt = `0x${Array.from(saltBytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
+      const deliverableCommit = keccak256(encodeAbiParameters([{ type: "bytes32" }, { type: "bytes32" }], [salt, keccak256(stringToHex(deliverable))]));
+      const nonce = await rpcClient.readContract({ address: escrowAddress, abi: veiloraEscrowAbi, functionName: "providerNonce" });
+      const signature = await signTypedDataAsync({ domain, types, primaryType: "ProviderAction", message: { action: actionHash("SUBMIT"), termsHash, nonce, deadline } });
+      const submitTxHash = await writeContractAsync({ address: escrowAddress, abi: veiloraEscrowAbi, functionName: "markSubmitted", args: [deliverableCommit, signature, deadline] });
+      await rpcClient.waitForTransactionReceipt({ hash: submitTxHash, confirmations: 1 });
+      proof = { deliverableCommit, deliverableSalt: salt, submitTxHash };
+      localStorage.setItem(pendingKey, JSON.stringify(proof));
+    }
+    const result = await api.submitJob("cookie", jobId, { deliverable, evidence, ...proof });
+    localStorage.removeItem(pendingKey);
+    return result;
+  };
   const signMessage = (message) => signMessageAsync({ message });
+  const signTypedData = (typedData) => signTypedDataAsync(typedData);
   const value = useMemo(
     () => ({
       session: {
@@ -166,7 +268,9 @@ function LiegeWalletProvider({ children }) {
       signIn,
       disconnect,
       fundEscrow,
+      submitVeiloraDelivery,
       signMessage,
+      signTypedData,
     }),
     [
       connector?.name,
@@ -179,6 +283,8 @@ function LiegeWalletProvider({ children }) {
       sendTransactionAsync,
       writeContractAsync,
       signMessageAsync,
+      signTypedDataAsync,
+      submitVeiloraDelivery,
     ],
   );
   return <Context.Provider value={value}>{children}</Context.Provider>;
