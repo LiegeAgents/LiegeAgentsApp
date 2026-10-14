@@ -67,7 +67,12 @@ legionsRouter.post(
     const client = await db.connect();
     try {
       await client.query("BEGIN");
-      const job = await client.query<{ id: string; agent_id: string; status: string; veilora_terms_locked_at: Date | null }>(
+      const job = await client.query<{
+        id: string;
+        agent_id: string;
+        status: string;
+        veilora_terms_locked_at: Date | null;
+      }>(
         `SELECT j.id, j.agent_id, j.status, j.veilora_terms_locked_at FROM jobs j JOIN agents a ON a.id = j.agent_id WHERE j.id = $1 AND a.owner_id = $2 FOR UPDATE OF j`,
         [jobId, request.auth!.userId],
       );
@@ -78,7 +83,11 @@ legionsRouter.post(
           "Only the parent job's agent can manage its Liege-ion.",
         );
       if (job.rows[0].veilora_terms_locked_at)
-        throw new ApiError(409, "veilora_escrow_terms_locked", "This job's Veilora escrow terms are locked after its funding quote is created.");
+        throw new ApiError(
+          409,
+          "veilora_escrow_terms_locked",
+          "This job's Veilora escrow terms are locked after its funding quote is created.",
+        );
       if (!["open", "funded"].includes(job.rows[0].status))
         throw new ApiError(
           409,

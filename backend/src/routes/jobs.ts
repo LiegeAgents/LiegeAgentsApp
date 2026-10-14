@@ -12,7 +12,13 @@ import { audit } from "../audit.js";
 import { env } from "../config.js";
 import { evidenceUrl, isSafeEvidenceUrl } from "../evidence.js";
 import { createFundingQuote, ensureEscrowWallet, verifyOnchainFunding } from "../escrow.js";
-import { prepareVeiloraEscrow, previewVeiloraOutcome, settleVeiloraOutcome, verifyVeiloraFunding, verifyVeiloraSubmission } from "../veiloraEscrow.js";
+import {
+  prepareVeiloraEscrow,
+  previewVeiloraOutcome,
+  settleVeiloraOutcome,
+  verifyVeiloraFunding,
+  verifyVeiloraSubmission,
+} from "../veiloraEscrow.js";
 import { planSettlement, processSettlement } from "../settlement.js";
 import { enqueueWebhookEvent } from "../webhooks.js";
 import type { SettlementAsset } from "../assets.js";
@@ -98,7 +104,11 @@ const jobInput = z
         message: "An evaluator is required when an evaluator fee is configured.",
       });
     if (env.ESCROW_MODE === "veilora" && !value.evaluatorId)
-      ctx.addIssue({ code: "custom", path: ["evaluatorId"], message: "Veilora threshold escrow requires an independent evaluator." });
+      ctx.addIssue({
+        code: "custom",
+        path: ["evaluatorId"],
+        message: "Veilora threshold escrow requires an independent evaluator.",
+      });
   });
 
 export const jobsRouter = Router();
@@ -790,7 +800,12 @@ jobsRouter.post(
   asyncRoute(async (request, response) => {
     const id = z.string().uuid().parse(request.params.id);
     if (env.ESCROW_MODE === "veilora") {
-      const owner = await db.query<{ client_id: string; status: string; deadline_at: Date; expires_at: Date }>(
+      const owner = await db.query<{
+        client_id: string;
+        status: string;
+        deadline_at: Date;
+        expires_at: Date;
+      }>(
         "SELECT client_id, status, deadline_at, expires_at FROM jobs WHERE id = $1 AND escrow_mode = 'veilora'",
         [id],
       );
@@ -798,8 +813,15 @@ jobsRouter.post(
         throw new ApiError(404, "job_not_found", "This job is not available to this account.");
       if (owner.rows[0].status !== "open")
         throw new ApiError(409, "veilora_funding_unavailable", "This job is not open for funding.");
-      if (owner.rows[0].expires_at.getTime() <= Date.now() + 15 * 60 * 1000 || owner.rows[0].deadline_at.getTime() <= Date.now() + 60 * 60 * 1000)
-        throw new ApiError(409, "funding_quote_near_expiry", "This job needs at least one hour before its delivery deadline to create a Veilora escrow.");
+      if (
+        owner.rows[0].expires_at.getTime() <= Date.now() + 15 * 60 * 1000 ||
+        owner.rows[0].deadline_at.getTime() <= Date.now() + 60 * 60 * 1000
+      )
+        throw new ApiError(
+          409,
+          "funding_quote_near_expiry",
+          "This job needs at least one hour before its delivery deadline to create a Veilora escrow.",
+        );
       const client = await db.connect();
       try {
         const prepared = await prepareVeiloraEscrow(client, id);
@@ -807,22 +829,31 @@ jobsRouter.post(
           "INSERT INTO veilora_funding_quotes (job_id, escrow_address, expires_at) VALUES ($1,$2,now() + interval '15 minutes') RETURNING id, expires_at",
           [id, prepared.escrowAddress.toLowerCase()],
         );
-        const details = await db.query<{ settlement_asset: SettlementAsset; budget_amount: string; evaluator_fee_amount: string }>(
+        const details = await db.query<{
+          settlement_asset: SettlementAsset;
+          budget_amount: string;
+          evaluator_fee_amount: string;
+        }>(
           "SELECT COALESCE(settlement_asset, 'usdg') AS settlement_asset, COALESCE(budget_amount, budget_usdg) AS budget_amount, CASE WHEN COALESCE(settlement_asset, 'usdg') = 'usdg' THEN COALESCE(evaluator_fee_usdg, evaluator_fee_amount, 0) ELSE COALESCE(evaluator_fee_amount, 0) END AS evaluator_fee_amount FROM jobs WHERE id = $1",
           [id],
         );
-        const decimals = details.rows[0].settlement_asset === "liege" ? env.LIEGE_DECIMALS : env.USDG_DECIMALS;
-        response.json({ data: {
-          escrowMode: "veilora",
-          quoteId: quote.rows[0].id,
-          expiresAt: quote.rows[0].expires_at,
-          factoryAddress: prepared.factoryAddress,
-          escrowAddress: prepared.escrowAddress,
-          terms: prepared.terms,
-          tokenAddress: prepared.terms.asset,
-          tokenDecimals: decimals,
-          tokenAmountRaw: (BigInt(prepared.terms.budget) + BigInt(prepared.terms.evaluatorFee)).toString(),
-        } });
+        const decimals =
+          details.rows[0].settlement_asset === "liege" ? env.LIEGE_DECIMALS : env.USDG_DECIMALS;
+        response.json({
+          data: {
+            escrowMode: "veilora",
+            quoteId: quote.rows[0].id,
+            expiresAt: quote.rows[0].expires_at,
+            factoryAddress: prepared.factoryAddress,
+            escrowAddress: prepared.escrowAddress,
+            terms: prepared.terms,
+            tokenAddress: prepared.terms.asset,
+            tokenDecimals: decimals,
+            tokenAmountRaw: (
+              BigInt(prepared.terms.budget) + BigInt(prepared.terms.evaluatorFee)
+            ).toString(),
+          },
+        });
       } finally {
         client.release();
       }
@@ -913,11 +944,16 @@ jobsRouter.post(
   "/:id/fund",
   requireAuth,
   asyncRoute(async (request, response) => {
-    const veiloraInput = z.object({
-      quoteId: z.string().uuid(),
-      factoryTxHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/).optional(),
-      tokenTxHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
-    }).safeParse(request.body);
+    const veiloraInput = z
+      .object({
+        quoteId: z.string().uuid(),
+        factoryTxHash: z
+          .string()
+          .regex(/^0x[0-9a-fA-F]{64}$/)
+          .optional(),
+        tokenTxHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
+      })
+      .safeParse(request.body);
     const onchainInput = z
       .object({
         quoteId: z.string().uuid(),
@@ -939,18 +975,30 @@ jobsRouter.post(
       budget_usdg: string;
       evaluator_fee_usdg: string;
       veilora_escrow_address: `0x${string}` | null;
-      veilora_escrow_terms: { jobId: `0x${string}`; asset: `0x${string}`; budget: string; evaluatorFee: string } | null;
+      veilora_escrow_terms: {
+        jobId: `0x${string}`;
+        asset: `0x${string}`;
+        budget: string;
+        evaluatorFee: string;
+      } | null;
     }>(
       "SELECT client_id, status, escrow_mode, COALESCE(settlement_asset, 'usdg') AS settlement_asset, COALESCE(budget_amount, budget_usdg) AS budget_amount, CASE WHEN COALESCE(settlement_asset, 'usdg') = 'usdg' THEN COALESCE(evaluator_fee_usdg, evaluator_fee_amount, 0) ELSE COALESCE(evaluator_fee_amount, 0) END AS evaluator_fee_amount, budget_usdg, evaluator_fee_usdg, veilora_escrow_address, veilora_escrow_terms FROM jobs WHERE id = $1",
       [id],
     );
-    const verifyingVeilora = current.rows[0]?.escrow_mode === "veilora" && current.rows[0].status === "open" && current.rows[0].client_id === request.auth!.userId;
+    const verifyingVeilora =
+      current.rows[0]?.escrow_mode === "veilora" &&
+      current.rows[0].status === "open" &&
+      current.rows[0].client_id === request.auth!.userId;
     const verifying =
       current.rows[0]?.escrow_mode === "onchain" &&
       current.rows[0].status === "open" &&
       current.rows[0].client_id === request.auth!.userId;
     if (verifyingVeilora && !veiloraInput.success)
-      throw new ApiError(422, "veilora_funding_payload_required", "quoteId and tokenTxHash are required for Veilora escrow funding.");
+      throw new ApiError(
+        422,
+        "veilora_funding_payload_required",
+        "quoteId and tokenTxHash are required for Veilora escrow funding.",
+      );
     if (verifying && !onchainInput.success)
       throw new ApiError(
         422,
@@ -971,13 +1019,21 @@ jobsRouter.post(
     if (verifyingVeilora && veiloraInput.success) {
       const job = current.rows[0];
       if (!job.veilora_escrow_address || !job.veilora_escrow_terms)
-        throw new ApiError(409, "veilora_terms_missing", "Create a funding quote before funding this job.");
+        throw new ApiError(
+          409,
+          "veilora_terms_missing",
+          "Create a funding quote before funding this job.",
+        );
       const quote = await db.query<{ id: string }>(
         "SELECT id FROM veilora_funding_quotes WHERE id = $1 AND job_id = $2 AND escrow_address = $3 AND expires_at > now()",
         [veiloraInput.data.quoteId, id, job.veilora_escrow_address],
       );
       if (!quote.rowCount)
-        throw new ApiError(422, "veilora_quote_expired", "This Veilora funding quote is expired or does not belong to this job.");
+        throw new ApiError(
+          422,
+          "veilora_quote_expired",
+          "This Veilora funding quote is expired or does not belong to this job.",
+        );
       veiloraFunding = await verifyVeiloraFunding({
         factoryTxHash: veiloraInput.data.factoryTxHash as `0x${string}` | undefined,
         tokenTxHash: veiloraInput.data.tokenTxHash as `0x${string}`,
@@ -985,7 +1041,8 @@ jobsRouter.post(
         tokenAddress: job.veilora_escrow_terms.asset,
         clientAddress: request.auth!.walletAddress as `0x${string}`,
         jobId: job.veilora_escrow_terms.jobId,
-        expectedAmount: BigInt(job.veilora_escrow_terms.budget) + BigInt(job.veilora_escrow_terms.evaluatorFee),
+        expectedAmount:
+          BigInt(job.veilora_escrow_terms.budget) + BigInt(job.veilora_escrow_terms.evaluatorFee),
       });
     }
     const client = await db.connect();
@@ -1014,10 +1071,19 @@ jobsRouter.post(
         );
       } else if (job.escrow_mode === "veilora") {
         if (!veiloraFunding || !veiloraInput.success)
-          throw new ApiError(409, "funding_retry_required", "This job's Veilora escrow funding was not verified. Retry funding.");
+          throw new ApiError(
+            409,
+            "funding_retry_required",
+            "This job's Veilora escrow funding was not verified. Retry funding.",
+          );
         await client.query(
           "INSERT INTO veilora_fundings (job_id, factory_tx_hash, token_tx_hash, funded_amount_raw) VALUES ($1,$2,$3,$4)",
-          [job.id, veiloraInput.data.factoryTxHash?.toLowerCase() ?? null, veiloraInput.data.tokenTxHash.toLowerCase(), veiloraFunding.tokenAmountRaw],
+          [
+            job.id,
+            veiloraInput.data.factoryTxHash?.toLowerCase() ?? null,
+            veiloraInput.data.tokenTxHash.toLowerCase(),
+            veiloraFunding.tokenAmountRaw,
+          ],
         );
       } else {
         const total = Number(job.budget_amount) + Number(job.evaluator_fee_amount);
@@ -1076,9 +1142,18 @@ jobsRouter.post(
         deliverable: z.string().min(1).max(100_000).optional(),
         deliverableCiphertext: z.string().min(1).max(100_000).optional(),
         evidence: z.array(evidenceUrl).max(20).default([]),
-        deliverableCommit: z.string().regex(/^0x[0-9a-fA-F]{64}$/).optional(),
-        deliverableSalt: z.string().regex(/^0x[0-9a-fA-F]{64}$/).optional(),
-        submitTxHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/).optional(),
+        deliverableCommit: z
+          .string()
+          .regex(/^0x[0-9a-fA-F]{64}$/)
+          .optional(),
+        deliverableSalt: z
+          .string()
+          .regex(/^0x[0-9a-fA-F]{64}$/)
+          .optional(),
+        submitTxHash: z
+          .string()
+          .regex(/^0x[0-9a-fA-F]{64}$/)
+          .optional(),
       })
       .refine(
         (value) => Boolean(value.deliverable || value.deliverableCiphertext),
@@ -1094,14 +1169,34 @@ jobsRouter.post(
         "This runtime token cannot submit deliverables.",
       );
     const payload = input.deliverable ?? input.deliverableCiphertext!;
-    const escrowMode = await db.query<{ escrow_mode: string }>("SELECT escrow_mode FROM jobs WHERE id = $1", [jobId]);
+    const escrowMode = await db.query<{ escrow_mode: string }>(
+      "SELECT escrow_mode FROM jobs WHERE id = $1",
+      [jobId],
+    );
     if (escrowMode.rows[0]?.escrow_mode === "veilora") {
       if (!input.deliverableCommit || !input.deliverableSalt || !input.submitTxHash)
-        throw new ApiError(422, "veilora_submission_proof_required", "A salted deliverable commitment and confirmed escrow submission transaction are required.");
-      const commitment = keccak256(encodeAbiParameters([{ type: "bytes32" }, { type: "bytes32" }], [input.deliverableSalt as `0x${string}`, keccak256(stringToHex(payload))]));
+        throw new ApiError(
+          422,
+          "veilora_submission_proof_required",
+          "A salted deliverable commitment and confirmed escrow submission transaction are required.",
+        );
+      const commitment = keccak256(
+        encodeAbiParameters(
+          [{ type: "bytes32" }, { type: "bytes32" }],
+          [input.deliverableSalt as `0x${string}`, keccak256(stringToHex(payload))],
+        ),
+      );
       if (commitment.toLowerCase() !== input.deliverableCommit.toLowerCase())
-        throw new ApiError(422, "veilora_commitment_mismatch", "The deliverable does not match its salted on-chain commitment.");
-      await verifyVeiloraSubmission({ jobId, transactionHash: input.submitTxHash as `0x${string}`, deliverableCommit: input.deliverableCommit as `0x${string}` });
+        throw new ApiError(
+          422,
+          "veilora_commitment_mismatch",
+          "The deliverable does not match its salted on-chain commitment.",
+        );
+      await verifyVeiloraSubmission({
+        jobId,
+        transactionHash: input.submitTxHash as `0x${string}`,
+        deliverableCommit: input.deliverableCommit as `0x${string}`,
+      });
     }
     const client = await db.connect();
     try {
@@ -1163,7 +1258,11 @@ jobsRouter.post(
       if (!jobResult.rowCount) throw new ApiError(404, "job_not_found", "This job does not exist.");
       const job = jobResult.rows[0];
       if (job.escrow_mode === "veilora")
-        throw new ApiError(409, "veilora_decline_requires_provider_signature", "Declining a Veilora-funded job requires the provider to sign an on-chain refund. This action is not available in Liege yet.");
+        throw new ApiError(
+          409,
+          "veilora_decline_requires_provider_signature",
+          "Declining a Veilora-funded job requires the provider to sign an on-chain refund. This action is not available in Liege yet.",
+        );
       if (job.provider_id !== request.auth!.userId)
         throw new ApiError(
           403,
@@ -1276,9 +1375,20 @@ jobsRouter.post(
       [id],
     );
     if (!job.rowCount || job.rows[0].escrow_mode !== "veilora")
-      throw new ApiError(409, "veilora_outcome_unavailable", "This job does not use Veilora threshold escrow.");
-    if (job.rows[0].status !== "submitted" || job.rows[0].evaluator_address.toLowerCase() !== request.auth!.walletAddress.toLowerCase())
-      throw new ApiError(403, "not_evaluator", "Only the assigned evaluator can prepare this outcome.");
+      throw new ApiError(
+        409,
+        "veilora_outcome_unavailable",
+        "This job does not use Veilora threshold escrow.",
+      );
+    if (
+      job.rows[0].status !== "submitted" ||
+      job.rows[0].evaluator_address.toLowerCase() !== request.auth!.walletAddress.toLowerCase()
+    )
+      throw new ApiError(
+        403,
+        "not_evaluator",
+        "Only the assigned evaluator can prepare this outcome.",
+      );
     response.json({ data: await previewVeiloraOutcome(id, input.outcome) });
   }),
 );
@@ -1292,7 +1402,10 @@ jobsRouter.post(
         outcome: z.enum(["accepted", "rejected"]),
         rationale: z.string().min(1).max(100_000).optional(),
         rationaleCiphertext: z.string().min(1).max(100_000).optional(),
-        signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/).optional(),
+        signature: z
+          .string()
+          .regex(/^0x[0-9a-fA-F]{130}$/)
+          .optional(),
       })
       .refine(
         (value) => Boolean(value.rationale || value.rationaleCiphertext),
@@ -1309,9 +1422,19 @@ jobsRouter.post(
     let veiloraSettlement: { txHash: `0x${string}` } | null = null;
     if (mode.rows[0]?.escrow_mode === "veilora") {
       if (!input.signature)
-        throw new ApiError(422, "evaluator_signature_required", "Sign the displayed Veilora outcome before submitting the evaluation.");
-      if (mode.rows[0].evaluator_address.toLowerCase() !== request.auth!.walletAddress.toLowerCase())
-        throw new ApiError(403, "not_evaluator", "Only the assigned evaluator can settle this job.");
+        throw new ApiError(
+          422,
+          "evaluator_signature_required",
+          "Sign the displayed Veilora outcome before submitting the evaluation.",
+        );
+      if (
+        mode.rows[0].evaluator_address.toLowerCase() !== request.auth!.walletAddress.toLowerCase()
+      )
+        throw new ApiError(
+          403,
+          "not_evaluator",
+          "Only the assigned evaluator can settle this job.",
+        );
       veiloraSettlement = await settleVeiloraOutcome({
         jobId: z.string().uuid().parse(request.params.id),
         outcome: input.outcome,
@@ -1357,7 +1480,11 @@ jobsRouter.post(
         });
       } else if (job.escrow_mode === "veilora") {
         if (!veiloraSettlement)
-          throw new ApiError(409, "veilora_settlement_missing", "The signed Veilora outcome was not submitted.");
+          throw new ApiError(
+            409,
+            "veilora_settlement_missing",
+            "The signed Veilora outcome was not submitted.",
+          );
       } else {
         const escrow = await escrowAccount(client, job.id, job.settlement_asset);
         const total = Number(job.budget_amount) + Number(jobEvaluatorFee);
@@ -1473,7 +1600,12 @@ jobsRouter.post(
         actorId: request.auth!.userId,
       });
       await client.query("COMMIT");
-      response.json({ data: { ...publicJob(result.rows[0]), ...(veiloraSettlement ? { veiloraSettlementTxHash: veiloraSettlement.txHash } : {}) } });
+      response.json({
+        data: {
+          ...publicJob(result.rows[0]),
+          ...(veiloraSettlement ? { veiloraSettlementTxHash: veiloraSettlement.txHash } : {}),
+        },
+      });
       // Failures are recorded on the payout rows; the settle-escrows cron retries them.
       if (job.escrow_mode === "onchain")
         void processSettlement(job.id).catch((error) =>

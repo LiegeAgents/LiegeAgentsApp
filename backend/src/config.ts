@@ -28,10 +28,25 @@ const env = z
     RHC_RPC_URL: z.string().url(),
     ESCROW_MODE: z
       .enum(["ledger", "onchain", "veilora"])
-      .default(process.env.VEILORA_ESCROW_FACTORY_ADDRESS ? "veilora" : process.env.USDG_TOKEN_ADDRESS ? "onchain" : "ledger"),
-    VEILORA_ESCROW_FACTORY_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
-    LIEGE_ESCROW_SIGNER_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
-    LIEGE_ESCROW_SIGNER_PRIVATE_KEY: z.string().regex(/^0x[0-9a-fA-F]{64}$/).optional(),
+      .default(
+        process.env.VEILORA_ESCROW_FACTORY_ADDRESS
+          ? "veilora"
+          : process.env.USDG_TOKEN_ADDRESS
+            ? "onchain"
+            : "ledger",
+      ),
+    VEILORA_ESCROW_FACTORY_ADDRESS: z
+      .string()
+      .regex(/^0x[0-9a-fA-F]{40}$/)
+      .optional(),
+    LIEGE_ESCROW_SIGNER_ADDRESS: z
+      .string()
+      .regex(/^0x[0-9a-fA-F]{40}$/)
+      .optional(),
+    LIEGE_ESCROW_SIGNER_PRIVATE_KEY: z
+      .string()
+      .regex(/^0x[0-9a-fA-F]{64}$/)
+      .optional(),
     USDG_TOKEN_ADDRESS: z
       .string()
       .regex(/^0x[0-9a-fA-F]{40}$/)
@@ -163,10 +178,24 @@ if (env.ESCROW_MODE === "onchain" && (!env.USDG_TOKEN_ADDRESS || !env.DATA_ENCRY
     "USDG_TOKEN_ADDRESS and DATA_ENCRYPTION_KEY are required when ESCROW_MODE=onchain.",
   );
 }
-if (env.ESCROW_MODE === "veilora" && (!env.VEILORA_ESCROW_FACTORY_ADDRESS || !env.LIEGE_ESCROW_SIGNER_ADDRESS || !env.LIEGE_ESCROW_SIGNER_PRIVATE_KEY)) {
-  throw new Error("VEILORA_ESCROW_FACTORY_ADDRESS, LIEGE_ESCROW_SIGNER_ADDRESS, and LIEGE_ESCROW_SIGNER_PRIVATE_KEY are required when ESCROW_MODE=veilora.");
+if (
+  env.ESCROW_MODE === "veilora" &&
+  (!env.VEILORA_ESCROW_FACTORY_ADDRESS ||
+    !env.LIEGE_ESCROW_SIGNER_ADDRESS ||
+    !env.LIEGE_ESCROW_SIGNER_PRIVATE_KEY)
+) {
+  throw new Error(
+    "VEILORA_ESCROW_FACTORY_ADDRESS, LIEGE_ESCROW_SIGNER_ADDRESS, and LIEGE_ESCROW_SIGNER_PRIVATE_KEY are required when ESCROW_MODE=veilora.",
+  );
 }
-if (env.ESCROW_MODE === "veilora" && env.LIEGE_ESCROW_SIGNER_ADDRESS && env.LIEGE_ESCROW_SIGNER_PRIVATE_KEY && privateKeyToAccount(env.LIEGE_ESCROW_SIGNER_PRIVATE_KEY as `0x${string}`).address.toLowerCase() !== env.LIEGE_ESCROW_SIGNER_ADDRESS.toLowerCase()) {
+if (
+  env.ESCROW_MODE === "veilora" &&
+  env.LIEGE_ESCROW_SIGNER_ADDRESS &&
+  env.LIEGE_ESCROW_SIGNER_PRIVATE_KEY &&
+  privateKeyToAccount(
+    env.LIEGE_ESCROW_SIGNER_PRIVATE_KEY as `0x${string}`,
+  ).address.toLowerCase() !== env.LIEGE_ESCROW_SIGNER_ADDRESS.toLowerCase()
+) {
   throw new Error("LIEGE_ESCROW_SIGNER_PRIVATE_KEY does not match LIEGE_ESCROW_SIGNER_ADDRESS.");
 }
 if (

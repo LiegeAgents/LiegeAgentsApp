@@ -39,7 +39,10 @@ export type VeiloraEscrowTerms = {
   briefCommit: `0x${string}`;
   legionRecipients: Address[];
 };
-type VeiloraEscrowTermsCall = Omit<VeiloraEscrowTerms, "budget" | "evaluatorFee" | "acceptBy" | "submitBy" | "evaluateWithin" | "expiresAt"> & {
+type VeiloraEscrowTermsCall = Omit<
+  VeiloraEscrowTerms,
+  "budget" | "evaluatorFee" | "acceptBy" | "submitBy" | "evaluateWithin" | "expiresAt"
+> & {
   budget: bigint;
   evaluatorFee: bigint;
   acceptBy: bigint;
@@ -76,7 +79,9 @@ const escrowAbi = parseAbi([
   "event DeliverableSubmitted(bytes32 indexed jobId,bytes32 indexed deliverableCommit,uint64 submittedAt)",
 ]);
 const tokenAbi = parseAbi(["function balanceOf(address account) view returns (uint256)"]);
-const transferEventAbi = parseAbi(["event Transfer(address indexed from,address indexed to,uint256 value)"]);
+const transferEventAbi = parseAbi([
+  "event Transfer(address indexed from,address indexed to,uint256 value)",
+]);
 
 function factoryAddress(): Address {
   if (!env.VEILORA_ESCROW_FACTORY_ADDRESS)
@@ -87,7 +92,11 @@ function factoryAddress(): Address {
 function tokenAddress(asset: SettlementAsset): Address {
   const value = asset === "liege" ? env.LIEGE_TOKEN_ADDRESS : env.USDG_TOKEN_ADDRESS;
   if (!value)
-    throw new ApiError(503, "escrow_asset_unconfigured", `The ${asset.toUpperCase()} token is not configured.`);
+    throw new ApiError(
+      503,
+      "escrow_asset_unconfigured",
+      `The ${asset.toUpperCase()} token is not configured.`,
+    );
   return getAddress(value);
 }
 
@@ -119,7 +128,11 @@ function termsCall(terms: VeiloraEscrowTerms): VeiloraEscrowTermsCall {
 export async function prepareVeiloraEscrow(clientDb: PoolClient, jobId: string) {
   factoryAddress();
   if (!env.LIEGE_ESCROW_SIGNER_ADDRESS)
-    throw new ApiError(503, "veilora_escrow_unconfigured", "The Liege escrow signer is not configured.");
+    throw new ApiError(
+      503,
+      "veilora_escrow_unconfigured",
+      "The Liege escrow signer is not configured.",
+    );
   await clientDb.query("BEGIN");
   try {
     const jobResult = await clientDb.query<{
@@ -154,7 +167,11 @@ export async function prepareVeiloraEscrow(clientDb: PoolClient, jobId: string) 
     if (!jobResult.rowCount) throw new ApiError(404, "job_not_found", "This job does not exist.");
     const job = jobResult.rows[0];
     if (job.status !== "open" || job.escrow_mode !== "veilora")
-      throw new ApiError(409, "veilora_funding_unavailable", "This job is not ready for Veilora escrow funding.");
+      throw new ApiError(
+        409,
+        "veilora_funding_unavailable",
+        "This job is not ready for Veilora escrow funding.",
+      );
 
     let terms: VeiloraEscrowTerms;
     const stored = job.veilora_escrow_terms;
@@ -169,16 +186,33 @@ export async function prepareVeiloraEscrow(clientDb: PoolClient, jobId: string) 
            AND lower(u.wallet_address) NOT IN (lower($2), lower($3), lower($4), lower($5))
          GROUP BY lower(u.wallet_address), u.wallet_address ORDER BY lower(u.wallet_address)
          LIMIT 64`,
-        [jobId, job.client_address, job.provider_address, job.evaluator_address, env.LIEGE_ESCROW_SIGNER_ADDRESS],
+        [
+          jobId,
+          job.client_address,
+          job.provider_address,
+          job.evaluator_address,
+          env.LIEGE_ESCROW_SIGNER_ADDRESS,
+        ],
       );
       const nowSeconds = Math.floor(Date.now() / 1000);
       const acceptBy = nowSeconds + 60 * 60;
       const submitBy = Math.floor(job.deadline_at.getTime() / 1000);
       if (submitBy <= acceptBy)
-        throw new ApiError(409, "job_deadline_too_soon", "The job deadline must leave at least one hour for provider acceptance.");
-      const cap = Math.min(10_000, recipients.rows.reduce((sum, row) => sum + row.allocation_bps, 0));
+        throw new ApiError(
+          409,
+          "job_deadline_too_soon",
+          "The job deadline must leave at least one hour for provider acceptance.",
+        );
+      const cap = Math.min(
+        10_000,
+        recipients.rows.reduce((sum, row) => sum + row.allocation_bps, 0),
+      );
       if (recipients.rows.length > 64)
-        throw new ApiError(422, "legion_recipients_limit", "Veilora escrow supports at most 64 legion recipients.");
+        throw new ApiError(
+          422,
+          "legion_recipients_limit",
+          "Veilora escrow supports at most 64 legion recipients.",
+        );
       const decimals = job.settlement_asset === "liege" ? env.LIEGE_DECIMALS : env.USDG_DECIMALS;
       terms = {
         factoryVersion: 1,
@@ -210,7 +244,10 @@ export async function prepareVeiloraEscrow(clientDb: PoolClient, jobId: string) 
       );
     }
     const escrowAddress = await client.readContract({
-      address: factoryAddress(), abi: factoryAbi, functionName: "predictEscrow", args: [termsCall(terms)],
+      address: factoryAddress(),
+      abi: factoryAbi,
+      functionName: "predictEscrow",
+      args: [termsCall(terms)],
     });
     await clientDb.query("COMMIT");
     return { factoryAddress: factoryAddress(), escrowAddress, terms };
@@ -230,47 +267,95 @@ export async function verifyVeiloraFunding(input: {
   expectedAmount: bigint;
 }) {
   const [factoryReceipt, tokenReceipt] = await Promise.all([
-    input.factoryTxHash ? client.waitForTransactionReceipt({ hash: input.factoryTxHash, confirmations: env.ESCROW_CONFIRMATIONS }) : Promise.resolve(null),
-    client.waitForTransactionReceipt({ hash: input.tokenTxHash, confirmations: env.ESCROW_CONFIRMATIONS }),
+    input.factoryTxHash
+      ? client.waitForTransactionReceipt({
+          hash: input.factoryTxHash,
+          confirmations: env.ESCROW_CONFIRMATIONS,
+        })
+      : Promise.resolve(null),
+    client.waitForTransactionReceipt({
+      hash: input.tokenTxHash,
+      confirmations: env.ESCROW_CONFIRMATIONS,
+    }),
   ]);
   if ((factoryReceipt && factoryReceipt.status !== "success") || tokenReceipt.status !== "success")
-    throw new ApiError(422, "veilora_funding_transaction_failed", "The escrow creation and token transfer transactions must succeed.");
+    throw new ApiError(
+      422,
+      "veilora_funding_transaction_failed",
+      "The escrow creation and token transfer transactions must succeed.",
+    );
   if (factoryReceipt) {
     const created = factoryReceipt.logs.some((log) => {
       if (log.address.toLowerCase() !== factoryAddress().toLowerCase()) return false;
       try {
         const event = decodeEventLog({ abi: factoryAbi, data: log.data, topics: log.topics });
-        return event.eventName === "EscrowCreated" &&
+        return (
+          event.eventName === "EscrowCreated" &&
           event.args.jobId.toLowerCase() === input.jobId.toLowerCase() &&
-          event.args.escrow.toLowerCase() === input.escrowAddress.toLowerCase();
-      } catch { return false; }
+          event.args.escrow.toLowerCase() === input.escrowAddress.toLowerCase()
+        );
+      } catch {
+        return false;
+      }
     });
     if (!created)
-      throw new ApiError(422, "veilora_escrow_creation_unverified", "The factory transaction did not create this job's escrow.");
+      throw new ApiError(
+        422,
+        "veilora_escrow_creation_unverified",
+        "The factory transaction did not create this job's escrow.",
+      );
   }
   const transferred = tokenReceipt.logs.some((log) => {
     if (log.address.toLowerCase() !== input.tokenAddress.toLowerCase()) return false;
     try {
       const event = decodeEventLog({ abi: transferEventAbi, data: log.data, topics: log.topics });
-      return event.eventName === "Transfer" &&
+      return (
+        event.eventName === "Transfer" &&
         event.args.from.toLowerCase() === input.clientAddress.toLowerCase() &&
         event.args.to.toLowerCase() === input.escrowAddress.toLowerCase() &&
-        event.args.value >= input.expectedAmount;
-    } catch { return false; }
+        event.args.value >= input.expectedAmount
+      );
+    } catch {
+      return false;
+    }
   });
   if (!transferred)
-    throw new ApiError(422, "veilora_token_transfer_unverified", "The token transaction does not show the required transfer from the client into this escrow.");
+    throw new ApiError(
+      422,
+      "veilora_token_transfer_unverified",
+      "The token transaction does not show the required transfer from the client into this escrow.",
+    );
   const registered = await client.readContract({
-    address: factoryAddress(), abi: factoryAbi, functionName: "isEscrow", args: [input.escrowAddress],
+    address: factoryAddress(),
+    abi: factoryAbi,
+    functionName: "isEscrow",
+    args: [input.escrowAddress],
   });
   if (!registered)
-    throw new ApiError(422, "veilora_escrow_not_created", "Create the Veilora escrow contract before funding it.");
+    throw new ApiError(
+      422,
+      "veilora_escrow_not_created",
+      "Create the Veilora escrow contract before funding it.",
+    );
   const [required, balance] = await Promise.all([
-    client.readContract({ address: input.escrowAddress, abi: escrowAbi, functionName: "requiredFunding" }),
-    client.readContract({ address: input.tokenAddress, abi: tokenAbi, functionName: "balanceOf", args: [input.escrowAddress] }),
+    client.readContract({
+      address: input.escrowAddress,
+      abi: escrowAbi,
+      functionName: "requiredFunding",
+    }),
+    client.readContract({
+      address: input.tokenAddress,
+      abi: tokenAbi,
+      functionName: "balanceOf",
+      args: [input.escrowAddress],
+    }),
   ]);
   if (required !== input.expectedAmount || balance < required)
-    throw new ApiError(422, "veilora_escrow_underfunded", "The escrow must hold the budget and evaluator fee before the job can start.");
+    throw new ApiError(
+      422,
+      "veilora_escrow_underfunded",
+      "The escrow must hold the budget and evaluator fee before the job can start.",
+    );
   return { escrowAddress: input.escrowAddress, tokenAmountRaw: balance.toString() };
 }
 
@@ -279,28 +364,50 @@ export async function verifyVeiloraSubmission(input: {
   transactionHash: `0x${string}`;
   deliverableCommit: `0x${string}`;
 }) {
-  const job = await db.query<{ veilora_escrow_address: Address | null; veilora_escrow_terms: VeiloraEscrowTerms | null }>(
+  const job = await db.query<{
+    veilora_escrow_address: Address | null;
+    veilora_escrow_terms: VeiloraEscrowTerms | null;
+  }>(
     "SELECT veilora_escrow_address, veilora_escrow_terms FROM jobs WHERE id = $1 AND escrow_mode = 'veilora'",
     [input.jobId],
   );
   if (!job.rowCount || !job.rows[0].veilora_escrow_address || !job.rows[0].veilora_escrow_terms)
-    throw new ApiError(409, "veilora_terms_missing", "This job does not have Veilora escrow terms.");
+    throw new ApiError(
+      409,
+      "veilora_terms_missing",
+      "This job does not have Veilora escrow terms.",
+    );
   const escrowAddress = getAddress(job.rows[0].veilora_escrow_address);
-  const receipt = await client.waitForTransactionReceipt({ hash: input.transactionHash, confirmations: env.ESCROW_CONFIRMATIONS });
+  const receipt = await client.waitForTransactionReceipt({
+    hash: input.transactionHash,
+    confirmations: env.ESCROW_CONFIRMATIONS,
+  });
   if (receipt.status !== "success")
-    throw new ApiError(422, "veilora_submission_failed", "The provider's on-chain submission transaction failed.");
+    throw new ApiError(
+      422,
+      "veilora_submission_failed",
+      "The provider's on-chain submission transaction failed.",
+    );
   const terms = toTerms(job.rows[0].veilora_escrow_terms as unknown as Record<string, unknown>);
   const submitted = receipt.logs.some((log) => {
     if (log.address.toLowerCase() !== escrowAddress.toLowerCase()) return false;
     try {
       const event = decodeEventLog({ abi: escrowAbi, data: log.data, topics: log.topics });
-      return event.eventName === "DeliverableSubmitted" &&
+      return (
+        event.eventName === "DeliverableSubmitted" &&
         event.args.jobId.toLowerCase() === terms.jobId.toLowerCase() &&
-        event.args.deliverableCommit.toLowerCase() === input.deliverableCommit.toLowerCase();
-    } catch { return false; }
+        event.args.deliverableCommit.toLowerCase() === input.deliverableCommit.toLowerCase()
+      );
+    } catch {
+      return false;
+    }
   });
   if (!submitted)
-    throw new ApiError(422, "veilora_submission_unverified", "The transaction did not submit this job's deliverable commitment.");
+    throw new ApiError(
+      422,
+      "veilora_submission_unverified",
+      "The transaction did not submit this job's deliverable commitment.",
+    );
 }
 
 const OUTCOME_TYPES = {
@@ -329,31 +436,66 @@ async function outcomeContext(jobId: string, outcome: "accepted" | "rejected") {
        GROUP BY lower(u.wallet_address), u.wallet_address ORDER BY lower(u.wallet_address)`,
       [jobId],
     );
-    const roles = new Set([terms.client, terms.provider, terms.evaluator, terms.liegeSigner].map((x) => x.toLowerCase()));
+    const roles = new Set(
+      [terms.client, terms.provider, terms.evaluator, terms.liegeSigner].map((x) =>
+        x.toLowerCase(),
+      ),
+    );
     const byRecipient = new Map<string, bigint>();
     for (const row of rows.rows) {
       const recipient = getAddress(row.wallet_address);
       if (roles.has(recipient.toLowerCase())) continue;
-      if (!terms.legionRecipients.some((item) => item.toLowerCase() === recipient.toLowerCase())) continue;
+      if (!terms.legionRecipients.some((item) => item.toLowerCase() === recipient.toLowerCase()))
+        continue;
       const amount = (BigInt(terms.budget) * BigInt(row.allocation_bps)) / 10_000n;
       if (amount > 0n) byRecipient.set(recipient, (byRecipient.get(recipient) ?? 0n) + amount);
     }
-    payouts = [...byRecipient.entries()].map(([recipient, amount]) => ({ recipient: getAddress(recipient), amount }));
+    payouts = [...byRecipient.entries()].map(([recipient, amount]) => ({
+      recipient: getAddress(recipient),
+      amount,
+    }));
     const delegated = payouts.reduce((sum, payout) => sum + payout.amount, 0n);
     if (delegated > (BigInt(terms.budget) * BigInt(terms.legionCapBps)) / 10_000n)
-      throw new ApiError(409, "legion_budget_exceeded", "Submitted legion shares exceed the immutable escrow cap.");
+      throw new ApiError(
+        409,
+        "legion_budget_exceeded",
+        "Submitted legion shares exceed the immutable escrow cap.",
+      );
   }
-  const payloadHash = outcome === "accepted"
-    ? keccak256(encodeAbiParameters([{ type: "tuple[]", components: [{ name: "recipient", type: "address" }, { name: "amount", type: "uint256" }] }], [payouts]))
-    : `0x${"0".repeat(64)}` as Hex;
+  const payloadHash =
+    outcome === "accepted"
+      ? keccak256(
+          encodeAbiParameters(
+            [
+              {
+                type: "tuple[]",
+                components: [
+                  { name: "recipient", type: "address" },
+                  { name: "amount", type: "uint256" },
+                ],
+              },
+            ],
+            [payouts],
+          ),
+        )
+      : (`0x${"0".repeat(64)}` as Hex);
   const [nonce, funded, closed] = await Promise.all([
     client.readContract({ address: escrowAddress, abi: escrowAbi, functionName: "outcomeNonce" }),
     client.readContract({ address: escrowAddress, abi: escrowAbi, functionName: "isFunded" }),
     client.readContract({ address: escrowAddress, abi: escrowAbi, functionName: "closed" }),
   ]);
   if (!funded || closed)
-    throw new ApiError(409, closed ? "veilora_escrow_closed" : "veilora_escrow_unfunded", "This Veilora escrow is not available for settlement.");
-  const digest = await client.readContract({ address: escrowAddress, abi: escrowAbi, functionName: "hashOutcome", args: [action, payloadHash] });
+    throw new ApiError(
+      409,
+      closed ? "veilora_escrow_closed" : "veilora_escrow_unfunded",
+      "This Veilora escrow is not available for settlement.",
+    );
+  const digest = await client.readContract({
+    address: escrowAddress,
+    abi: escrowAbi,
+    functionName: "hashOutcome",
+    args: [action, payloadHash],
+  });
   return {
     ...result,
     action,
@@ -363,7 +505,12 @@ async function outcomeContext(jobId: string, outcome: "accepted" | "rejected") {
     payouts,
     outcome,
     typedData: {
-      domain: { name: "VeiloraEscrow", version: "1", chainId: env.RHC_ID, verifyingContract: escrowAddress },
+      domain: {
+        name: "VeiloraEscrow",
+        version: "1",
+        chainId: env.RHC_ID,
+        verifyingContract: escrowAddress,
+      },
       types: OUTCOME_TYPES,
       primaryType: "Outcome" as const,
       message: { action, payloadHash, nonce },
@@ -372,16 +519,37 @@ async function outcomeContext(jobId: string, outcome: "accepted" | "rejected") {
 }
 
 async function dbJob(jobId: string) {
-  const result = await db.query<{ status: string; escrow_mode: string; veilora_escrow_address: Address; veilora_escrow_terms: VeiloraEscrowTerms }>(
+  const result = await db.query<{
+    status: string;
+    escrow_mode: string;
+    veilora_escrow_address: Address;
+    veilora_escrow_terms: VeiloraEscrowTerms;
+  }>(
     "SELECT status, escrow_mode, veilora_escrow_address, veilora_escrow_terms FROM jobs WHERE id = $1",
     [jobId],
   );
   const job = result.rows[0];
-  if (!job || job.escrow_mode !== "veilora" || !job.veilora_escrow_address || !job.veilora_escrow_terms)
-    throw new ApiError(409, "veilora_terms_missing", "This job does not have Veilora escrow terms.");
+  if (
+    !job ||
+    job.escrow_mode !== "veilora" ||
+    !job.veilora_escrow_address ||
+    !job.veilora_escrow_terms
+  )
+    throw new ApiError(
+      409,
+      "veilora_terms_missing",
+      "This job does not have Veilora escrow terms.",
+    );
   if (job.status !== "submitted")
-    throw new ApiError(409, "veilora_evaluation_unavailable", "Only a submitted job can be evaluated.");
-  return { escrowAddress: getAddress(job.veilora_escrow_address), terms: toTerms(job.veilora_escrow_terms as unknown as Record<string, unknown>) };
+    throw new ApiError(
+      409,
+      "veilora_evaluation_unavailable",
+      "Only a submitted job can be evaluated.",
+    );
+  return {
+    escrowAddress: getAddress(job.veilora_escrow_address),
+    terms: toTerms(job.veilora_escrow_terms as unknown as Record<string, unknown>),
+  };
 }
 
 export async function previewVeiloraOutcome(jobId: string, outcome: "accepted" | "rejected") {
@@ -391,8 +559,14 @@ export async function previewVeiloraOutcome(jobId: string, outcome: "accepted" |
     payloadHash: context.payloadHash,
     action: context.action,
     nonce: context.nonce.toString(),
-    payouts: context.payouts.map((payout) => ({ recipient: payout.recipient, amount: payout.amount.toString() })),
-    typedData: { ...context.typedData, message: { ...context.typedData.message, nonce: context.nonce.toString() } },
+    payouts: context.payouts.map((payout) => ({
+      recipient: payout.recipient,
+      amount: payout.amount.toString(),
+    })),
+    typedData: {
+      ...context.typedData,
+      message: { ...context.typedData.message, nonce: context.nonce.toString() },
+    },
   };
 }
 
@@ -403,29 +577,73 @@ export async function settleVeiloraOutcome(input: {
   evaluatorSignature: Hex;
 }) {
   const context = await outcomeContext(input.jobId, input.outcome);
-  const signerAddress = await recoverAddress({ hash: context.digest, signature: input.evaluatorSignature });
-  if (signerAddress.toLowerCase() !== input.evaluatorAddress.toLowerCase() || signerAddress.toLowerCase() !== context.terms.evaluator.toLowerCase())
-    throw new ApiError(422, "invalid_evaluator_signature", "The outcome signature must come from the assigned evaluator.");
+  const signerAddress = await recoverAddress({
+    hash: context.digest,
+    signature: input.evaluatorSignature,
+  });
+  if (
+    signerAddress.toLowerCase() !== input.evaluatorAddress.toLowerCase() ||
+    signerAddress.toLowerCase() !== context.terms.evaluator.toLowerCase()
+  )
+    throw new ApiError(
+      422,
+      "invalid_evaluator_signature",
+      "The outcome signature must come from the assigned evaluator.",
+    );
   if (!env.LIEGE_ESCROW_SIGNER_PRIVATE_KEY)
-    throw new ApiError(503, "veilora_signer_unavailable", "The Liege threshold signer is not configured.");
+    throw new ApiError(
+      503,
+      "veilora_signer_unavailable",
+      "The Liege threshold signer is not configured.",
+    );
   const account = privateKeyToAccount(env.LIEGE_ESCROW_SIGNER_PRIVATE_KEY as Hex);
   if (account.address.toLowerCase() !== context.terms.liegeSigner.toLowerCase())
-    throw new ApiError(503, "veilora_signer_mismatch", "The configured Liege signer does not match the immutable job terms.");
+    throw new ApiError(
+      503,
+      "veilora_signer_mismatch",
+      "The configured Liege signer does not match the immutable job terms.",
+    );
   const liegeSignature = await account.sign({ hash: context.digest });
   const walletClient = createWalletClient({ account, chain, transport: http(env.RHC_RPC_URL) });
-  const txHash = input.outcome === "accepted"
-    ? await walletClient.writeContract({ address: context.escrowAddress, abi: escrowAbi, functionName: "release", args: [context.payouts, [input.evaluatorSignature, liegeSignature]] })
-    : await walletClient.writeContract({ address: context.escrowAddress, abi: escrowAbi, functionName: "refund", args: [[input.evaluatorSignature, liegeSignature]] });
-  const receipt = await client.waitForTransactionReceipt({ hash: txHash, confirmations: env.ESCROW_CONFIRMATIONS });
-  if (receipt.status !== "success") throw new ApiError(422, "veilora_settlement_failed", "The escrow rejected the signed outcome.");
+  const txHash =
+    input.outcome === "accepted"
+      ? await walletClient.writeContract({
+          address: context.escrowAddress,
+          abi: escrowAbi,
+          functionName: "release",
+          args: [context.payouts, [input.evaluatorSignature, liegeSignature]],
+        })
+      : await walletClient.writeContract({
+          address: context.escrowAddress,
+          abi: escrowAbi,
+          functionName: "refund",
+          args: [[input.evaluatorSignature, liegeSignature]],
+        });
+  const receipt = await client.waitForTransactionReceipt({
+    hash: txHash,
+    confirmations: env.ESCROW_CONFIRMATIONS,
+  });
+  if (receipt.status !== "success")
+    throw new ApiError(422, "veilora_settlement_failed", "The escrow rejected the signed outcome.");
   const expectedOutcome = input.outcome === "accepted" ? RELEASE_OUTCOME : REFUND_OUTCOME;
   const closedEvent = receipt.logs.some((log) => {
     if (log.address.toLowerCase() !== context.escrowAddress.toLowerCase()) return false;
     try {
       const event = decodeEventLog({ abi: escrowAbi, data: log.data, topics: log.topics });
-      return event.eventName === "EscrowClosed" && event.args.jobId.toLowerCase() === context.terms.jobId.toLowerCase() && event.args.outcome.toLowerCase() === expectedOutcome.toLowerCase();
-    } catch { return false; }
+      return (
+        event.eventName === "EscrowClosed" &&
+        event.args.jobId.toLowerCase() === context.terms.jobId.toLowerCase() &&
+        event.args.outcome.toLowerCase() === expectedOutcome.toLowerCase()
+      );
+    } catch {
+      return false;
+    }
   });
-  if (!closedEvent) throw new ApiError(422, "veilora_settlement_unverified", "The transaction did not close this job escrow with the expected outcome.");
+  if (!closedEvent)
+    throw new ApiError(
+      422,
+      "veilora_settlement_unverified",
+      "The transaction did not close this job escrow with the expected outcome.",
+    );
   return { txHash, digest: context.digest };
 }
