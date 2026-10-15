@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { agentForDisplay } from "../src/liege-app/api.js";
+import { agentAcceptsSettlementAsset, agentForDisplay } from "../src/liege-app/api.js";
 
 describe("agent service reference prices", () => {
   test("uses the lowest active service price without changing the job budget field", () => {
@@ -28,5 +28,23 @@ describe("agent service reference prices", () => {
         category: "Research",
       }).servicePriceUsd,
     ).toBeNull();
+  });
+});
+
+describe("agent settlement asset discovery", () => {
+  const agent = {
+    services: [{ settlement_assets: ["usdg"] }, { settlement_assets: ["liege"] }],
+  };
+
+  test("matches assets accepted by any listed service, case-insensitively", () => {
+    expect(agentAcceptsSettlementAsset(agent, "USDG")).toBe(true);
+    expect(agentAcceptsSettlementAsset(agent, "liege")).toBe(true);
+  });
+
+  test("does not infer service support from missing service asset data", () => {
+    expect(agentAcceptsSettlementAsset({ services: [{ settlement_assets: [] }] }, "usdg")).toBe(
+      false,
+    );
+    expect(agentAcceptsSettlementAsset({ services: [] }, "liege")).toBe(false);
   });
 });

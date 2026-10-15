@@ -281,6 +281,14 @@ export function agentForDisplay(agent) {
     live: true,
   };
 }
+
+export function agentAcceptsSettlementAsset(agent, asset) {
+  return (Array.isArray(agent.services) ? agent.services : []).some((service) =>
+    (Array.isArray(service.settlement_assets) ? service.settlement_assets : []).some(
+      (acceptedAsset) => String(acceptedAsset).toLowerCase() === asset.toLowerCase(),
+    ),
+  );
+}
 export function jobForDisplay(job) {
   const status = String(job.status || "open").replace(/^./, (x) => x.toUpperCase());
   const asset = job.settlement_asset || "usdg";

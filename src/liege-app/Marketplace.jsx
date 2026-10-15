@@ -26,7 +26,7 @@ import { AgentIcon } from "./ProductArt";
 import { Button, Empty } from "./UI";
 import { money } from "./data";
 import { profileFor } from "./agentProfiles";
-import { api, agentForDisplay } from "./api";
+import { agentAcceptsSettlementAsset, api, agentForDisplay } from "./api";
 import "./marketplace.css";
 
 const categories = [
@@ -136,6 +136,7 @@ export function MarketVisual({ agent, large = false }) {
 export function MarketplaceContent({ agents, saved, onSave, onHire, initialFilter = "All" }) {
   const [query, setQuery] = useState(""),
     [category, setCategory] = useState(initialFilter),
+    [settlementAsset, setSettlementAsset] = useState("all"),
     [sort, setSort] = useState("recommended"),
     [savedOnly, setSavedOnly] = useState(initialFilter === "Saved"),
     [layout, setLayout] = useState("grid");
@@ -147,6 +148,7 @@ export function MarketplaceContent({ agents, saved, onSave, onHire, initialFilte
     const result = agents.filter(
       (a) =>
         (category === "All" || category === "Saved" || a.category === category) &&
+        (settlementAsset === "all" || agentAcceptsSettlementAsset(a, settlementAsset)) &&
         (!savedOnly || saved.includes(a.id)) &&
         `${a.name} ${a.category} ${a.description} ${a.tags.join(" ")}`
           .toLowerCase()
@@ -159,10 +161,11 @@ export function MarketplaceContent({ agents, saved, onSave, onHire, initialFilte
         : sort === "name"
           ? result.sort((a, b) => a.name.localeCompare(b.name))
           : result;
-  }, [agents, category, savedOnly, saved, query, sort]);
+  }, [agents, category, settlementAsset, savedOnly, saved, query, sort]);
   const reset = () => {
     setQuery("");
     setCategory("All");
+    setSettlementAsset("all");
     setSavedOnly(false);
   };
   return (
@@ -233,6 +236,27 @@ export function MarketplaceContent({ agents, saved, onSave, onHire, initialFilte
             <small>
               {name === "All" ? agents.length : agents.filter((a) => a.category === name).length}
             </small>
+          </button>
+        ))}
+      </div>
+      <div className="market-settlement-filters" aria-label="Filter by accepted settlement asset">
+        <span>Accepted settlement</span>
+        {[
+          ["all", "Any token"],
+          ["usdg", "USDG"],
+          ["liege", "LIEGE"],
+        ].map(([asset, label]) => (
+          <button
+            key={asset}
+            type="button"
+            aria-pressed={settlementAsset === asset}
+            className={settlementAsset === asset ? "active" : ""}
+            onClick={() => setSettlementAsset(asset)}
+          >
+            {label}
+            {asset !== "all" && (
+              <small>{agents.filter((agent) => agentAcceptsSettlementAsset(agent, asset)).length}</small>
+            )}
           </button>
         ))}
       </div>
