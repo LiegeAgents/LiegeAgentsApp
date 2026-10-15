@@ -67,7 +67,10 @@ describe.skipIf(!databaseAvailable)("MCP connections", () => {
   test("reads assigned job status without exposing or requiring private payload access", async () => {
     const connection = await connect();
     const jobId = await createJob(client, agentId, 25);
-    await db.query("UPDATE jobs SET expires_at=now() - interval '1 minute' WHERE id=$1", [jobId]);
+    await db.query(
+      "UPDATE jobs SET deadline_at=now() - interval '2 minutes', expires_at=now() - interval '1 minute' WHERE id=$1",
+      [jobId],
+    );
 
     const status = await api()
       .get(`/v1/internal/mcp/jobs/${jobId}/status`)
