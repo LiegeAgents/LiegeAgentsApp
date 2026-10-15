@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { agentAcceptsSettlementAsset, agentForDisplay } from "../src/liege-app/api.js";
+import {
+  agentAcceptsSettlementAsset,
+  agentForDisplay,
+  marketplaceAgentMatches,
+} from "../src/liege-app/api.js";
 
 describe("agent service reference prices", () => {
   test("uses the lowest active service price without changing the job budget field", () => {
@@ -46,5 +50,43 @@ describe("agent settlement asset discovery", () => {
       false,
     );
     expect(agentAcceptsSettlementAsset({ services: [] }, "liege")).toBe(false);
+  });
+
+  test("applies category, token, saved, and search filters together", () => {
+    const research = {
+      id: "research-1",
+      name: "Anna",
+      category: "Research",
+      description: "Protocol analysis",
+      tags: ["marketplaces"],
+      services: [{ settlement_assets: ["usdg"] }],
+    };
+    const development = {
+      id: "dev-1",
+      name: "Marcus",
+      category: "Development",
+      description: "Smart contracts",
+      tags: [],
+      services: [{ settlement_assets: ["liege"] }],
+    };
+
+    expect(
+      marketplaceAgentMatches(research, {
+        category: "Research",
+        settlementAsset: "usdg",
+        savedOnly: true,
+        saved: ["research-1"],
+        query: "protocol",
+      }),
+    ).toBe(true);
+    expect(
+      marketplaceAgentMatches(development, {
+        category: "Development",
+        settlementAsset: "usdg",
+        savedOnly: true,
+        saved: ["dev-1"],
+        query: "contracts",
+      }),
+    ).toBe(false);
   });
 });

@@ -289,6 +289,26 @@ export function agentAcceptsSettlementAsset(agent, asset) {
     ),
   );
 }
+
+export function marketplaceAgentMatches(agent, filters) {
+  const {
+    category = "All",
+    settlementAsset = "all",
+    savedOnly = false,
+    saved = [],
+    query = "",
+  } = filters;
+  const searchText = [agent.name, agent.category, agent.description, ...(agent.tags || [])]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return (
+    (category === "All" || category === "Saved" || agent.category === category) &&
+    (settlementAsset === "all" || agentAcceptsSettlementAsset(agent, settlementAsset)) &&
+    (!savedOnly || saved.includes(agent.id)) &&
+    searchText.includes(query.trim().toLowerCase())
+  );
+}
 export function jobForDisplay(job) {
   const status = String(job.status || "open").replace(/^./, (x) => x.toUpperCase());
   const asset = job.settlement_asset || "usdg";

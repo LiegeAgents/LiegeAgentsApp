@@ -26,7 +26,7 @@ import { AgentIcon } from "./ProductArt";
 import { Button, Empty } from "./UI";
 import { money } from "./data";
 import { profileFor } from "./agentProfiles";
-import { agentAcceptsSettlementAsset, api, agentForDisplay } from "./api";
+import { api, agentForDisplay, marketplaceAgentMatches } from "./api";
 import "./marketplace.css";
 
 const categories = [
@@ -145,14 +145,8 @@ export function MarketplaceContent({ agents, saved, onSave, onHire, initialFilte
     setSavedOnly(initialFilter === "Saved");
   }, [initialFilter]);
   const filtered = useMemo(() => {
-    const result = agents.filter(
-      (a) =>
-        (category === "All" || category === "Saved" || a.category === category) &&
-        (settlementAsset === "all" || agentAcceptsSettlementAsset(a, settlementAsset)) &&
-        (!savedOnly || saved.includes(a.id)) &&
-        `${a.name} ${a.category} ${a.description} ${a.tags.join(" ")}`
-          .toLowerCase()
-          .includes(query.toLowerCase()),
+    const result = agents.filter((agent) =>
+      marketplaceAgentMatches(agent, { category, settlementAsset, savedOnly, saved, query }),
     );
     return sort === "low"
       ? result.sort((a, b) => (a.servicePriceUsd ?? Infinity) - (b.servicePriceUsd ?? Infinity))
@@ -224,20 +218,29 @@ export function MarketplaceContent({ agents, saved, onSave, onHire, initialFilte
         </button>
       </div>
       <div className="market-categories" aria-label="Agent categories">
-        {categories.map(([name, Icon]) => (
-          <button
-            key={name}
-            onClick={() => setCategory(name)}
-            aria-pressed={category === name}
-            className={category === name ? "active" : ""}
-          >
-            <Icon size={15} />
-            {name}
-            <small>
-              {name === "All" ? agents.length : agents.filter((a) => a.category === name).length}
-            </small>
-          </button>
-        ))}
+        {categories.map(([name, Icon]) => {
+          const count = agents.filter((agent) =>
+            marketplaceAgentMatches(agent, {
+              category: name,
+              settlementAsset,
+              savedOnly,
+              saved,
+              query,
+            }),
+          ).length;
+          return (
+            <button
+              key={name}
+              onClick={() => setCategory(name)}
+              aria-pressed={category === name}
+              className={category === name ? "active" : ""}
+            >
+              <Icon size={15} />
+              {name}
+              <small>{count}</small>
+            </button>
+          );
+        })}
       </div>
       <div className="market-settlement-filters" aria-label="Filter by accepted settlement asset">
         <span>Accepted settlement</span>
@@ -255,10 +258,27 @@ export function MarketplaceContent({ agents, saved, onSave, onHire, initialFilte
           >
             {label}
             {asset !== "all" && (
-              <small>{agents.filter((agent) => agentAcceptsSettlementAsset(agent, asset)).length}</small>
+              <small>
+                {
+                  agents.filter((agent) =>
+                    marketplaceAgentMatches(agent, {
+                      category,
+                      settlementAsset: asset,
+                      savedOnly,
+                      saved,
+                      query,
+                    }),
+                  ).length
+                }
+              </small>
             )}
           </button>
         ))}
+        {(category !== "All" || settlementAsset !== "all" || savedOnly || query.trim()) && (
+          <button type="button" className="market-filter-reset" onClick={reset}>
+            Clear filters
+          </button>
+        )}
       </div>
       <div className="market-results-heading">
         <div>
