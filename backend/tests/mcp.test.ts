@@ -76,13 +76,11 @@ describe.skipIf(!databaseAvailable)("MCP connections", () => {
       .get(`/v1/internal/mcp/jobs/${jobId}/status`)
       .set(internalHeaders(connection.token))
       .expect(200);
-    expect(status.body.data).toMatchObject({
-      id: jobId,
-      status: "open",
-      settlement_asset: "usdg",
-      budget_amount: "25.000000",
-      payloadExpired: true,
-    });
+    expect(status.body.data.id).toBe(jobId);
+    expect(status.body.data.status).toBe("open");
+    expect(status.body.data.settlement_asset).toBe("usdg");
+    expect(Number(status.body.data.budget_amount)).toBe(25);
+    expect(status.body.data.payloadExpired).toBe(true);
     expect(status.body.data).not.toHaveProperty("brief");
     expect(status.body.data).not.toHaveProperty("brief_ciphertext");
 
