@@ -82,8 +82,11 @@ describe.skipIf(!databaseAvailable)("recurring Super Agent jobs", () => {
       "self_hire_not_allowed",
     );
     expect(
-      (await schedule(client, { ...base(agentId), budgetAmount: 50, spendCap: 100 }).expect(422))
-        .body.error.code,
+      (
+        await schedule(client, { ...base(agentId), budgetAmount: 5000, spendCap: 10000 }).expect(
+          422,
+        )
+      ).body.error.code,
     ).toBe("self_evaluation_limit");
     await schedule(client, { ...base(agentId), spendCap: 4 }).expect(400);
     await schedule(client, { ...base(agentId), settlementAsset: "liege" }).expect(404);

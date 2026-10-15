@@ -97,10 +97,10 @@ describe.skipIf(!databaseAvailable)("Super Agent quotes", () => {
   });
 
   test("no suggestion when the listed price needs an independent evaluator", async () => {
-    const { client } = await fixture(60);
+    const { client } = await fixture(6000);
     const { body } = await parse(client, "Hire Research Agent for a market scan");
     expect(body.data.quote).toMatchObject({
-      listedPriceUsd: 60,
+      listedPriceUsd: 6000,
       suggestedBudget: null,
       budget: null,
     });
