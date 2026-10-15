@@ -257,6 +257,45 @@ class InvoiceRefund:
 
 
 @dataclass(frozen=True)
+class McpJobStatus:
+    id: str
+    public_id: str
+    title: str
+    kind: str
+    status: str
+    settlement_asset: SettlementAsset
+    budget_amount: str
+    budget_usdg: str
+    deadline_at: str
+    expires_at: str
+    funded_at: str | None
+    submitted_at: str | None
+    settled_at: str | None
+    updated_at: str
+    payload_expired: bool
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "McpJobStatus":
+        return cls(
+            id=str(value["id"]),
+            public_id=str(value.get("public_id", value.get("publicId", ""))),
+            title=str(value.get("title", "")),
+            kind=str(value.get("kind", "standard")),
+            status=str(value.get("status", "")),
+            settlement_asset=value.get("settlement_asset", value.get("settlementAsset", "usdg")),
+            budget_amount=str(value.get("budget_amount", value.get("budgetAmount", "0"))),
+            budget_usdg=str(value.get("budget_usdg", value.get("budgetUsdg", "0"))),
+            deadline_at=str(value.get("deadline_at", value.get("deadlineAt", ""))),
+            expires_at=str(value.get("expires_at", value.get("expiresAt", ""))),
+            funded_at=value.get("funded_at", value.get("fundedAt")),
+            submitted_at=value.get("submitted_at", value.get("submittedAt")),
+            settled_at=value.get("settled_at", value.get("settledAt")),
+            updated_at=str(value.get("updated_at", value.get("updatedAt", ""))),
+            payload_expired=bool(value.get("payloadExpired", value.get("payload_expired", False))),
+        )
+
+
+@dataclass(frozen=True)
 class Invoice:
     id: str
     public_id: str

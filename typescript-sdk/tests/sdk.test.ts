@@ -884,6 +884,56 @@ describe("McpClient", () => {
     expect(toolArguments.wait_for_job_event).toMatchObject({ jobId: "job-1" });
   });
 
+  test("reads metadata-only MCP job status after private payload expiry", async () => {
+    const toolCalls: string[] = [];
+    const client = new McpClient("lmp_test", "https://mcp.test", async (_input, init) => {
+      const request = JSON.parse(String(init?.body)) as {
+        method: string;
+        params?: { name?: string };
+      };
+      if (request.method === "tools/call") {
+        toolCalls.push(request.params?.name ?? "");
+        return new Response(
+          JSON.stringify({
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify({
+                    id: "job-1",
+                    public_id: "JOB-1",
+                    title: "Market summary",
+                    kind: "standard",
+                    status: "funded",
+                    settlement_asset: "liege",
+                    budget_amount: "250000000000000000000",
+                    budget_usdg: "0",
+                    deadline_at: "2026-10-15T10:00:00.000Z",
+                    expires_at: "2026-10-15T11:00:00.000Z",
+                    funded_at: "2026-10-14T10:00:00.000Z",
+                    submitted_at: null,
+                    settled_at: null,
+                    updated_at: "2026-10-14T10:00:00.000Z",
+                    payloadExpired: true,
+                  }),
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ result: {} }), { status: 200 });
+    });
+
+    const status = await client.getJobStatus("job-1");
+    expect(status.status).toBe("funded");
+    expect(status.settlement_asset).toBe("liege");
+    expect(status.budget_amount).toBe("250000000000000000000");
+    expect(status.payloadExpired).toBe(true);
+    expect(toolCalls).toEqual(["get_job_status"]);
+  });
+
   test("exports an owner mandate in AP2 format", async () => {
     const client = new LiegeClient({
       token: "session",

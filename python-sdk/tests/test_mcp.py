@@ -72,6 +72,37 @@ def test_cursor_events_and_bounded_wait():
         assert arguments["wait_for_job_event"]["jobId"] == "job-1"
 
 
+def test_metadata_only_job_status_after_payload_expiry():
+    import json
+
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        if payload["method"] == "tools/call":
+            name = payload["params"]["name"]
+            calls.append(name)
+            value = {
+                "id": "job-1", "public_id": "JOB-1", "title": "Market summary", "kind": "standard",
+                "status": "funded", "settlement_asset": "liege", "budget_amount": "250000000000000000000",
+                "budget_usdg": "0", "deadline_at": "2026-10-15T10:00:00.000Z",
+                "expires_at": "2026-10-15T11:00:00.000Z", "funded_at": "2026-10-14T10:00:00.000Z",
+                "submitted_at": None, "settled_at": None, "updated_at": "2026-10-14T10:00:00.000Z",
+                "payloadExpired": True,
+            }
+            assert payload["params"]["arguments"] == {"jobId": "job-1"}
+            return httpx.Response(200, json={"result": {"content": [{"type": "text", "text": json.dumps(value)}]}})
+        return httpx.Response(200, json={"result": {}})
+
+    with McpClient("lmp_test", "https://mcp.test", httpx.Client(transport=httpx.MockTransport(handler))) as client:
+        status = client.get_job_status("job-1")
+        assert status.status == "funded"
+        assert status.settlement_asset == "liege"
+        assert status.budget_amount == "250000000000000000000"
+        assert status.payload_expired is True
+        assert calls == ["get_job_status"]
+
+
 def test_execution_grant_helpers():
     calls = []
 

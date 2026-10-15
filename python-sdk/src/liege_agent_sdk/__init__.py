@@ -19,6 +19,7 @@ from .models import (
     McpEvent,
     McpEventPage,
     McpEventWait,
+    McpJobStatus,
     McpExecutionGrant,
     McpProposal,
     Receipt,
@@ -57,6 +58,7 @@ __all__ = [
     "McpEvent",
     "McpEventPage",
     "McpEventWait",
+    "McpJobStatus",
     "McpExecutionGrant",
     "McpHarnessPreset",
     "McpHarnessPresetsResponse",
@@ -88,4 +90,4 @@ __all__ = [
     "SuperAgentScheduleRun",
     "SuperAgentScheduleSource",
 ]
-__version__ = "0.1.14"
+__version__ = "0.1.15"

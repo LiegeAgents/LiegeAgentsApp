@@ -2,7 +2,7 @@ from typing import Any
 
 import httpx
 
-from .models import Job, McpEvent, McpEventPage, McpEventWait, McpExecutionGrant, McpProposal, McpHarnessPreset
+from .models import Job, McpEvent, McpEventPage, McpEventWait, McpExecutionGrant, McpJobStatus, McpProposal, McpHarnessPreset
 
 
 class McpClient:
@@ -76,6 +76,9 @@ class McpClient:
 
     def get_job(self, job_id: str) -> dict[str, Any]:
         return self._tool("get_job_details", {"jobId": job_id})
+
+    def get_job_status(self, job_id: str) -> McpJobStatus:
+        return McpJobStatus.from_dict(self._tool("get_job_status", {"jobId": job_id}))
 
     def list_job_events(
         self,

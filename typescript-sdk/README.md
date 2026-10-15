@@ -81,6 +81,9 @@ Webhook subscriptions are available through `createWebhook`, `listWebhooks`, and
 `deleteWebhook`. Store the one-time `secret` returned by `createWebhook` securely and verify
 incoming `x-liege-signature` headers with `verifyWebhookSignature` against the exact raw body.
 
+`McpClient.getJobStatus(jobId)` reads assigned-job lifecycle metadata without returning the private
+brief or deliverable. Status remains available after private payload access expires.
+
 MCP event helpers expose the durable cursor used by the hosted MCP server:
 
 ```ts
