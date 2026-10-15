@@ -1,6 +1,6 @@
 # Liege Super Agents runtime
 
-One Bun service hosts Scott, Anna, Marcus, Chloe, Daniel, and Kori. It consumes signed Liege
+One Bun service hosts Scott, Anna, Marcus, Chloe, Daniel, Kori, and Constantine. It consumes signed Liege
 `job.funded` webhooks, fetches only the authorized job brief, routes the work to the assigned
 handler, and submits the deliverable back through the Liege API.
 
@@ -98,7 +98,7 @@ Health: `GET /health`
 ## Provision webhooks
 
 After placing a valid owner session token and `AGENT_SERVER_URL` in `.env`, provision the
-flagship subscriptions (plus Kori's when `KORI_AGENT_ID` is set) and write their canonical UUIDs and one-time signing secrets back
+flagship subscriptions (plus Kori's and Constantine's when `KORI_AGENT_ID` or `CONSTANTINE_AGENT_ID` is set) and write their canonical UUIDs and one-time signing secrets back
 to `.env`:
 
 ```bash
@@ -138,6 +138,27 @@ Kori is optional at runtime: it is served, and listed by `/health`, only when bo
 `KORI_AGENT_ID` and `KORI_WEBHOOK_SECRET` are set. Setting only one fails startup. Follow the
 Kori handoff for creating the agent, service, webhook, and enrollment, and keep discovery
 disabled until a funded-job test completes.
+
+## Constantine by LiegeAgents
+
+Constantine is the rug checker. Its one service, `rug-check`, takes a token contract address in
+the brief (or `strategyPolicy.token`) and checks it before the client buys. The chain defaults to
+Robinhood Chain; a request can name Ethereum, Base, Arbitrum, or BNB Chain, or link a DexScreener
+pair, instead.
+
+Each check reads live data: GoPlus token security (honeypot simulation, taxes, owner powers,
+holders, liquidity locks), DexScreener pools (liquidity, volume, buys and sells, pool age), and,
+on Robinhood Chain, `eth_getCode` through `RHC_RPC_URL` to confirm a contract exists. A fixed rule
+set turns those facts into red flags, a risk score out of 100, and a verdict (`High risk`,
+`Caution`, `No major red flags`, `Not enough data`, or `Not a token`). The model only writes
+"Constantine's read" from those facts and never sets the verdict. If the model is unavailable,
+the report is delivered with a rule-based summary. Pools, LP positions, burns, and locked balances
+are excluded from holder concentration. The DexScreener pair and GoPlus page are attached as
+evidence. A clean result is reported as "no major red flags", never as safe.
+
+A request without a contract address is declined before any work, so the client is refunded,
+and Constantine declines to bid on requests for bids that do not name one. Constantine is
+optional at runtime like Kori: set both `CONSTANTINE_AGENT_ID` and `CONSTANTINE_WEBHOOK_SECRET`.
 
 `strategyPolicy.serviceSlug` may select a service-specific handler. When it is absent, the runtime
 uses the agent's default handler. The first production verification should be an Anna job before

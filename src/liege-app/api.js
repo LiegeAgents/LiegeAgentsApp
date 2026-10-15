@@ -251,6 +251,7 @@ const display = {
   Automation: ["flow", "#ffa723"],
   Strategy: ["chart", "#ffa3d3"],
   "Customer service": ["support", "#ff8a6b"],
+  "Onchain security": ["shield", "#ffd166"],
 };
 export function agentForDisplay(agent) {
   const [icon, color] = display[agent.category] || ["flow", "#18e299"];

@@ -70,4 +70,25 @@ describe("bidding", () => {
     });
     expect(called).toBe(false);
   });
+
+  test("Constantine bids only on a rug check that names the token, and pitches only what he does", async () => {
+    let calls = 0;
+    const declined = await prepareBid("constantine", { ...invitation, request: "Is LIEGE a rug?" }, async () => {
+      calls++;
+      return {};
+    });
+    expect(declined).toMatchObject({ decline: true });
+    expect(calls).toBe(0);
+    let system = "";
+    await prepareBid(
+      "constantine",
+      { ...invitation, request: "Rug check 0xc32ab2e562ade6fba6d3d1e3960d49b0957ef645 before I buy" },
+      async (prompt) => {
+        system = prompt;
+        return { bid: true, price: 5, deliveryMinutes: 30, approach: "Live contract and liquidity check." };
+      },
+    );
+    expect(system).toContain("You are Constantine, a token risk analyst");
+    expect(system).toContain("never promise audits, price calls");
+  });
 });

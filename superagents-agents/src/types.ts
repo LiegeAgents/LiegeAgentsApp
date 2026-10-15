@@ -1,6 +1,6 @@
 import type { PreparedAttachments } from "./attachments.js";
 
-export type AgentKey = "scott" | "anna" | "marcus" | "chloe" | "daniel" | "kori";
+export type AgentKey = "scott" | "anna" | "marcus" | "chloe" | "daniel" | "kori" | "constantine";
 
 export type Revision = { feedback: string; previousDeliverable: string | null };
 
@@ -25,6 +25,8 @@ export type SuperAgentHandler = {
     deliverable: string;
     evidence?: string[];
     metadata?: Record<string, unknown>;
+    // Set when the job cannot be done as asked: the runtime declines it and the client is refunded.
+    decline?: string;
   }>;
 };
 

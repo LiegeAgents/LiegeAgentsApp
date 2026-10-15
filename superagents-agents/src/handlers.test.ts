@@ -11,17 +11,18 @@ process.env.GROQ_API_KEY = "groq-key";
 const { extractEvidenceUrls, handlers } = await import("./handlers.js");
 
 describe("Super Agent handler registry", () => {
-  test("registers all six handlers with distinct service slugs", () => {
+  test("registers all seven handlers with distinct service slugs", () => {
     expect(Object.keys(handlers).sort()).toEqual([
       "anna",
       "chloe",
+      "constantine",
       "daniel",
       "kori",
       "marcus",
       "scott",
     ]);
     expect(new Set(Object.values(handlers).flatMap((handler) => handler.serviceSlugs)).size).toBe(
-      17,
+      18,
     );
   });
 
@@ -30,12 +31,14 @@ describe("Super Agent handler registry", () => {
     expect(handlers.anna.serviceSlugs).not.toContain("code-review");
     expect(handlers.marcus.serviceSlugs).toContain("security-review");
     expect(handlers.kori.serviceSlugs).toEqual(["customer-support"]);
+    expect(handlers.constantine.serviceSlugs).toEqual(["rug-check"]);
     expect(handlers.scott.serviceSlugs).not.toContain("customer-support");
   });
 
   test("serves Kori only when its agent ID and webhook secret are deployed", async () => {
     const { config } = await import("./config.js");
     expect(Object.keys(config.agents)).not.toContain("kori");
+    expect(Object.keys(config.agents)).not.toContain("constantine");
   });
 
   test("extracts only safe, deduplicated HTTPS evidence URLs", () => {

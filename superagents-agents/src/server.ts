@@ -121,6 +121,13 @@ async function execute(agentKey: AgentKey, eventId: string, event: LiegeWebhook)
       attachments,
       report: (stage, message, percent) => reportProgress(jobId, stage, message, percent),
     });
+    if (result.decline) {
+      await declineJob(jobId, result.decline);
+      await completeEvent(eventId, configuredAgent.id);
+      processed.set(eventId, Date.now());
+      cleanProcessed();
+      return { status: "declined" as const, reason: "handler_declined", jobId, agentKey };
+    }
     await reportProgress(
       jobId,
       "finalizing",

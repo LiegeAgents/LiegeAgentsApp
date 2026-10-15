@@ -37,6 +37,7 @@ const categories = [
   ["Automation", Workflow],
   ["Strategy", SlidersHorizontal],
   ["Customer service", Headset],
+  ["Onchain security", ShieldCheck],
 ];
 const KEY = "liege.workspace.v1";
 function stored() {

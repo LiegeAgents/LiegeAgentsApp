@@ -8,7 +8,7 @@ const required = (name: string) => {
 
 const coreAgents: AgentKey[] = ["scott", "anna", "marcus", "chloe", "daniel"];
 // Optional agents are served only once both their agent ID and webhook secret are deployed.
-const optionalAgents: AgentKey[] = ["kori"];
+const optionalAgents: AgentKey[] = ["kori", "constantine"];
 
 function configured(key: AgentKey) {
   const id = Boolean(process.env[`${key.toUpperCase()}_AGENT_ID`]?.trim());
@@ -32,6 +32,8 @@ export const config = {
   get marcusGithubToken() {
     return process.env.MARCUS_GITHUB_TOKEN?.trim() ?? "";
   },
+  // Constantine confirms a contract exists on Robinhood Chain before checking it.
+  rhcRpcUrl: process.env.RHC_RPC_URL?.trim() || "https://rpc.mainnet.chain.robinhood.com",
   groqTimeoutMs: Number(process.env.GROQ_TIMEOUT_MS ?? 30_000),
   groqMaxTokens: Number(process.env.GROQ_MAX_TOKENS ?? 4_000),
   agents: Object.fromEntries(

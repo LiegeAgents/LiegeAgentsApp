@@ -4664,6 +4664,7 @@ function LaunchForm({ token, onSave }) {
                 "Automation",
                 "Strategy",
                 "Customer service",
+                "Onchain security",
               ].map((x) => (
                 <option key={x}>{x}</option>
               ))}

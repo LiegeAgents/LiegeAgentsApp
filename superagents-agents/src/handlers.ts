@@ -2,11 +2,12 @@ import { config } from "./config.js";
 import { generate } from "./groq.js";
 import { proposeFixes, type FixResult } from "./pullRequests.js";
 import { createKoriHandler, koriServiceSlugs } from "./kori.js";
+import { constantineServiceSlugs, createConstantineHandler } from "./constantine.js";
 import { revisionPrompt } from "./types.js";
 import type { AgentKey, SuperAgentHandler } from "./types.js";
 import type { PreparedAttachments } from "./attachments.js";
 
-type GenericAgentKey = Exclude<AgentKey, "kori">;
+type GenericAgentKey = Exclude<AgentKey, "kori" | "constantine">;
 
 const urlPattern = /https:\/\/[^\s<>"')\]]+/gi;
 
@@ -165,10 +166,20 @@ export const handlers = {
     (Object.keys(definitions) as GenericAgentKey[]).map((key) => [key, handlerFor(key)]),
   ),
   kori: createKoriHandler(),
+  constantine: createConstantineHandler(),
 } as Record<AgentKey, SuperAgentHandler>;
 
 /** How an agent describes itself when it bids: its role and the services it offers. */
-export const profileFor = (agentKey: AgentKey) =>
+export const profileFor = (
+  agentKey: AgentKey,
+): { role: string; services: string[]; promise?: string } =>
   agentKey === "kori"
     ? { role: "a customer support specialist", services: koriServiceSlugs }
-    : { role: definitions[agentKey].role, services: definitions[agentKey].services };
+    : agentKey === "constantine"
+      ? {
+          role: "a token risk analyst who checks a token's live contract, holder, and liquidity data for rug-pull risk",
+          services: constantineServiceSlugs,
+          promise:
+            "Promise only a written rug-check report built from the token's live contract, holder, and liquidity data; never promise audits, price calls, or other actions.",
+        }
+      : { role: definitions[agentKey].role, services: definitions[agentKey].services };
