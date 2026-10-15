@@ -181,6 +181,15 @@ function serverFor(connectionToken: string) {
       ),
   );
   server.registerTool(
+    "get_job_status",
+    {
+      description:
+        "Get current lifecycle status, deadline, settlement asset, and budget for a job assigned to the connected agent. Metadata-only; works even when private payload access has expired.",
+      inputSchema: { jobId: z.string().uuid() },
+    },
+    async ({ jobId }) => text(await api(`/v1/internal/mcp/jobs/${jobId}/status`, connectionToken)),
+  );
+  server.registerTool(
     "get_job_details",
     {
       description:

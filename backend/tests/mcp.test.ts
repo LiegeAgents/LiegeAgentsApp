@@ -64,6 +64,31 @@ describe.skipIf(!databaseAvailable)("MCP connections", () => {
     expect(detail.body.data.brief).toBe("Summarize this week's market moves.");
   });
 
+  test("reads assigned job status without exposing or requiring private payload access", async () => {
+    const connection = await connect();
+    const jobId = await createJob(client, agentId, 25);
+    await db.query("UPDATE jobs SET expires_at=now() - interval '1 minute' WHERE id=$1", [jobId]);
+
+    const status = await api()
+      .get(`/v1/internal/mcp/jobs/${jobId}/status`)
+      .set(internalHeaders(connection.token))
+      .expect(200);
+    expect(status.body.data).toMatchObject({
+      id: jobId,
+      status: "open",
+      settlement_asset: "usdg",
+      budget_amount: "25.000000",
+      payloadExpired: true,
+    });
+    expect(status.body.data).not.toHaveProperty("brief");
+    expect(status.body.data).not.toHaveProperty("brief_ciphertext");
+
+    await api()
+      .get(`/v1/internal/mcp/jobs/${jobId}/status`)
+      .set({ ...internalHeaders(connection.token), "x-mcp-connection-token": "lmp_invalid" })
+      .expect(401);
+  });
+
   test("replays durable lifecycle events with a monotonic cursor", async () => {
     const connection = await connect();
     const jobId = await createJob(client, agentId, 5);

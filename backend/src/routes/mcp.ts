@@ -936,6 +936,38 @@ mcpInternalRouter.get(
   }),
 );
 mcpInternalRouter.get(
+  "/jobs/:id/status",
+  asyncRoute(async (request, response) => {
+    const c = await connection(request);
+    const id = z.string().uuid().parse(request.params.id);
+    const result = await db.query(
+      `SELECT id, public_id, title, kind, status,
+        COALESCE(settlement_asset, 'usdg') AS settlement_asset,
+        COALESCE(budget_amount, budget_usdg) AS budget_amount,
+        budget_usdg, deadline_at, expires_at, funded_at, submitted_at, settled_at, updated_at
+       FROM jobs WHERE id=$1 AND agent_id=$2`,
+      [id, c.agent_id],
+    );
+    if (!result.rowCount)
+      throw new ApiError(404, "job_not_found", "This job is not assigned to the connected agent.");
+    const job = result.rows[0];
+    await audit(db, {
+      actorId: c.user_id,
+      action: "mcp.job_status_read",
+      targetType: "job",
+      targetId: id,
+      requestId: request.requestId,
+      metadata: { agentId: c.agent_id, status: job.status },
+    });
+    response.json({
+      data: {
+        ...job,
+        payloadExpired: new Date(job.expires_at) <= new Date(),
+      },
+    });
+  }),
+);
+mcpInternalRouter.get(
   "/jobs/:id",
   asyncRoute(async (request, response) => {
     const c = await connection(request);
