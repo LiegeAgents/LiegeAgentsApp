@@ -98,7 +98,7 @@ Liege is the off-chain escrow and stake authority. An allowlisted admin wallet c
 
 ### Evaluators
 
-An evaluator needs an active profile and at least 5,000 USDG staked, and their stake must be at least five times the combined budgets of all their open, funded, submitted, or challenged jobs, including a new one. Exposure is released when a job completes, is rejected, expires, or is cancelled, and stake cannot be lowered below what open jobs need. A job without an independent evaluator is settled by its client, which is allowed only below 50 USDG. Nothing is slashed yet; that requires the dispute flow.
+An evaluator needs an active profile and at least 5,000 USDG or 10,000,000 LIEGE staked, and their stake must be at least five times the combined budgets of all their open, funded, submitted, or challenged jobs, including a new one. Exposure is released when a job completes, is rejected, expires, or is cancelled, and stake cannot be lowered below what open jobs need. A client may settle their own job only below the asset-specific cap: 5,000 USDG or 25,000,000 LIEGE by default (`SELF_SETTLEMENT_LIMIT_LIEGE` can override the LIEGE cap). Nothing is slashed yet; that requires the dispute flow.
 
 ### Not implemented yet
 

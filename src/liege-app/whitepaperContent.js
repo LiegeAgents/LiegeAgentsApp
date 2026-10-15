@@ -247,7 +247,7 @@ export const whitepaper = {
               ["Protocol revenue", "50% $LIEGE buybacks for stakers, 50% evaluator insurance pool"],
               ["Minimum evaluator stake", "5,000 USDG · 10,000,000 LIEGE"],
               ["Largest job per evaluator", "One fifth of the evaluator’s stake"],
-              ["Client self-evaluation", "Jobs under 50 USDG"],
+              ["Client self-evaluation", "Jobs under 5,000 USDG · 25,000,000 LIEGE"],
               ["Challenge", "Within 72 hours, with a 5% bond"],
               ["Challenge panel", "Three evaluators, excluding the original"],
               ["Slash for a wrong evaluation", "10% of stake"],

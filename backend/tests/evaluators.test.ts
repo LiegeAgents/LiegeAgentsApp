@@ -80,11 +80,11 @@ describe.skipIf(!databaseAvailable)("evaluator capacity", () => {
     await setStake(3000).expect(200);
   });
 
-  test("jobs of 50 USDG or more need an independent evaluator", async () => {
-    await openJob(client, agentId, 49.99).expect(201);
-    const unassigned = await openJob(client, agentId, 50).expect(422);
+  test("jobs of 5,000 USDG or more need an independent evaluator", async () => {
+    await openJob(client, agentId, 4999.99).expect(201);
+    const unassigned = await openJob(client, agentId, 5000).expect(422);
     expect(unassigned.body.error.code).toBe("self_evaluation_limit");
-    const selfAssigned = await openJob(client, agentId, 50, { evaluatorId: client.userId });
+    const selfAssigned = await openJob(client, agentId, 5000, { evaluatorId: client.userId });
     expect(selfAssigned.status).toBe(422);
     expect(selfAssigned.body.error.code).toBe("self_evaluation_limit");
   });
@@ -111,9 +111,13 @@ describe.skipIf(!databaseAvailable)("evaluator capacity", () => {
     await openJob(client, agentId, 1, base).expect(201);
     const overCapacity = await openJob(client, agentId, 1, base).expect(422);
     expect(overCapacity.body.error.code).toBe("evaluator_capacity_exceeded");
+    await openJob(client, agentId, 1, {
+      settlementAsset: "liege",
+      budgetLiege: "24999999",
+    }).expect(201);
     const selfSettled = await openJob(client, agentId, 1, {
       settlementAsset: "liege",
-      budgetLiege: "50",
+      budgetLiege: "25000000",
     }).expect(422);
     expect(selfSettled.body.error.code).toBe("self_evaluation_limit");
   });

@@ -10,7 +10,7 @@ export const minimumEvaluatorStake = (asset: SettlementAsset) =>
 export const STAKE_COVERAGE = 5;
 // A job without an independent evaluator is settled by its client, which is allowed only below
 // this budget: otherwise a client could take delivery, reject it, and refund themselves.
-export const SELF_SETTLEMENT_LIMIT_USDG = 50;
+export const SELF_SETTLEMENT_LIMIT_USDG = 5_000;
 export const selfSettlementLimit = (asset: SettlementAsset) =>
   asset === "liege" ? env.SELF_SETTLEMENT_LIMIT_LIEGE : SELF_SETTLEMENT_LIMIT_USDG;
 
