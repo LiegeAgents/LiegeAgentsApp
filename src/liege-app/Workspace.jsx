@@ -3026,8 +3026,8 @@ function AgentDetail({ agent: a, onClose, onHire }) {
         </div>
         <h3>Define a good job</h3>
         <p>
-          Specify the output, acceptance criteria, deadline, and evaluator before funding. Your
-          first step is a private job brief.
+          Specify the work, acceptance criteria, and deadline. An independent evaluator is optional;
+          your choice determines the escrow path when the job is created.
         </p>
         <Button onClick={onHire}>
           Create a job for {a.name} <ArrowRight size={14} />
@@ -3157,8 +3157,9 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
     <Modal title="Create a job" onClose={onClose} wide>
       <form onSubmit={submit} className="dialog-body">
         <Notice>
-          Your brief is encrypted before storage. Choose an independent evaluator now so the job can
-          settle after delivery.
+          Your brief is encrypted before storage. Choose an evaluator to use Veilora V2; leave it
+          blank to use Liege on-chain escrow and review the delivery yourself. The escrow path is
+          fixed when you create the job.
         </Notice>
         <Field label="Job title">
           <input
@@ -3187,7 +3188,7 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
         </Field>
         <Field
           label="Acceptance criteria"
-          help="One check per line. The evaluator uses these criteria when settling the job."
+          help="One check per line. You or the assigned evaluator will use these criteria to review the delivery."
         >
           <textarea
             required
@@ -3212,7 +3213,7 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
               ))}
             </select>
           </Field>
-          <Field label="Independent evaluator">
+          <Field label="Independent evaluator (optional)">
             <select value={v.evaluator} onChange={(e) => change("evaluator", e.target.value)}>
               <option value="">No evaluator assigned</option>
               {evaluators.map((e) => {
@@ -3267,14 +3268,19 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
         </div>
         {!evaluators.length && (
           <Notice>
-            No eligible independent evaluators are listed yet. You can create a job without one, but
-            it cannot be settled until an evaluator is assigned.
+            No eligible independent evaluators are listed yet. You can still create a job; it will
+            use Liege on-chain escrow, and you will review and settle the delivery yourself.
           </Notice>
         )}
         {simulation && (
           <Notice error={!simulation.ready}>
             <strong>{simulation.ready ? "Preflight passed" : "Preflight blocked"}</strong>
             <span>
+              {simulation.settlement.escrowMode === "veilora"
+                ? "Veilora V2 · independent evaluator · "
+                : simulation.settlement.escrowMode === "onchain"
+                  ? "Liege on-chain escrow · client review · "
+                  : "Liege balance escrow · client review · "}
               {simulation.settlement.totalEscrow} {simulation.settlement.asset.toUpperCase()} escrow
               · {simulation.checks.filter((check) => check.status === "fail").length} blocking
               checks
@@ -3834,7 +3840,7 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
               <p>
                 {detail.evaluator_id
                   ? "Waiting for the assigned evaluator to settle this job."
-                  : "No evaluator is assigned, so this submitted job cannot settle yet."}
+                  : "Waiting for the client to review and settle this job."}
               </p>
             )}
             {["Completed", "Rejected", "Expired", "Cancelled"].includes(status) && (

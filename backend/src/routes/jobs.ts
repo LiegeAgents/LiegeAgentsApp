@@ -34,6 +34,7 @@ import { registerProgressRoutes } from "./jobProgress.js";
 import { registerRevisionRoutes } from "./jobRevisions.js";
 import { registerAttachmentRoutes } from "./jobAttachments.js";
 import { advanceSquad } from "../superAgentSquads.js";
+import { resolveJobEscrowMode } from "../jobEscrowMode.js";
 
 const decimalAmount = (positive = false) =>
   z
@@ -102,12 +103,6 @@ const jobInput = z
         code: "custom",
         path: [value.settlementAsset === "liege" ? "evaluatorFeeLiege" : "evaluatorFeeUsdg"],
         message: "An evaluator is required when an evaluator fee is configured.",
-      });
-    if (env.ESCROW_MODE === "veilora" && !value.evaluatorId)
-      ctx.addIssue({
-        code: "custom",
-        path: ["evaluatorId"],
-        message: "Veilora threshold escrow requires an independent evaluator.",
       });
   });
 
@@ -247,13 +242,6 @@ jobsRouter.get(
   requireAuth,
   asyncRoute(async (request, response) => {
     const id = z.string().uuid().parse(request.params.id);
-    if (env.ESCROW_MODE === "onchain") {
-      const migrated = await db.query<{ id: string }>(
-        "UPDATE jobs SET escrow_mode = 'onchain', updated_at = now() WHERE id = $1 AND client_id = $2 AND status = 'open' AND escrow_mode = 'ledger' AND expires_at > now() + ($3::int * interval '1 second') RETURNING id",
-        [id, request.auth!.userId, env.ESCROW_QUOTE_TTL_SECONDS],
-      );
-      if (migrated.rowCount) await ensureEscrowWallet(db, id);
-    }
     const result = await db.query(
       `SELECT j.*, a.owner_id AS provider_id, a.name AS agent_name, a.slug AS agent_slug,
       s.deliverable_ciphertext, s.evidence AS submission_evidence, s.created_at AS delivery_created_at,
@@ -434,6 +422,11 @@ jobsRouter.post(
     else pass("agent_ownership", "The selected agent is owned by another account.");
     if (input.evaluatorId && input.evaluatorId === agent.rows[0].owner_id)
       fail("evaluator_independence", "An agent owner cannot evaluate their own job.");
+    else if (input.evaluatorId === request.auth!.userId && env.ESCROW_MODE !== "ledger")
+      fail(
+        "evaluator_independence",
+        "Choose an independent evaluator, or leave the evaluator blank to review the job yourself.",
+      );
     else pass("evaluator_independence", "The evaluator is independent of the provider.");
     const selfSettled = !input.evaluatorId || input.evaluatorId === request.auth!.userId;
     const selfSettlementCap = selfSettlementLimit(settlementAsset);
@@ -519,7 +512,7 @@ jobsRouter.post(
           budget: String(budget),
           evaluatorFee: String(evaluatorFee),
           totalEscrow: total,
-          escrowMode: env.ESCROW_MODE,
+          escrowMode: resolveJobEscrowMode(Boolean(input.evaluatorId)),
         },
         permissions: {
           fund: "client",
@@ -585,6 +578,12 @@ jobsRouter.post(
         "self_evaluation_limit",
         `Jobs of ${selfSettlementCap} ${settlementAsset.toUpperCase()} or more need an independent evaluator.`,
       );
+    if (input.evaluatorId === request.auth!.userId && env.ESCROW_MODE !== "ledger")
+      throw new ApiError(
+        422,
+        "evaluator_must_be_independent",
+        "Select an independent evaluator, or leave evaluator selection off to evaluate the job yourself.",
+      );
     const privateBrief = input.brief ?? input.briefCiphertext!;
     // Chosen here so the encrypted brief can be bound to its job.
     const jobId = randomUUID();
@@ -634,12 +633,12 @@ jobsRouter.post(
           input.deadlineAt,
           input.expiresAt,
           input.strategyPolicy ? JSON.stringify(input.strategyPolicy) : null,
-          env.ESCROW_MODE,
+          resolveJobEscrowMode(Boolean(input.evaluatorId)),
         ],
       );
       const job = result.rows[0];
       const escrow =
-        env.ESCROW_MODE === "onchain" ? await ensureEscrowWallet(client, job.id) : null;
+        job.escrow_mode === "onchain" ? await ensureEscrowWallet(client, job.id) : null;
       await client.query(
         "INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1, $2, $3)",
         [job.id, request.auth!.userId, "job.opened"],
@@ -799,20 +798,20 @@ jobsRouter.post(
   requireAuth,
   asyncRoute(async (request, response) => {
     const id = z.string().uuid().parse(request.params.id);
-    if (env.ESCROW_MODE === "veilora") {
-      const owner = await db.query<{
-        client_id: string;
-        status: string;
-        deadline_at: Date;
-        expires_at: Date;
-      }>(
-        "SELECT client_id, status, deadline_at, expires_at FROM jobs WHERE id = $1 AND escrow_mode = 'veilora'",
-        [id],
-      );
-      if (!owner.rowCount || owner.rows[0].client_id !== request.auth!.userId)
-        throw new ApiError(404, "job_not_found", "This job is not available to this account.");
-      if (owner.rows[0].status !== "open")
-        throw new ApiError(409, "veilora_funding_unavailable", "This job is not open for funding.");
+    const owner = await db.query<{
+      client_id: string;
+      status: string;
+      escrow_mode: string;
+      deadline_at: Date;
+      expires_at: Date;
+    }>("SELECT client_id, status, escrow_mode, deadline_at, expires_at FROM jobs WHERE id = $1", [
+      id,
+    ]);
+    if (!owner.rowCount || owner.rows[0].client_id !== request.auth!.userId)
+      throw new ApiError(404, "job_not_found", "This job is not available to this account.");
+    if (owner.rows[0].status !== "open")
+      throw new ApiError(409, "funding_unavailable", "This job is not open for funding.");
+    if (owner.rows[0].escrow_mode === "veilora") {
       if (
         owner.rows[0].expires_at.getTime() <= Date.now() + 15 * 60 * 1000 ||
         owner.rows[0].deadline_at.getTime() <= Date.now() + 60 * 60 * 1000
@@ -859,13 +858,12 @@ jobsRouter.post(
       }
       return;
     }
-    if (env.ESCROW_MODE === "onchain") {
-      const migrated = await db.query<{ id: string }>(
-        "UPDATE jobs SET escrow_mode = 'onchain', updated_at = now() WHERE id = $1 AND client_id = $2 AND status = 'open' AND escrow_mode = 'ledger' RETURNING id",
-        [id, request.auth!.userId],
+    if (owner.rows[0].escrow_mode !== "onchain")
+      throw new ApiError(
+        409,
+        "onchain_funding_unavailable",
+        "This job was created for Liege balance funding and does not have an on-chain funding quote.",
       );
-      if (migrated.rowCount) await ensureEscrowWallet(db, id);
-    }
     const job = await db.query<{
       client_id: string;
       status: string;

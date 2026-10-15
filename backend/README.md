@@ -2,7 +2,9 @@
 
 Off-chain API for Liege marketplace state. Users sign in by signing a login message; the service never holds a user's wallet key or signs on a user's behalf.
 
-With `ESCROW_MODE=onchain` the service is custodial for escrow: it generates a wallet for each job, stores that wallet's private key encrypted with `DATA_ENCRYPTION_KEY`, and signs the wallet's payout and refund transfers. Anyone with the database and that key controls every active escrow wallet.
+In production escrow deployments, `ESCROW_MODE=veilora` enables per-job routing: jobs with an independent evaluator use Veilora V2; jobs without one use Liege's existing on-chain escrow, where the client reviews the delivery. The selected route is stored on the job and is not changed by quote failures or reads. Keep both Veilora factory addresses configured so existing V1 jobs remain compatible. `ESCROW_MODE=onchain` also enables this routing; `ESCROW_MODE=ledger` deliberately keeps all jobs on the internal balance ledger for local/test deployments.
+
+The Liege on-chain escrow path is custodial: it generates a wallet for each job, stores that wallet's private key encrypted with `DATA_ENCRYPTION_KEY`, and signs the wallet's payout and refund transfers. Anyone with the database and that key controls every active escrow wallet.
 
 ## Run
 
@@ -104,7 +106,7 @@ The schema has a `challenged` job status, `disputes` and `dispute_panel_members`
 
 ### On-chain settlement
 
-With `ESCROW_MODE=onchain`, evaluating or expiring a job commits its outcome together with one pending payout per transfer; nothing is sent inside that database transaction. The payouts are sent afterwards, one at a time from the job's escrow wallet: provider and evaluator (or the client refund), then any other USDG left in the wallet, then the unused ETH reserve, all of which return to the client. A job that expires while open has its wallet swept the same way, so a deposit that was sent but never recorded is returned.
+For a job whose stored mode is `onchain`, evaluating or expiring it commits its outcome together with one pending payout per transfer; nothing is sent inside that database transaction. The payouts are sent afterwards, one at a time from the job's escrow wallet: provider and evaluator (or the client refund), then any remaining job token, then the unused ETH reserve, all of which return to the client. A job that expires while open has its wallet swept the same way, so a deposit that was sent but never recorded is returned. Veilora jobs are not processed by this expiry worker; their contract-native timeout/refund rules remain authoritative.
 
 Each payout is bound to one nonce the first time it is signed, and its signed transaction is stored before it is broadcast. Every retry checks the chain first and reuses that nonce, so a crash or lost response at any point can be retried without paying twice. `expire-jobs` resumes pending settlements after each run; schedule `settle-escrows` as well for faster retries. A settlement whose transfer reverts, or that stays unresolved after 8 attempts, is marked failed, logged with "needs attention", and listed at `GET /v1/admin/settlements` until an administrator fixes the cause (for example, tops up the wallet's gas) and retries it.
 

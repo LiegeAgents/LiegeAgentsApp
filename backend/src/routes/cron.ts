@@ -39,10 +39,12 @@ cronRouter.post(
       // - on-chain, funded/submitted: the same, as a settlement sent after commit.
       // - on-chain, open: expires, and whatever reached its wallet (a deposit that was sent but
       //   never recorded, or the gas reserve) is swept back to the client after commit.
+      // Veilora jobs are excluded: their contracts own the timeout/refund path. Treating them as
+      // ledger escrows would attempt an internal-balance refund and could strand the on-chain funds.
       const due = await client.query<{
         id: string;
         status: "open" | "funded" | "submitted";
-        escrow_mode: "ledger" | "onchain";
+        escrow_mode: "ledger" | "onchain" | "veilora";
         has_wallet: boolean;
         client_id: string;
         client_address: string;
@@ -54,6 +56,7 @@ cronRouter.post(
       FROM jobs j JOIN users c ON c.id = j.client_id JOIN agents a ON a.id = j.agent_id JOIN users p ON p.id = a.owner_id
       LEFT JOIN escrow_wallets ew ON ew.job_id = j.id
       WHERE j.status IN ('open', 'funded', 'submitted') AND j.expires_at <= now()
+        AND j.escrow_mode <> 'veilora'
         AND NOT (j.status = 'open' AND EXISTS (SELECT 1 FROM escrow_funding_quotes q WHERE q.job_id = j.id AND q.expires_at > now()))
       FOR UPDATE OF j`);
       let refunded = 0;

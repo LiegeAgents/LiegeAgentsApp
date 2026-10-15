@@ -155,8 +155,8 @@ adminRouter.post(
 adminRouter.post(
   "/escrows/backfill",
   asyncRoute(async (request, response) => {
-    if (env.ESCROW_MODE !== "onchain")
-      throw new Error("Set ESCROW_MODE=onchain before backfilling on-chain escrow wallets.");
+    if (env.ESCROW_MODE === "ledger")
+      throw new Error("On-chain escrow backfill is unavailable in a ledger-only deployment.");
     const input = z
       .object({ limit: z.coerce.number().int().min(1).max(500).default(100) })
       .parse(request.body ?? {});
@@ -164,7 +164,7 @@ adminRouter.post(
     try {
       await client.query("BEGIN");
       const jobs = await client.query<{ id: string }>(
-        "UPDATE jobs SET escrow_mode = 'onchain', updated_at = now() WHERE id IN (SELECT id FROM jobs WHERE status = 'open' AND escrow_mode = 'ledger' ORDER BY created_at LIMIT $1 FOR UPDATE SKIP LOCKED) RETURNING id",
+        "UPDATE jobs SET escrow_mode = 'onchain', updated_at = now() WHERE id IN (SELECT id FROM jobs WHERE status = 'open' AND escrow_mode = 'ledger' AND evaluator_id IS NULL ORDER BY created_at LIMIT $1 FOR UPDATE SKIP LOCKED) RETURNING id",
         [input.limit],
       );
       const wallets = [];

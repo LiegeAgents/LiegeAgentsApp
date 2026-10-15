@@ -96,7 +96,7 @@ function factoryAddress(version: number): Address {
   return getAddress(configured);
 }
 
-function factoryVersion(terms: VeiloraEscrowTerms): 1 | 2 {
+export function factoryVersion(terms: Pick<VeiloraEscrowTerms, "factoryVersion">): 1 | 2 {
   return terms.factoryVersion === 2 ? 2 : 1;
 }
 

@@ -58,6 +58,10 @@ app.get("/health/config", (_request, response) =>
   response.json({
     chainId: env.RHC_ID,
     escrowMode: env.ESCROW_MODE,
+    jobEscrowRouting:
+      env.ESCROW_MODE === "ledger"
+        ? { withEvaluator: "ledger", withoutEvaluator: "ledger" }
+        : { withEvaluator: "veilora", withoutEvaluator: "onchain" },
     usdgTokenAddress: env.USDG_TOKEN_ADDRESS ?? null,
   }),
 );

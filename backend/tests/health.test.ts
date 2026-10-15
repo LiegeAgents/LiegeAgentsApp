@@ -14,6 +14,10 @@ test("health config exposes only deployment values that clients must verify", as
   expect(response.body).toEqual({
     chainId: env.RHC_ID,
     escrowMode: env.ESCROW_MODE,
+    jobEscrowRouting:
+      env.ESCROW_MODE === "ledger"
+        ? { withEvaluator: "ledger", withoutEvaluator: "ledger" }
+        : { withEvaluator: "veilora", withoutEvaluator: "onchain" },
     usdgTokenAddress: env.USDG_TOKEN_ADDRESS ?? null,
   });
 });

@@ -3,6 +3,7 @@ import type { PoolClient } from "pg";
 import { audit } from "./audit.js";
 import { selfSettlementLimit } from "./capacity.js";
 import { env } from "./config.js";
+import { resolveJobEscrowMode } from "./jobEscrowMode.js";
 import { encryptPayload, payloadContext, payloadDigest } from "./crypto.js";
 import { db } from "./db/index.js";
 import { ensureEscrowWallet } from "./escrow.js";
@@ -116,10 +117,10 @@ export async function openSuperAgentJob(
       deadline,
       expires,
       JSON.stringify({ source: "superagent", serviceSlug: agent.service_slug, ...input.policy }),
-      env.ESCROW_MODE,
+      resolveJobEscrowMode(false),
     ],
   );
-  if (env.ESCROW_MODE === "onchain") await ensureEscrowWallet(client, jobId);
+  if (created.rows[0].escrow_mode === "onchain") await ensureEscrowWallet(client, jobId);
   await client.query("INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,$3)", [
     jobId,
     input.userId,
@@ -127,7 +128,7 @@ export async function openSuperAgentJob(
   ]);
   return created.rows[0] as {
     id: string;
-    escrow_mode: "ledger" | "onchain";
+    escrow_mode: "ledger" | "onchain" | "veilora";
     [key: string]: unknown;
   };
 }

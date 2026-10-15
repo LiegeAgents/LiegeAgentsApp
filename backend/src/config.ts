@@ -177,23 +177,24 @@ if (
     "A DATA_ENCRYPTION_KEY separate from AUTH_TOKEN_PEPPER is required in production.",
   );
 }
-if (env.ESCROW_MODE === "onchain" && (!env.USDG_TOKEN_ADDRESS || !env.DATA_ENCRYPTION_KEY)) {
+if (env.ESCROW_MODE !== "ledger" && (!env.USDG_TOKEN_ADDRESS || !env.DATA_ENCRYPTION_KEY)) {
   throw new Error(
-    "USDG_TOKEN_ADDRESS and DATA_ENCRYPTION_KEY are required when ESCROW_MODE=onchain.",
+    "USDG_TOKEN_ADDRESS and DATA_ENCRYPTION_KEY are required for on-chain job escrow.",
   );
 }
 if (
-  env.ESCROW_MODE === "veilora" &&
+  env.ESCROW_MODE !== "ledger" &&
   (!env.VEILORA_ESCROW_FACTORY_ADDRESS ||
+    !env.VEILORA_ESCROW_FACTORY_V2_ADDRESS ||
     !env.LIEGE_ESCROW_SIGNER_ADDRESS ||
     !env.LIEGE_ESCROW_SIGNER_PRIVATE_KEY)
 ) {
   throw new Error(
-    "VEILORA_ESCROW_FACTORY_ADDRESS, LIEGE_ESCROW_SIGNER_ADDRESS, and LIEGE_ESCROW_SIGNER_PRIVATE_KEY are required when ESCROW_MODE=veilora.",
+    "Both Veilora factory addresses and the Liege escrow signer are required for per-job escrow routing.",
   );
 }
 if (
-  env.ESCROW_MODE === "veilora" &&
+  env.ESCROW_MODE !== "ledger" &&
   env.LIEGE_ESCROW_SIGNER_ADDRESS &&
   env.LIEGE_ESCROW_SIGNER_PRIVATE_KEY &&
   privateKeyToAccount(
