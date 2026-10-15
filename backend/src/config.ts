@@ -39,6 +39,10 @@ const env = z
       .string()
       .regex(/^0x[0-9a-fA-F]{40}$/)
       .optional(),
+    VEILORA_ESCROW_FACTORY_V2_ADDRESS: z
+      .string()
+      .regex(/^0x[0-9a-fA-F]{40}$/)
+      .optional(),
     LIEGE_ESCROW_SIGNER_ADDRESS: z
       .string()
       .regex(/^0x[0-9a-fA-F]{40}$/)

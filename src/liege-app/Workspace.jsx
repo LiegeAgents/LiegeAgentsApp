@@ -3725,6 +3725,7 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
                             detail.veilora_escrow_address,
                             deliverable,
                             urls,
+                            detail.veilora_escrow_terms?.factoryVersion ?? 1,
                           )
                         : api.submitJob(token, job.id, { deliverable, evidence: urls }),
                     "Delivery submitted for evaluation.",

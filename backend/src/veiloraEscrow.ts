@@ -73,20 +73,31 @@ const escrowAbi = parseAbi([
   "function accepted() view returns (bool)",
   "function providerNonce() view returns (uint256)",
   "function termsHash() view returns (bytes32)",
+  "function hashProviderAction(bytes32 action,uint64 deadline) view returns (bytes32)",
+  "function hashProviderSubmission(bytes32 commit,uint64 deadline) view returns (bytes32)",
+  "function releasePayloadHash((address recipient,uint256 amount)[] legion) view returns (bytes32)",
+  "function refundPayloadHash() view returns (bytes32)",
   "function release((address recipient,uint256 amount)[] legion,bytes[] signatures)",
   "function refund(bytes[] signatures)",
   "event EscrowClosed(bytes32 indexed jobId,bytes32 indexed outcome)",
   "event DeliverableSubmitted(bytes32 indexed jobId,bytes32 indexed deliverableCommit,uint64 submittedAt)",
+  "event ProviderDeclined(bytes32 indexed jobId)",
 ]);
 const tokenAbi = parseAbi(["function balanceOf(address account) view returns (uint256)"]);
 const transferEventAbi = parseAbi([
   "event Transfer(address indexed from,address indexed to,uint256 value)",
 ]);
 
-function factoryAddress(): Address {
-  if (!env.VEILORA_ESCROW_FACTORY_ADDRESS)
+function factoryAddress(version: number): Address {
+  const configured =
+    version === 2 ? env.VEILORA_ESCROW_FACTORY_V2_ADDRESS : env.VEILORA_ESCROW_FACTORY_ADDRESS;
+  if (!configured)
     throw new ApiError(503, "veilora_escrow_unconfigured", "Veilora escrow is not configured.");
-  return getAddress(env.VEILORA_ESCROW_FACTORY_ADDRESS);
+  return getAddress(configured);
+}
+
+function factoryVersion(terms: VeiloraEscrowTerms): 1 | 2 {
+  return terms.factoryVersion === 2 ? 2 : 1;
 }
 
 function tokenAddress(asset: SettlementAsset): Address {
@@ -104,6 +115,7 @@ function toTerms(value: Record<string, unknown>): VeiloraEscrowTerms {
   const parsed = value as VeiloraEscrowTerms;
   return {
     ...parsed,
+    factoryVersion: parsed.factoryVersion === 2 ? 2 : 1,
     asset: getAddress(parsed.asset),
     client: getAddress(parsed.client),
     provider: getAddress(parsed.provider),
@@ -126,7 +138,6 @@ function termsCall(terms: VeiloraEscrowTerms): VeiloraEscrowTermsCall {
 }
 
 export async function prepareVeiloraEscrow(clientDb: PoolClient, jobId: string) {
-  factoryAddress();
   if (!env.LIEGE_ESCROW_SIGNER_ADDRESS)
     throw new ApiError(
       503,
@@ -147,7 +158,7 @@ export async function prepareVeiloraEscrow(clientDb: PoolClient, jobId: string) 
       expires_at: Date;
       client_address: string;
       provider_address: string;
-      evaluator_address: string;
+      evaluator_address: string | null;
       veilora_escrow_terms: Record<string, unknown> | null;
     }>(
       `SELECT j.id, j.status, j.escrow_mode, COALESCE(j.settlement_asset, 'usdg') AS settlement_asset,
@@ -156,7 +167,7 @@ export async function prepareVeiloraEscrow(clientDb: PoolClient, jobId: string) 
           THEN COALESCE(j.evaluator_fee_usdg, j.evaluator_fee_amount, 0)
           ELSE COALESCE(j.evaluator_fee_amount, 0) END AS evaluator_fee_amount,
         j.brief_hash, j.deadline_at, j.expires_at, c.wallet_address AS client_address,
-        p.wallet_address AS provider_address, COALESCE(e.wallet_address, c.wallet_address) AS evaluator_address,
+        p.wallet_address AS provider_address, e.wallet_address AS evaluator_address,
         j.veilora_escrow_terms
        FROM jobs j JOIN users c ON c.id = j.client_id
        JOIN agents a ON a.id = j.agent_id JOIN users p ON p.id = a.owner_id
@@ -178,6 +189,25 @@ export async function prepareVeiloraEscrow(clientDb: PoolClient, jobId: string) 
     if (stored) {
       terms = toTerms(stored);
     } else {
+      const v2Factory = factoryAddress(2);
+      if (!job.evaluator_address)
+        throw new ApiError(
+          422,
+          "veilora_independent_evaluator_required",
+          "Veilora V2 requires an assigned evaluator with a distinct wallet.",
+        );
+      const participantAddresses = [
+        job.client_address,
+        job.provider_address,
+        job.evaluator_address,
+        env.LIEGE_ESCROW_SIGNER_ADDRESS,
+      ].map((address) => address.toLowerCase());
+      if (new Set(participantAddresses).size !== participantAddresses.length)
+        throw new ApiError(
+          422,
+          "veilora_participants_must_be_distinct",
+          "Veilora V2 requires distinct client, provider, evaluator, and Liege signer wallets.",
+        );
       const recipients = await clientDb.query<{ wallet_address: string; allocation_bps: number }>(
         `SELECT u.wallet_address, sum(la.allocation_bps)::int AS allocation_bps
          FROM legion_assignments la JOIN legions l ON l.id = la.legion_id
@@ -215,7 +245,7 @@ export async function prepareVeiloraEscrow(clientDb: PoolClient, jobId: string) 
         );
       const decimals = job.settlement_asset === "liege" ? env.LIEGE_DECIMALS : env.USDG_DECIMALS;
       terms = {
-        factoryVersion: 1,
+        factoryVersion: 2,
         jobId: keccak256(stringToHex(job.id)),
         asset: tokenAddress(job.settlement_asset),
         budget: parseUnits(String(job.budget_amount), decimals).toString(),
@@ -233,7 +263,7 @@ export async function prepareVeiloraEscrow(clientDb: PoolClient, jobId: string) 
         legionRecipients: recipients.rows.map((row) => getAddress(row.wallet_address)),
       };
       const escrowAddress = await client.readContract({
-        address: factoryAddress(),
+        address: v2Factory,
         abi: factoryAbi,
         functionName: "predictEscrow",
         args: [termsCall(terms)],
@@ -244,13 +274,13 @@ export async function prepareVeiloraEscrow(clientDb: PoolClient, jobId: string) 
       );
     }
     const escrowAddress = await client.readContract({
-      address: factoryAddress(),
+      address: factoryAddress(factoryVersion(terms)),
       abi: factoryAbi,
       functionName: "predictEscrow",
       args: [termsCall(terms)],
     });
     await clientDb.query("COMMIT");
-    return { factoryAddress: factoryAddress(), escrowAddress, terms };
+    return { factoryAddress: factoryAddress(factoryVersion(terms)), escrowAddress, terms };
   } catch (error) {
     await clientDb.query("ROLLBACK");
     throw error;
@@ -265,7 +295,9 @@ export async function verifyVeiloraFunding(input: {
   clientAddress: Address;
   jobId: `0x${string}`;
   expectedAmount: bigint;
+  factoryVersion?: number;
 }) {
+  const selectedFactory = factoryAddress(input.factoryVersion ?? 1);
   const [factoryReceipt, tokenReceipt] = await Promise.all([
     input.factoryTxHash
       ? client.waitForTransactionReceipt({
@@ -286,7 +318,7 @@ export async function verifyVeiloraFunding(input: {
     );
   if (factoryReceipt) {
     const created = factoryReceipt.logs.some((log) => {
-      if (log.address.toLowerCase() !== factoryAddress().toLowerCase()) return false;
+      if (log.address.toLowerCase() !== selectedFactory.toLowerCase()) return false;
       try {
         const event = decodeEventLog({ abi: factoryAbi, data: log.data, topics: log.topics });
         return (
@@ -326,7 +358,7 @@ export async function verifyVeiloraFunding(input: {
       "The token transaction does not show the required transfer from the client into this escrow.",
     );
   const registered = await client.readContract({
-    address: factoryAddress(),
+    address: selectedFactory,
     abi: factoryAbi,
     functionName: "isEscrow",
     args: [input.escrowAddress],
@@ -462,23 +494,37 @@ async function outcomeContext(jobId: string, outcome: "accepted" | "rejected") {
         "Submitted legion shares exceed the immutable escrow cap.",
       );
   }
+  const version = factoryVersion(terms);
   const payloadHash =
-    outcome === "accepted"
-      ? keccak256(
-          encodeAbiParameters(
-            [
-              {
-                type: "tuple[]",
-                components: [
-                  { name: "recipient", type: "address" },
-                  { name: "amount", type: "uint256" },
-                ],
-              },
-            ],
-            [payouts],
-          ),
-        )
-      : (`0x${"0".repeat(64)}` as Hex);
+    version === 2
+      ? outcome === "accepted"
+        ? await client.readContract({
+            address: escrowAddress,
+            abi: escrowAbi,
+            functionName: "releasePayloadHash",
+            args: [payouts],
+          })
+        : await client.readContract({
+            address: escrowAddress,
+            abi: escrowAbi,
+            functionName: "refundPayloadHash",
+          })
+      : outcome === "accepted"
+        ? keccak256(
+            encodeAbiParameters(
+              [
+                {
+                  type: "tuple[]",
+                  components: [
+                    { name: "recipient", type: "address" },
+                    { name: "amount", type: "uint256" },
+                  ],
+                },
+              ],
+              [payouts],
+            ),
+          )
+        : (`0x${"0".repeat(64)}` as Hex);
   const [nonce, funded, closed] = await Promise.all([
     client.readContract({ address: escrowAddress, abi: escrowAbi, functionName: "outcomeNonce" }),
     client.readContract({ address: escrowAddress, abi: escrowAbi, functionName: "isFunded" }),
@@ -507,7 +553,7 @@ async function outcomeContext(jobId: string, outcome: "accepted" | "rejected") {
     typedData: {
       domain: {
         name: "VeiloraEscrow",
-        version: "1",
+        version: String(version),
         chainId: env.RHC_ID,
         verifyingContract: escrowAddress,
       },

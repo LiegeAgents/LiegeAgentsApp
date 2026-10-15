@@ -976,6 +976,7 @@ jobsRouter.post(
       evaluator_fee_usdg: string;
       veilora_escrow_address: `0x${string}` | null;
       veilora_escrow_terms: {
+        factoryVersion?: number;
         jobId: `0x${string}`;
         asset: `0x${string}`;
         budget: string;
@@ -1043,6 +1044,7 @@ jobsRouter.post(
         jobId: job.veilora_escrow_terms.jobId,
         expectedAmount:
           BigInt(job.veilora_escrow_terms.budget) + BigInt(job.veilora_escrow_terms.evaluatorFee),
+        factoryVersion: job.veilora_escrow_terms.factoryVersion ?? 1,
       });
     }
     const client = await db.connect();
