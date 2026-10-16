@@ -190,6 +190,26 @@ function serverFor(connectionToken: string) {
     async ({ jobId }) => text(await api(`/v1/internal/mcp/jobs/${jobId}/status`, connectionToken)),
   );
   server.registerTool(
+    "report_job_progress",
+    {
+      description:
+        "Share a short work milestone with the client for an assigned funded job. This reports status only; it cannot change job state, submit a deliverable, or move funds. Up to 30 updates are allowed per job.",
+      inputSchema: {
+        jobId: z.string().uuid(),
+        stage: z.enum(["started", "researching", "drafting", "reviewing", "finalizing"]),
+        message: z.string().trim().min(1).max(280),
+        percent: z.number().int().min(0).max(100).optional(),
+      },
+    },
+    async ({ jobId, ...progress }) =>
+      text(
+        await api(`/v1/internal/mcp/jobs/${jobId}/progress`, connectionToken, {
+          method: "POST",
+          body: JSON.stringify(progress),
+        }),
+      ),
+  );
+  server.registerTool(
     "get_job_details",
     {
       description:

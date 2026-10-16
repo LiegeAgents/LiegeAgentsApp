@@ -8,6 +8,7 @@ import { decryptPayload, payloadContext } from "../crypto.js";
 import { db } from "../db/index.js";
 import { isSafeEvidenceUrl } from "../evidence.js";
 import { ApiError, asyncRoute } from "../http.js";
+import { MAX_PROGRESS_UPDATES } from "../jobProgress.js";
 import { agentActionDigest, normalizeAgentAction, ownerRuleReasons } from "../agentActions.js";
 import { parseWebhookCursor, replayWebhookEvents } from "../webhooks.js";
 import { ensureAccount, publicAccount } from "./agentAccounts.js";
@@ -965,6 +966,75 @@ mcpInternalRouter.get(
         payloadExpired: new Date(job.expires_at) <= new Date(),
       },
     });
+  }),
+);
+mcpInternalRouter.post(
+  "/jobs/:id/progress",
+  asyncRoute(async (request, response) => {
+    const c = await connection(request);
+    const id = z.string().uuid().parse(request.params.id);
+    const input = z
+      .object({
+        stage: z.enum(["started", "researching", "drafting", "reviewing", "finalizing"]),
+        message: z
+          .string()
+          .trim()
+          .min(1)
+          .max(280)
+          .refine((value) => !/[\u0000-\u0008\u000b-\u001f\u007f]/.test(value), "Use plain text."),
+        percent: z.number().int().min(0).max(100).optional(),
+      })
+      .parse(request.body);
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const job = await client.query<{ status: string }>(
+        "SELECT status FROM jobs WHERE id = $1 AND agent_id = $2 FOR UPDATE",
+        [id, c.agent_id],
+      );
+      if (!job.rowCount)
+        throw new ApiError(
+          404,
+          "job_not_found",
+          "This job is not assigned to the connected agent.",
+        );
+      if (job.rows[0].status !== "funded")
+        throw new ApiError(
+          409,
+          "job_not_in_progress",
+          "Progress can be reported only while a funded job is being worked on.",
+        );
+      const count = await client.query<{ count: number }>(
+        "SELECT count(*)::int AS count FROM job_progress WHERE job_id = $1",
+        [id],
+      );
+      if (count.rows[0].count >= MAX_PROGRESS_UPDATES)
+        throw new ApiError(
+          409,
+          "progress_limit",
+          `A job can carry at most ${MAX_PROGRESS_UPDATES} progress updates.`,
+        );
+      const created = await client.query(
+        `INSERT INTO job_progress (job_id, stage, message, percent, actor_id)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id, stage, message, percent, created_at`,
+        [id, input.stage, input.message, input.percent ?? null, c.user_id],
+      );
+      await audit(db, {
+        actorId: c.user_id,
+        action: "mcp.job_progress_reported",
+        targetType: "job",
+        targetId: id,
+        requestId: request.requestId,
+        metadata: { agentId: c.agent_id, stage: input.stage },
+      });
+      await client.query("COMMIT");
+      response.status(201).json({ data: created.rows[0] });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }),
 );
 mcpInternalRouter.get(

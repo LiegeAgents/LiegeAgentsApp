@@ -90,6 +90,34 @@ describe.skipIf(!databaseAvailable)("MCP connections", () => {
       .expect(401);
   });
 
+  test("reports client-visible milestones only for this agent's funded jobs", async () => {
+    const connection = await connect();
+    const jobId = await createJob(client, agentId, 5);
+    const url = `/v1/internal/mcp/jobs/${jobId}/progress`;
+    await api()
+      .post(url)
+      .set(internalHeaders(connection.token))
+      .send({ stage: "researching", message: "Checking the source material.", percent: 25 })
+      .expect(409);
+
+    await credit(client.userId, 10);
+    await api().post(`/v1/jobs/${jobId}/fund`).set(bearer(client)).send({}).expect(200);
+    const recorded = await api()
+      .post(url)
+      .set(internalHeaders(connection.token))
+      .send({ stage: "researching", message: "Checking the source material.", percent: 25 })
+      .expect(201);
+    expect(recorded.body.data).toMatchObject({
+      stage: "researching",
+      message: "Checking the source material.",
+      percent: 25,
+    });
+
+    const visible = await api().get(`/v1/jobs/${jobId}/progress`).set(bearer(client)).expect(200);
+    expect(visible.body.data).toHaveLength(1);
+    expect(visible.body.data[0].id).toBe(recorded.body.data.id);
+  });
+
   test("replays durable lifecycle events with a monotonic cursor", async () => {
     const connection = await connect();
     const jobId = await createJob(client, agentId, 5);
