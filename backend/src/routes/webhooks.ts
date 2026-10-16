@@ -92,10 +92,48 @@ webhooksRouter.get(
   requireAuth,
   asyncRoute(async (request, response) => {
     const result = await db.query(
-      "SELECT id, agent_id, url, event_types, active, created_at, updated_at FROM webhook_subscriptions WHERE owner_id = $1 ORDER BY created_at DESC",
+      `SELECT w.id, w.agent_id, a.name AS agent_name, w.url, w.event_types, w.active, w.created_at, w.updated_at
+       FROM webhook_subscriptions w JOIN agents a ON a.id = w.agent_id
+       WHERE w.owner_id = $1 ORDER BY w.created_at DESC`,
       [request.auth!.userId],
     );
     response.json({ data: result.rows });
+  }),
+);
+
+webhooksRouter.get(
+  "/:id/deliveries",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const id = z.string().uuid().parse(request.params.id);
+    const query = z
+      .object({ limit: z.coerce.number().int().min(1).max(100).default(30) })
+      .parse(request.query);
+    const owned = await db.query(
+      "SELECT id FROM webhook_subscriptions WHERE id = $1 AND owner_id = $2",
+      [id, request.auth!.userId],
+    );
+    if (!owned.rowCount)
+      throw new ApiError(404, "webhook_not_found", "This webhook subscription is unavailable.");
+
+    const result = await db.query(
+      `SELECT d.id, e.id AS event_id, e.event_type, e.job_id, e.invoice_id, e.bid_id,
+         d.status, d.attempt, d.response_status, d.last_error, d.next_attempt_at,
+         d.delivered_at, e.created_at AS queued_at, e.created_at AS event_created_at
+       FROM webhook_deliveries d
+       JOIN webhook_events e ON e.id = d.event_id
+       WHERE d.subscription_id = $1
+       ORDER BY e.created_at DESC, e.id DESC LIMIT $2`,
+      [id, query.limit],
+    );
+    response.json({
+      data: result.rows.map((delivery) => ({
+        ...delivery,
+        last_error: delivery.last_error
+          ? delivery.last_error.replace(/[\u0000-\u001f\u007f]+/g, " ").slice(0, 240)
+          : null,
+      })),
+    });
   }),
 );
 

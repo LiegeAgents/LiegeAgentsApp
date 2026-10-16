@@ -42,6 +42,48 @@ describe.skipIf(!databaseAvailable)("webhook event cursors", () => {
     const resumed = await replayWebhookEvents(db, agentId, BigInt(events[0].cursor));
     expect(resumed.map((event) => event.id)).toEqual([events[1].id]);
   });
+
+  test("delivery history is owner-scoped and never returns the webhook secret or event payload", async () => {
+    const [owner, other] = await Promise.all([signIn(), signIn()]);
+    const agentId = await createAgent(owner);
+    const jobId = await createJob(other, agentId, 10);
+    const subscriptionId = crypto.randomUUID();
+    await db.query(
+      `INSERT INTO webhook_subscriptions
+         (id, owner_id, agent_id, url, secret_hash, secret_ciphertext, event_types)
+       VALUES ($1,$2,$3,'https://hooks.example.test/liege','hash','ciphertext','{job.funded}')`,
+      [subscriptionId, owner.userId, agentId],
+    );
+    await enqueueWebhookEvent(db, {
+      jobId,
+      eventType: "job.funded",
+      data: { privateNote: "must not be returned" },
+    });
+    await db.query(
+      `UPDATE webhook_deliveries SET status = 'failed', attempt = 12, response_status = 503,
+         last_error = $2, next_attempt_at = now() + interval '1 hour'
+       WHERE subscription_id = $1`,
+      [subscriptionId, `temporary\nerror ${"x".repeat(300)}`],
+    );
+
+    const history = await api()
+      .get(`/v1/webhooks/${subscriptionId}/deliveries?limit=5`)
+      .set(bearer(owner))
+      .expect(200);
+    expect(history.body.data).toHaveLength(1);
+    expect(history.body.data[0]).toMatchObject({
+      event_type: "job.funded",
+      job_id: jobId,
+      status: "failed",
+      attempt: 12,
+      response_status: 503,
+    });
+    expect(history.body.data[0].last_error).not.toContain("\n");
+    expect(history.body.data[0].last_error.length).toBeLessThanOrEqual(240);
+    expect(history.body.data[0]).not.toHaveProperty("payload");
+    expect(history.body.data[0]).not.toHaveProperty("secret");
+    await api().get(`/v1/webhooks/${subscriptionId}/deliveries`).set(bearer(other)).expect(404);
+  });
 });
 
 test("webhook cursor parser accepts after and Last-Event-ID recovery", () => {

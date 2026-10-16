@@ -817,6 +817,7 @@ export default function Workspace() {
                   onNotice={notify}
                 />
               )}
+              {wallet.apiSession && <WebhookDeliveryCenter token="cookie" onNotice={notify} />}
               {wallet.apiSession && (
                 <AgentKillSwitch
                   token="cookie"
@@ -2282,6 +2283,123 @@ function McpConnections({ token, agents, ownerAddress, onNotice }) {
 }
 
 const accountStatusLabel = { active: "Active", paused: "Paused", killed: "Killed" };
+
+function WebhookDeliveryCenter({ token, onNotice }) {
+  const [subscriptions, setSubscriptions] = useState([]);
+  const [selectedId, setSelectedId] = useState("");
+  const [deliveries, setDeliveries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    api
+      .webhooks(token)
+      .then((result) => {
+        if (!active) return;
+        const items = result.data || [];
+        setSubscriptions(items);
+        setSelectedId((current) =>
+          items.some((item) => item.id === current) ? current : (items[0]?.id ?? ""),
+        );
+      })
+      .catch((error) => onNotice(error?.message || "Could not load webhook subscriptions."))
+      .finally(() => active && setLoading(false));
+    return () => {
+      active = false;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    if (!selectedId) {
+      setDeliveries([]);
+      return;
+    }
+    let active = true;
+    setHistoryLoading(true);
+    api
+      .webhookDeliveries(token, selectedId)
+      .then((result) => active && setDeliveries(result.data || []))
+      .catch(
+        (error) => active && onNotice(error?.message || "Could not load webhook delivery history."),
+      )
+      .finally(() => active && setHistoryLoading(false));
+    return () => {
+      active = false;
+    };
+  }, [token, selectedId]);
+
+  const selected = subscriptions.find((item) => item.id === selectedId);
+  return (
+    <section className="settings-panel webhook-delivery-panel">
+      <div>
+        <span className="eyebrow">INTEGRATION ACTIVITY</span>
+        <h2>Webhook deliveries</h2>
+        <p>
+          Review recent delivery attempts and retry timing. Event payloads and signing secrets stay
+          private.
+        </p>
+      </div>
+      {loading ? (
+        <p className="muted">Loading webhook subscriptions…</p>
+      ) : subscriptions.length === 0 ? (
+        <p className="muted">
+          No webhook subscriptions yet. Create one with the Liege API or SDK to monitor deliveries
+          here.
+        </p>
+      ) : (
+        <>
+          <label className="webhook-subscription-select">
+            <span>Webhook subscription</span>
+            <select value={selectedId} onChange={(event) => setSelectedId(event.target.value)}>
+              {subscriptions.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.agent_name || "Agent"} · {item.url}{" "}
+                  {item.active ? "· Active" : "· Inactive"}
+                </option>
+              ))}
+            </select>
+          </label>
+          {selected && <p className="webhook-endpoint mono">{selected.url}</p>}
+          {historyLoading ? (
+            <p className="muted">Loading delivery history…</p>
+          ) : deliveries.length === 0 ? (
+            <p className="muted">No delivery attempts recorded for this subscription.</p>
+          ) : (
+            <div className="webhook-delivery-list">
+              {deliveries.map((delivery) => (
+                <article className="webhook-delivery-row" key={delivery.id}>
+                  <div className="webhook-delivery-title">
+                    <strong>{delivery.event_type}</strong>
+                    <Status value={delivery.status} />
+                  </div>
+                  <p>
+                    Attempt {delivery.attempt} · HTTP {delivery.response_status ?? "—"} · Queued{" "}
+                    {delivery.queued_at ? new Date(delivery.queued_at).toLocaleString() : "—"}
+                  </p>
+                  {(delivery.job_id || delivery.invoice_id || delivery.bid_id) && (
+                    <p className="mono">
+                      {delivery.job_id || delivery.invoice_id || delivery.bid_id}
+                    </p>
+                  )}
+                  {delivery.delivered_at && (
+                    <p>Delivered {new Date(delivery.delivered_at).toLocaleString()}</p>
+                  )}
+                  {delivery.next_attempt_at && delivery.status !== "delivered" && (
+                    <p>Next retry {new Date(delivery.next_attempt_at).toLocaleString()}</p>
+                  )}
+                  {delivery.last_error && (
+                    <p className="webhook-delivery-error">{delivery.last_error}</p>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
 
 function AgentKillSwitch({ token, agents, ownerAddress, onNotice }) {
   const [accounts, setAccounts] = useState({});

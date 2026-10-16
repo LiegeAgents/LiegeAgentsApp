@@ -2127,6 +2127,49 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /v1/webhooks/{id}/deliveries:
+    get:
+      operationId: listWebhookDeliveryAttempts
+      summary: List recent delivery attempts for an owned webhook without returning event payloads or signing secrets.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - {
+            name: limit,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 100, default: 30 },
+          }
+      responses:
+        "200":
+          description: Recent webhook delivery attempts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        event_id: { type: string, format: uuid }
+                        event_type: { type: string }
+                        job_id: { type: string, format: uuid, nullable: true }
+                        invoice_id: { type: string, format: uuid, nullable: true }
+                        bid_id: { type: string, format: uuid, nullable: true }
+                        status: { type: string, enum: [pending, delivered, failed] }
+                        attempt: { type: integer }
+                        response_status: { type: integer, nullable: true }
+                        last_error: { type: string, nullable: true, maxLength: 240 }
+                        next_attempt_at: { type: string, format: date-time, nullable: true }
+                        delivered_at: { type: string, format: date-time, nullable: true }
+                        queued_at: { type: string, format: date-time }
+                        event_created_at: { type: string, format: date-time }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /v1/webhooks/stream/{agentId}:
     get:
       operationId: streamAgentWebhookEvents

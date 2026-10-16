@@ -197,6 +197,14 @@ export const api = {
   backfillEscrows: (token, input = {}) =>
     request("/v1/admin/escrows/backfill", { token, method: "POST", body: JSON.stringify(input) }),
   mcpConnections: (token) => request("/v1/mcp/connections", { token }),
+  webhooks: (token) => request("/v1/webhooks", { token }),
+  webhookDeliveries: (token, id, limit = 30) =>
+    request(
+      `/v1/webhooks/${encodeURIComponent(id)}/deliveries?limit=${encodeURIComponent(limit)}`,
+      {
+        token,
+      },
+    ),
   createMcpConnection: (token, input) =>
     request("/v1/mcp/connections", { token, method: "POST", body: JSON.stringify(input) }),
   revokeMcpConnection: (token, id) =>
