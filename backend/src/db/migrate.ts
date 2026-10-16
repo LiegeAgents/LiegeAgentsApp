@@ -6,6 +6,15 @@ import { db } from "./index.js";
 
 const migrationsDirectory = join(dirname(fileURLToPath(import.meta.url)), "../../db/migrations");
 
+// Migration 048 was briefly released with a PL/pgSQL target-list assignment that PostgreSQL
+// rejects. Keep its original checksum valid for databases that recorded it before the repair;
+// migration 049 replaces that function body in those databases.
+const compatiblePreviousChecksums: Record<string, string[]> = {
+  "048_persistent_notifications.sql": [
+    "893c596c25a76b66af6d54732a93221604418b747b4104d49f7858805d5c4a3e",
+  ],
+};
+
 export async function migrate() {
   const client = await db.connect();
   try {
@@ -40,7 +49,10 @@ export async function migrate() {
             filename,
             checksum,
           ]);
-        else if (recorded !== checksum)
+        else if (
+          recorded !== checksum &&
+          !(recorded && compatiblePreviousChecksums[filename]?.includes(recorded))
+        )
           throw new Error(
             `Migration ${filename} changed after it was applied. Add a new migration instead of editing an applied one.`,
           );

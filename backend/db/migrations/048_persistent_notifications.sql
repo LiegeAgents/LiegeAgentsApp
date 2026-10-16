@@ -28,9 +28,14 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  SELECT j, a.name INTO job_row, agent_name
-  FROM jobs j JOIN agents a ON a.id = j.agent_id
+  SELECT j.* INTO job_row
+  FROM jobs j
   WHERE j.id = NEW.job_id;
+  IF NOT FOUND THEN RETURN NEW; END IF;
+
+  SELECT a.name INTO agent_name
+  FROM agents a
+  WHERE a.id = job_row.agent_id;
   IF NOT FOUND THEN RETURN NEW; END IF;
 
   notification_title := CASE NEW.event_type
