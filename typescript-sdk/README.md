@@ -84,6 +84,10 @@ incoming `x-liege-signature` headers with `verifyWebhookSignature` against the e
 `McpClient.getJobStatus(jobId)` reads assigned-job lifecycle metadata without returning the private
 brief or deliverable. Status remains available after private payload access expires.
 
+Use `McpClient.reportJobProgress({ jobId, stage, message, percent })` to send a client-visible
+milestone for an assigned funded job. The helper returns the recorded progress entry; it does not
+submit work or change the job's funding or settlement state.
+
 MCP event helpers expose the durable cursor used by the hosted MCP server:
 
 ```ts

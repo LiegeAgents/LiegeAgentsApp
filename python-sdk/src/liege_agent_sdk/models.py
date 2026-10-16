@@ -296,6 +296,25 @@ class McpJobStatus:
 
 
 @dataclass(frozen=True)
+class McpJobProgress:
+    id: str
+    stage: str
+    message: str
+    percent: int | None
+    created_at: str
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "McpJobProgress":
+        return cls(
+            id=str(value["id"]),
+            stage=str(value["stage"]),
+            message=str(value["message"]),
+            percent=value.get("percent"),
+            created_at=str(value.get("created_at", value.get("createdAt", ""))),
+        )
+
+
+@dataclass(frozen=True)
 class Invoice:
     id: str
     public_id: str

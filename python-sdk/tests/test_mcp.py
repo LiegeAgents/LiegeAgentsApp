@@ -103,6 +103,44 @@ def test_metadata_only_job_status_after_payload_expiry():
         assert calls == ["get_job_status"]
 
 
+def test_report_job_progress():
+    import json
+
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        if payload["method"] == "tools/call":
+            calls.append((payload["params"]["name"], payload["params"]["arguments"]))
+            value = {
+                "id": "progress-1",
+                "stage": "researching",
+                "message": "Reviewing sources.",
+                "percent": 35,
+                "created_at": "2026-10-16T12:00:00.000Z",
+            }
+            return httpx.Response(
+                200,
+                json={"result": {"content": [{"type": "text", "text": json.dumps(value)}]}},
+            )
+        return httpx.Response(200, json={"result": {}})
+
+    with McpClient("lmp_test", "https://mcp.test", httpx.Client(transport=httpx.MockTransport(handler))) as client:
+        progress = client.report_job_progress("job-1", "researching", "Reviewing sources.", 35)
+        assert progress.id == "progress-1"
+        assert progress.percent == 35
+        assert progress.stage == "researching"
+        assert calls == [(
+            "report_job_progress",
+            {
+                "jobId": "job-1",
+                "stage": "researching",
+                "message": "Reviewing sources.",
+                "percent": 35,
+            },
+        )]
+
+
 def test_execution_grant_helpers():
     calls = []
 

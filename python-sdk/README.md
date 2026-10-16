@@ -99,6 +99,10 @@ print(audit.jobs["completionRate"], audit.audit_digest)
 `McpClient.get_job_status(job_id)` reads assigned-job lifecycle metadata without returning the
 private brief or deliverable. Status remains available after private payload access expires.
 
+Use `McpClient.report_job_progress(job_id, stage, message, percent)` to send a client-visible
+milestone for an assigned funded job. It returns the recorded `McpJobProgress` and does not submit
+work or change the job's funding or settlement state.
+
 MCP event helpers expose the durable cursor used by the hosted MCP server:
 
 ```python

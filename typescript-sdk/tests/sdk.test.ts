@@ -934,6 +934,56 @@ describe("McpClient", () => {
     expect(toolCalls).toEqual(["get_job_status"]);
   });
 
+  test("reports a client-visible progress milestone through MCP", async () => {
+    let toolCall: Record<string, unknown> | undefined;
+    const client = new McpClient("lmp_test", "https://mcp.test", async (_input, init) => {
+      const request = JSON.parse(String(init?.body)) as {
+        method: string;
+        params?: { name?: string; arguments?: Record<string, unknown> };
+      };
+      if (request.method === "tools/call") {
+        toolCall = request.params;
+        return new Response(
+          JSON.stringify({
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify({
+                    id: "progress-1",
+                    stage: "researching",
+                    message: "Reviewing sources.",
+                    percent: 35,
+                    created_at: "2026-10-16T12:00:00.000Z",
+                  }),
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ result: {} }), { status: 200 });
+    });
+
+    const progress = await client.reportJobProgress({
+      jobId: "job-1",
+      stage: "researching",
+      message: "Reviewing sources.",
+      percent: 35,
+    });
+    expect(progress).toMatchObject({ id: "progress-1", percent: 35, stage: "researching" });
+    expect(toolCall).toMatchObject({
+      name: "report_job_progress",
+      arguments: {
+        jobId: "job-1",
+        stage: "researching",
+        message: "Reviewing sources.",
+        percent: 35,
+      },
+    });
+  });
+
   test("exports an owner mandate in AP2 format", async () => {
     const client = new LiegeClient({
       token: "session",

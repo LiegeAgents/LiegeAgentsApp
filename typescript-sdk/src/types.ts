@@ -1,5 +1,5 @@
 export type Signer = (message: string) => Promise<string> | string;
-export const SDK_VERSION = "0.1.19";
+export const SDK_VERSION = "0.1.20";
 
 export interface X402PaymentRequired {
   x402Version: number;
@@ -356,6 +356,17 @@ export interface McpJobStatus {
   settled_at: string | null;
   updated_at: string;
   payloadExpired: boolean;
+}
+
+export type McpJobProgressStage =
+  "started" | "researching" | "drafting" | "reviewing" | "finalizing";
+
+export interface McpJobProgress {
+  id: string;
+  stage: McpJobProgressStage;
+  message: string;
+  percent: number | null;
+  created_at: string;
 }
 
 export interface ReceiptSubject {

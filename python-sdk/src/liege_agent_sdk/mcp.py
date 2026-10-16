@@ -2,7 +2,7 @@ from typing import Any
 
 import httpx
 
-from .models import Job, McpEvent, McpEventPage, McpEventWait, McpExecutionGrant, McpJobStatus, McpProposal, McpHarnessPreset
+from .models import Job, McpEvent, McpEventPage, McpEventWait, McpExecutionGrant, McpJobProgress, McpJobStatus, McpProposal, McpHarnessPreset
 
 
 class McpClient:
@@ -79,6 +79,14 @@ class McpClient:
 
     def get_job_status(self, job_id: str) -> McpJobStatus:
         return McpJobStatus.from_dict(self._tool("get_job_status", {"jobId": job_id}))
+
+    def report_job_progress(
+        self, job_id: str, stage: str, message: str, percent: int | None = None
+    ) -> McpJobProgress:
+        arguments: dict[str, Any] = {"jobId": job_id, "stage": stage, "message": message}
+        if percent is not None:
+            arguments["percent"] = percent
+        return McpJobProgress.from_dict(self._tool("report_job_progress", arguments))
 
     def list_job_events(
         self,

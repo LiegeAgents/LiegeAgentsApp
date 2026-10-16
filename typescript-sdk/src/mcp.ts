@@ -9,6 +9,8 @@ import {
   type McpEventPage,
   type McpEventWait,
   type McpJobStatus,
+  type McpJobProgress,
+  type McpJobProgressStage,
 } from "./types.js";
 
 export class McpClient {
@@ -31,6 +33,14 @@ export class McpClient {
   }
   async getJobStatus(jobId: string): Promise<McpJobStatus> {
     return this.tool("get_job_status", { jobId }) as Promise<McpJobStatus>;
+  }
+  async reportJobProgress(input: {
+    jobId: string;
+    stage: McpJobProgressStage;
+    message: string;
+    percent?: number;
+  }): Promise<McpJobProgress> {
+    return this.tool("report_job_progress", input) as Promise<McpJobProgress>;
   }
   async listJobEvents(
     options: { after?: string; limit?: number; jobId?: string; eventType?: string } = {},
