@@ -96,10 +96,15 @@ agentsRouter.get(
 
     const agent = agentResult.rows[0];
 
-    const [jobStatsResult, disputeStatsResult, serviceStatsResult, mandateStatsResult] =
-      await Promise.all([
-        db.query(
-          `SELECT
+    const [
+      jobStatsResult,
+      revisionStatsResult,
+      disputeStatsResult,
+      serviceStatsResult,
+      mandateStatsResult,
+    ] = await Promise.all([
+      db.query(
+        `SELECT
             COUNT(*)::int AS total_jobs,
             COUNT(*) FILTER (WHERE status = 'completed')::int AS completed_jobs,
             COUNT(*) FILTER (WHERE status = 'rejected')::int AS rejected_jobs,
@@ -108,42 +113,53 @@ agentsRouter.get(
             COUNT(*) FILTER (WHERE status IN ('open', 'funded', 'submitted'))::int AS active_jobs,
             AVG(EXTRACT(EPOCH FROM (submitted_at - funded_at))) FILTER (WHERE status = 'completed' AND submitted_at IS NOT NULL AND funded_at IS NOT NULL) AS avg_turnaround_seconds,
             COUNT(*) FILTER (WHERE status = 'completed' AND submitted_at IS NOT NULL AND submitted_at <= deadline_at)::int AS on_time_jobs,
+            MAX(settled_at) FILTER (WHERE status = 'completed') AS last_completed_at,
             COALESCE(SUM(CASE WHEN settlement_asset = 'usdg' AND status = 'completed' THEN COALESCE(budget_amount, budget_usdg, 0) ELSE 0 END), 0) AS total_settled_usdg,
             COALESCE(SUM(CASE WHEN settlement_asset = 'liege' AND status = 'completed' THEN COALESCE(budget_amount, 0) ELSE 0 END), 0) AS total_settled_liege
           FROM jobs
           WHERE agent_id = $1`,
-          [agent.id],
-        ),
-        db.query(
-          `SELECT
+        [agent.id],
+      ),
+      db.query(
+        `SELECT
+            COUNT(*)::int AS revision_requests,
+            COUNT(DISTINCT e.job_id)::int AS jobs_with_revisions
+           FROM job_events e
+           JOIN jobs j ON j.id = e.job_id
+           WHERE j.agent_id = $1 AND e.event_type = 'job.revision_requested'`,
+        [agent.id],
+      ),
+      db.query(
+        `SELECT
             COUNT(d.id)::int AS total_disputes,
             COUNT(d.id) FILTER (WHERE d.status = 'resolved_provider')::int AS disputes_won,
             COUNT(d.id) FILTER (WHERE d.status = 'resolved_client')::int AS disputes_lost
           FROM disputes d
           JOIN jobs j ON j.id = d.job_id
           WHERE j.agent_id = $1`,
-          [agent.id],
-        ),
-        db.query(
-          `SELECT
+        [agent.id],
+      ),
+      db.query(
+        `SELECT
             COUNT(*)::int AS total_services,
             MIN(sla_minutes)::int AS min_sla_minutes,
             ARRAY_AGG(DISTINCT service_type) FILTER (WHERE service_type IS NOT NULL) AS service_types
           FROM commerce_services
           WHERE agent_id = $1 AND active = true`,
-          [agent.id],
-        ),
-        db.query(
-          `SELECT
+        [agent.id],
+      ),
+      db.query(
+        `SELECT
             COUNT(*)::int AS total_mandates,
             COUNT(*) FILTER (WHERE status = 'active' AND expires_at > now())::int AS active_mandates
           FROM agent_mandates
           WHERE agent_id = $1`,
-          [agent.id],
-        ),
-      ]);
+        [agent.id],
+      ),
+    ]);
 
     const jobStats = jobStatsResult.rows[0];
+    const revisionStats = revisionStatsResult.rows[0];
     const disputeStats = disputeStatsResult.rows[0];
     const serviceStats = serviceStatsResult.rows[0];
     const mandateStats = mandateStatsResult.rows[0];
@@ -151,7 +167,7 @@ agentsRouter.get(
     const completedJobs = Number(jobStats.completed_jobs ?? 0);
     const closedJobs =
       completedJobs + Number(jobStats.rejected_jobs ?? 0) + Number(jobStats.expired_jobs ?? 0);
-    const completionRate = closedJobs > 0 ? Number((completedJobs / closedJobs).toFixed(4)) : 1.0;
+    const completionRate = closedJobs > 0 ? Number((completedJobs / closedJobs).toFixed(4)) : null;
 
     const avgTurnaroundSeconds =
       jobStats.avg_turnaround_seconds != null ? Number(jobStats.avg_turnaround_seconds) : null;
@@ -160,7 +176,7 @@ agentsRouter.get(
 
     const onTimeJobs = Number(jobStats.on_time_jobs ?? 0);
     const onTimeDeliveryRate =
-      completedJobs > 0 ? Number((onTimeJobs / completedJobs).toFixed(4)) : 1.0;
+      completedJobs > 0 ? Number((onTimeJobs / completedJobs).toFixed(4)) : null;
 
     const totalJobs = Number(jobStats.total_jobs ?? 0);
     const totalDisputes = Number(disputeStats.total_disputes ?? 0);
@@ -174,6 +190,7 @@ agentsRouter.get(
         category: agent.category,
         ownerWallet: agent.owner_wallet,
         reputationScore: Number(agent.reputation_score ?? 0),
+        reputationScoreStatus: "not_scored",
         accountStatus: agent.account_status,
         registeredAt: new Date(agent.created_at).toISOString(),
       },
@@ -192,6 +209,20 @@ agentsRouter.get(
         cancelled: Number(jobStats.cancelled_jobs ?? 0),
         active: Number(jobStats.active_jobs ?? 0),
         completionRate,
+      },
+      performance: {
+        source: "liege_job_lifecycle",
+        completedJobs,
+        onTimeCompletedJobs: onTimeJobs,
+        onTimeDeliveryRate,
+        rejectedJobs: Number(jobStats.rejected_jobs ?? 0),
+        expiredJobs: Number(jobStats.expired_jobs ?? 0),
+        cancelledJobs: Number(jobStats.cancelled_jobs ?? 0),
+        jobsWithRevisionRequests: Number(revisionStats.jobs_with_revisions ?? 0),
+        revisionRequests: Number(revisionStats.revision_requests ?? 0),
+        lastCompletedAt: jobStats.last_completed_at
+          ? new Date(jobStats.last_completed_at).toISOString()
+          : null,
       },
       sla: {
         avgTurnaroundMinutes,

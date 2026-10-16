@@ -28,6 +28,7 @@ export const s = StyleSheet.create({
   brandIcon: { width: 38, height: 38 },
   wordmark: { color: C.text, fontSize: 30, fontWeight: "700", letterSpacing: -1.5 },
   circle: {
+    position: "relative",
     width: 44,
     height: 44,
     borderRadius: 22,

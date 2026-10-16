@@ -48,6 +48,7 @@ export const api = {
   url: API_URL,
   agents: () => request("/v1/agents"),
   agent: (slug) => request(`/v1/agents/${encodeURIComponent(slug)}`),
+  agentReputation: (slug) => request(`/v1/agents/${encodeURIComponent(slug)}/reputation`),
   services: (options = {}) => {
     const query = new URLSearchParams();
     if (options.agentId) query.set("agentId", options.agentId);
@@ -61,6 +62,12 @@ export const api = {
     request(`/v1/services/${encodeURIComponent(agentId)}/${encodeURIComponent(slug)}`),
   me: (token) => request("/v1/me", { token }),
   ledger: (token) => request("/v1/me/ledger", { token }),
+  notifications: (token, limit = 50) =>
+    request(`/v1/notifications?limit=${encodeURIComponent(limit)}`, { token }),
+  markNotificationRead: (token, id) =>
+    request(`/v1/notifications/${encodeURIComponent(id)}/read`, { token, method: "POST" }),
+  markAllNotificationsRead: (token) =>
+    request("/v1/notifications/read-all", { token, method: "POST" }),
   jobs: (token) => request("/v1/jobs", { token }),
   job: (token, id) => request(`/v1/jobs/${id}`, { token }),
   jobPayload: (token, id, payload) => request(`/v1/jobs/${id}/payload/${payload}`, { token }),

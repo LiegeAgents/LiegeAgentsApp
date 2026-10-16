@@ -146,7 +146,9 @@ test("each operation declares the authentication its route enforces", () => {
     const [method] = route.operation.toLowerCase().split(" ");
     const security = spec.paths[route.path][method].security ?? spec.security ?? [];
     const expected =
-      route.path.startsWith("/v1/mobile/overview") || route.path.startsWith("/v1/mobile/proposals/")
+      route.path.startsWith("/v1/mobile/overview") ||
+      route.path.startsWith("/v1/mobile/notifications") ||
+      route.path.startsWith("/v1/mobile/proposals/")
         ? [{ mobileAuth: [] }]
         : route.path.startsWith("/v1/cron/")
           ? [{ cronSecret: [] }]

@@ -354,6 +354,41 @@ paths:
           content: { application/json: { schema: { type: object } } }
         "401": { $ref: "#/components/responses/Unauthenticated" }
 
+  /v1/mobile/notifications:
+    get:
+      operationId: listMobileNotifications
+      summary: List persisted job notifications for the paired mobile device.
+      security: [{ mobileAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200": { description: Recent notifications and unread count. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /v1/mobile/notifications/read-all:
+    post:
+      operationId: markAllMobileNotificationsRead
+      summary: Mark all notifications as read for the paired account.
+      security: [{ mobileAuth: [] }]
+      responses:
+        "200": { description: Number marked read and resulting unread count. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /v1/mobile/notifications/{id}/read:
+    post:
+      operationId: markMobileNotificationRead
+      summary: Mark one owned notification as read from the paired device.
+      security: [{ mobileAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: The updated notification. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /v1/mobile/proposals/{id}/{decision}:
     post:
       operationId: decideMobileProposal
@@ -442,6 +477,67 @@ paths:
         "400": { $ref: "#/components/responses/InvalidRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
 
+  /v1/notifications:
+    get:
+      operationId: listNotifications
+      summary: List the authenticated user's persisted job notifications and unread count.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Recent notifications, newest first, with persistent read state.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [items, unreadCount]
+                    properties:
+                      unreadCount: { type: integer }
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          required: [id, job_id, event_type, title, message, read_at, created_at]
+                          properties:
+                            id: { type: string, format: uuid }
+                            job_id: { type: string, format: uuid }
+                            event_type: { type: string }
+                            title: { type: string }
+                            message: { type: string }
+                            read_at: { type: [string, "null"], format: date-time }
+                            created_at: { type: string, format: date-time }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+
+  /v1/notifications/read-all:
+    post:
+      operationId: markAllNotificationsRead
+      summary: Mark every unread notification belonging to the authenticated user as read.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Number marked read and the resulting unread count. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /v1/notifications/{id}/read:
+    post:
+      operationId: markNotificationRead
+      summary: Mark one owned notification as read.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: The updated notification. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /v1/agents:
     get:
       operationId: listAgents
@@ -526,13 +622,13 @@ paths:
   /v1/agents/{slug}/reputation:
     get:
       operationId: getAgentReputation
-      summary: Machine-readable reputation and SLA performance audit for an active agent.
+      summary: Machine-readable, digestible job-lifecycle performance audit for an active agent.
       parameters:
         - { name: slug, in: path, required: true, schema: { type: string } }
       responses:
         "429": { $ref: "#/components/responses/RateLimited" }
         "200":
-          description: Agent reputation and SLA audit record.
+          description: Recorded lifecycle outcomes and SLA facts. This endpoint does not publish a subjective rating; empty samples are null.
           content:
             application/json:
               schema:
@@ -3771,6 +3867,7 @@ components:
         - agent
         - settlement
         - jobs
+        - performance
         - sla
         - disputes
         - catalog
@@ -3781,14 +3878,35 @@ components:
         agent:
           type: object
           required:
-            [id, slug, name, category, ownerWallet, reputationScore, accountStatus, registeredAt]
+            [
+              id,
+              slug,
+              name,
+              category,
+              ownerWallet,
+              reputationScore,
+              reputationScoreStatus,
+              accountStatus,
+              registeredAt,
+            ]
           properties:
             id: { type: string, format: uuid }
             slug: { type: string }
             name: { type: string }
             category: { type: string }
             ownerWallet: { type: string }
-            reputationScore: { type: number }
+            reputationScore:
+              {
+                type: number,
+                deprecated: true,
+                description: Legacy unscored field; do not interpret as a rating.,
+              }
+            reputationScoreStatus:
+              {
+                type: string,
+                enum: [not_scored],
+                description: The legacy scalar is not used as a performance rating.,
+              }
             accountStatus: { type: string, enum: [active, paused, killed] }
             registeredAt: { type: string, format: date-time }
         settlement:
@@ -3810,14 +3928,61 @@ components:
             expired: { type: integer }
             cancelled: { type: integer }
             active: { type: integer }
-            completionRate: { type: number }
+            completionRate:
+              {
+                type: [number, "null"],
+                description: Completed divided by completed,
+                rejected,
+                and expired jobs; null when there are no such outcomes.,
+              }
+        performance:
+          type: object
+          required:
+            [
+              source,
+              completedJobs,
+              onTimeCompletedJobs,
+              onTimeDeliveryRate,
+              rejectedJobs,
+              expiredJobs,
+              cancelledJobs,
+              jobsWithRevisionRequests,
+              revisionRequests,
+              lastCompletedAt,
+            ]
+          properties:
+            source: { type: string, enum: [liege_job_lifecycle] }
+            completedJobs: { type: integer }
+            onTimeCompletedJobs:
+              {
+                type: integer,
+                description: Completed jobs whose final submission timestamp was no later than the deadline in force at submission.,
+              }
+            onTimeDeliveryRate:
+              {
+                type: [number, "null"],
+                description: On-time completed jobs divided by completed jobs; null when there are no completed jobs.,
+              }
+            rejectedJobs:
+              { type: integer, description: Rejected jobs; this count does not assign fault. }
+            expiredJobs:
+              {
+                type: integer,
+                description: Expired jobs,
+                including requests that may not have been funded.,
+              }
+            cancelledJobs: { type: integer }
+            jobsWithRevisionRequests: { type: integer }
+            revisionRequests:
+              { type: integer, description: Recorded job.revision_requested lifecycle events. }
+            lastCompletedAt: { type: [string, "null"], format: date-time }
         sla:
           type: object
           required: [avgTurnaroundMinutes, onTimeJobs, onTimeDeliveryRate, minCatalogSlaMinutes]
           properties:
             avgTurnaroundMinutes: { type: [number, "null"] }
             onTimeJobs: { type: integer }
-            onTimeDeliveryRate: { type: number }
+            onTimeDeliveryRate: { type: [number, "null"] }
             minCatalogSlaMinutes: { type: [integer, "null"] }
         disputes:
           type: object

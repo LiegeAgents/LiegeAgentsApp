@@ -435,9 +435,29 @@ function MarketCard({ agent: a, saved, onSave, onHire }) {
 }
 function Profile({ agent: a, saved, onSave, onHire }) {
   const p = profileFor(a);
+  const [performance, setPerformance] = useState(null);
+  const [performanceLoading, setPerformanceLoading] = useState(true);
   useEffect(() => {
     document.title = `${a.name} — ${p.role} | Liege Marketplace`;
   }, [a.id, p.role]);
+  useEffect(() => {
+    let active = true;
+    setPerformanceLoading(true);
+    api
+      .agentReputation(a.slug || a.id)
+      .then((result) => {
+        if (active) setPerformance(result.data || null);
+      })
+      .catch(() => {
+        if (active) setPerformance(null);
+      })
+      .finally(() => {
+        if (active) setPerformanceLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [a.id, a.slug]);
   return (
     <div className="agent-profile">
       <a className="profile-back" href="/marketplace">
@@ -472,6 +492,7 @@ function Profile({ agent: a, saved, onSave, onHire }) {
         <main>
           <nav className="profile-tabs" aria-label="Agent profile sections">
             <a href="#about">Overview</a>
+            <a href="#performance">Performance</a>
             <a href="#capabilities">Capabilities</a>
             <a href="#deliverables">Deliverables</a>
             <a href="#process">How it works</a>
@@ -487,6 +508,73 @@ function Profile({ agent: a, saved, onSave, onHire }) {
                 <p>{p.ideal}</p>
               </div>
             </div>
+          </section>
+          <section id="performance" className="profile-section profile-performance">
+            <span className="eyebrow">LIEGE-RECORDED PERFORMANCE</span>
+            <h2>A track record you can inspect.</h2>
+            <p>
+              Counts and rates come from recorded Liege job outcomes—not owner claims or user
+              ratings. New agents may have little or no completed work yet.
+            </p>
+            {performanceLoading ? (
+              <div className="performance-status" role="status">
+                Loading recorded outcomes…
+              </div>
+            ) : performance ? (
+              <>
+                <div className="performance-grid">
+                  <div>
+                    <span>Completed jobs</span>
+                    <strong>{performance.performance.completedJobs}</strong>
+                  </div>
+                  <div>
+                    <span>On-time delivery</span>
+                    <strong>
+                      {performance.performance.onTimeDeliveryRate == null
+                        ? "—"
+                        : `${Math.round(performance.performance.onTimeDeliveryRate * 100)}%`}
+                    </strong>
+                    <small>
+                      {performance.performance.onTimeCompletedJobs} of{" "}
+                      {performance.performance.completedJobs} completed
+                    </small>
+                  </div>
+                  <div>
+                    <span>Jobs with revision requests</span>
+                    <strong>{performance.performance.jobsWithRevisionRequests}</strong>
+                    <small>{performance.performance.revisionRequests} recorded requests</small>
+                  </div>
+                  <div>
+                    <span>Rejected status</span>
+                    <strong>{performance.performance.rejectedJobs}</strong>
+                    <small>Recorded lifecycle outcomes</small>
+                  </div>
+                  <div>
+                    <span>Expired status</span>
+                    <strong>{performance.performance.expiredJobs}</strong>
+                    <small>May include jobs not funded</small>
+                  </div>
+                </div>
+                <div className="performance-footnote">
+                  <span>
+                    {performance.performance.lastCompletedAt
+                      ? `Last completed ${new Date(performance.performance.lastCompletedAt).toLocaleDateString()}`
+                      : "No completed jobs recorded yet"}
+                  </span>
+                  <span title={performance.auditDigest}>
+                    Snapshot digest · {performance.auditDigest.slice(0, 12)}…
+                  </span>
+                </div>
+                <p className="performance-caveat">
+                  Status counts are facts, not fault attribution. On-time delivery compares the
+                  final submission with the deadline in effect at that submission.
+                </p>
+              </>
+            ) : (
+              <div className="performance-status" role="status">
+                Recorded performance is temporarily unavailable.
+              </div>
+            )}
           </section>
           <section id="capabilities" className="profile-section">
             <span className="eyebrow">THE CAPABILITY SET</span>

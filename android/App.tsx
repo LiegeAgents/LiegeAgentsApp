@@ -46,6 +46,15 @@ type Proposal = {
   created_at?: string;
 };
 type Entry = { id: string; type: string; created_at: string; reference?: string };
+type InboxNotification = {
+  id: string;
+  job_id: string;
+  event_type: string;
+  title: string;
+  message: string;
+  read_at: string | null;
+  created_at: string;
+};
 type Overview = { jobs: Job[]; proposals: Proposal[]; activity: Entry[] };
 type Notice = {
   title: string;
@@ -559,6 +568,11 @@ function Workspace({
   const [superAgentBusy, setSuperAgentBusy] = useState(false);
   const [superAgentDecisionId, setSuperAgentDecisionId] = useState("");
   const [account, setAccount] = useState(false);
+  const [notificationSheet, setNotificationSheet] = useState(false);
+  const [inbox, setInbox] = useState<{ items: InboxNotification[]; unreadCount: number }>({
+    items: [],
+    unreadCount: 0,
+  });
   const [deciding, setDeciding] = useState(false);
   const requestLock = useRef(false);
   const decisionLock = useRef(false);
@@ -588,6 +602,8 @@ function Workspace({
         offset = next;
       }
       setData({ ...overview, jobs: [...allJobs.values()] });
+      const notifications = await call("/v1/mobile/notifications", {}, token).catch(() => null);
+      if (notifications) setInbox(notifications);
       setLoaded(true);
     } catch (e) {
       notify({
@@ -620,6 +636,58 @@ function Workspace({
   useEffect(() => {
     if (tab === "superagents") void loadSuperAgents();
   }, [tab, token]);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      void call("/v1/mobile/notifications", {}, token)
+        .then((result) => setInbox(result))
+        .catch(() => {});
+    }, 20_000);
+    return () => clearInterval(timer);
+  }, [token]);
+  const markMobileNotificationRead = async (item: InboxNotification) => {
+    if (!item.read_at) {
+      try {
+        await call(`/v1/mobile/notifications/${item.id}/read`, { method: "POST" }, token);
+        setInbox((current) => ({
+          unreadCount: Math.max(0, current.unreadCount - 1),
+          items: current.items.map((entry) =>
+            entry.id === item.id ? { ...entry, read_at: new Date().toISOString() } : entry,
+          ),
+        }));
+      } catch (error) {
+        notify({
+          title: "Couldn’t update notification",
+          body: (error as Error).message,
+          kind: "error",
+        });
+        return;
+      }
+    }
+    setNotificationSheet(false);
+    const job = data.jobs.find((entry) => entry.id === item.job_id);
+    if (job) {
+      setTab("jobs");
+      setJob(job);
+    } else navigate("jobs");
+  };
+  const markAllMobileNotificationsRead = async () => {
+    try {
+      await call("/v1/mobile/notifications/read-all", { method: "POST" }, token);
+      setInbox((current) => ({
+        unreadCount: 0,
+        items: current.items.map((item) => ({
+          ...item,
+          read_at: item.read_at || new Date().toISOString(),
+        })),
+      }));
+    } catch (error) {
+      notify({
+        title: "Couldn’t update notifications",
+        body: (error as Error).message,
+        kind: "error",
+      });
+    }
+  };
   const navigate = (next: Tab) => {
     setTab(next);
     fade.setValue(0.35);
@@ -919,8 +987,18 @@ function Workspace({
         <View style={s.topbar}>
           <Brand />
           <View style={s.inline}>
-            <Tap label="Open approvals" onPress={() => navigate("approvals")} style={s.circle}>
+            <Tap
+              label={`Open notifications${inbox.unreadCount ? `, ${inbox.unreadCount} unread` : ""}`}
+              onPress={() => {
+                setNotificationSheet(true);
+                void call("/v1/mobile/notifications", {}, token)
+                  .then((result) => setInbox(result))
+                  .catch(() => {});
+              }}
+              style={s.circle}
+            >
               <Icon name="bell" size={20} />
+              {inbox.unreadCount > 0 && <View style={s.notificationDot} />}
             </Tap>
             <Tap label="Device settings" onPress={() => setAccount(true)} style={s.avatar}>
               <Icon name="user" size={20} color={C.green} />
@@ -1470,6 +1548,51 @@ function Workspace({
             </Text>
             <Button title="Open web workspace" icon="external-link" onPress={web} />
           </>
+        )}
+      </Sheet>
+      <Sheet visible={notificationSheet} close={() => setNotificationSheet(false)}>
+        <View style={s.sheetIcon}>
+          <Icon name="bell" color={C.green} size={27} />
+        </View>
+        <Text style={s.eyebrow}>JOB UPDATES</Text>
+        <Text style={s.sheetTitle}>Notifications</Text>
+        {inbox.unreadCount > 0 && (
+          <Tap onPress={() => void markAllMobileNotificationsRead()} style={s.webLink}>
+            <Text style={s.link}>Mark all as read</Text>
+            <Icon name="check" size={16} color={C.green} />
+          </Tap>
+        )}
+        {inbox.items.length ? (
+          <View style={s.list}>
+            {inbox.items.map((item) => (
+              <Tap
+                key={item.id}
+                onPress={() => void markMobileNotificationRead(item)}
+                style={s.jobRow}
+              >
+                <View style={s.jobIcon}>
+                  <Icon
+                    name={item.read_at ? "check" : "activity"}
+                    color={item.read_at ? C.muted : C.green}
+                    size={17}
+                  />
+                </View>
+                <View style={s.flex}>
+                  <Text style={s.rowTitle}>{item.title}</Text>
+                  <Text style={s.rowMeta}>
+                    {item.message} · {date(item.created_at)}
+                  </Text>
+                </View>
+                <Icon name="chevron-right" color={C.dim} size={17} />
+              </Tap>
+            ))}
+          </View>
+        ) : (
+          <Empty
+            icon="bell"
+            title="All caught up"
+            body="Job funding, delivery, and settlement updates will show up here."
+          />
         )}
       </Sheet>
       <Sheet

@@ -167,7 +167,7 @@ function buildWorkspaceNotifications({
     .map((item) => ({ ...item, action: () => navigate(item.target) }));
 }
 
-function WorkspaceNotifications({ items, onClose }) {
+function WorkspaceNotifications({ items, onClose, onReadAll, unreadCount }) {
   return (
     <section
       className="workspace-notification-panel"
@@ -176,12 +176,19 @@ function WorkspaceNotifications({ items, onClose }) {
     >
       <div className="workspace-notification-heading">
         <div>
-          <span className="eyebrow">WORKSPACE SIGNALS</span>
+          <span className="eyebrow">JOB UPDATES</span>
           <h2>Notifications</h2>
         </div>
-        <button className="subtle-link" type="button" onClick={onClose}>
-          Close
-        </button>
+        <div className="workspace-notification-controls">
+          {unreadCount > 0 && (
+            <button className="subtle-link" type="button" onClick={onReadAll}>
+              Mark all read
+            </button>
+          )}
+          <button className="subtle-link" type="button" onClick={onClose}>
+            Close
+          </button>
+        </div>
       </div>
       {items.length ? (
         <div className="workspace-notification-list">
@@ -195,7 +202,11 @@ function WorkspaceNotifications({ items, onClose }) {
                     ? Activity
                     : Bell;
             return (
-              <button className="workspace-notification-item" key={item.id} onClick={item.action}>
+              <button
+                className={`workspace-notification-item${item.read ? " read" : ""}`}
+                key={item.id}
+                onClick={item.action}
+              >
                 <span className={`workspace-notification-icon ${item.tone}`}>
                   <Icon size={14} />
                 </span>
@@ -242,6 +253,7 @@ export default function Workspace() {
     [activity, setActivity] = useState([]),
     [runnerRuns, setRunnerRuns] = useState([]),
     [mcpProposals, setMcpProposals] = useState([]),
+    [notificationInbox, setNotificationInbox] = useState({ items: [], unreadCount: 0 }),
     [notificationsOpen, setNotificationsOpen] = useState(false),
     [apiError, setApiError] = useState(""),
     [loadingLive, setLoadingLive] = useState(false);
@@ -256,16 +268,16 @@ export default function Workspace() {
       if (wallet.apiSession) {
         const jobs = await api.jobs("cookie");
         setLiveJobs((jobs.data || []).map(jobForDisplay));
-        const [invoices, evaluations, ledger, accounts, runs, proposals] = await Promise.allSettled(
-          [
+        const [invoices, evaluations, ledger, accounts, runs, proposals, inbox] =
+          await Promise.allSettled([
             api.invoices("cookie"),
             api.evaluationTasks("cookie"),
             api.ledger("cookie"),
             api.agentAccounts("cookie"),
             api.runnerRuns("cookie"),
             api.mcpProposals("cookie"),
-          ],
-        );
+            api.notifications("cookie"),
+          ]);
         setAttention({
           invoices: invoices.status === "fulfilled" ? invoices.value.data || [] : [],
           evaluations: evaluations.status === "fulfilled" ? evaluations.value.data || [] : [],
@@ -274,11 +286,17 @@ export default function Workspace() {
         setActivity(ledger.status === "fulfilled" ? ledger.value.data || [] : []);
         setRunnerRuns(runs.status === "fulfilled" ? runs.value.data || [] : []);
         setMcpProposals(proposals.status === "fulfilled" ? proposals.value.data || [] : []);
+        setNotificationInbox(
+          inbox.status === "fulfilled"
+            ? inbox.value.data || { items: [], unreadCount: 0 }
+            : { items: [], unreadCount: 0 },
+        );
       } else {
         setAttention({ invoices: [], evaluations: [], accounts: [] });
         setActivity([]);
         setRunnerRuns([]);
         setMcpProposals([]);
+        setNotificationInbox({ items: [], unreadCount: 0 });
       }
     } catch (e) {
       setApiError(e?.message || "Could not reach the Liege API.");
@@ -288,6 +306,16 @@ export default function Workspace() {
   };
   useEffect(() => {
     refreshLive();
+  }, [wallet.apiSession?.id]);
+  useEffect(() => {
+    if (!wallet.apiSession) return;
+    const refreshInbox = () =>
+      api
+        .notifications("cookie")
+        .then((result) => setNotificationInbox(result.data || { items: [], unreadCount: 0 }))
+        .catch(() => {});
+    const timer = window.setInterval(refreshInbox, 20_000);
+    return () => window.clearInterval(timer);
   }, [wallet.apiSession?.id]);
   useEffect(() => {
     const id = new URLSearchParams(location.search).get("hire");
@@ -366,7 +394,7 @@ export default function Workspace() {
   const draftFor = (a) => setModal({ type: "create-job", agent: a?.id });
   const active = allJobs.filter((j) => ["Funded", "Submitted"].includes(j.status)),
     escrow = active.reduce((n, j) => n + j.budget, 0);
-  const notifications = useMemo(
+  const workspaceSignals = useMemo(
     () =>
       buildWorkspaceNotifications({
         jobs: allJobs,
@@ -382,6 +410,61 @@ export default function Workspace() {
       }),
     [allJobs, attention.invoices, attention.evaluations, mcpProposals, runnerRuns, activity],
   );
+  const notifications = useMemo(
+    () =>
+      [
+        ...notificationInbox.items.map((item) => ({
+          id: `inbox-${item.id}`,
+          tone:
+            item.event_type === "job.rejected" || item.event_type === "job.expired"
+              ? "warning"
+              : "active",
+          label: item.event_type.replace("job.", "").replaceAll("_", " "),
+          title: item.title,
+          detail: item.message,
+          date: item.created_at,
+          read: Boolean(item.read_at),
+          action: async () => {
+            if (!item.read_at) {
+              try {
+                await api.markNotificationRead("cookie", item.id);
+                setNotificationInbox((current) => ({
+                  ...current,
+                  unreadCount: Math.max(0, current.unreadCount - 1),
+                  items: current.items.map((entry) =>
+                    entry.id === item.id ? { ...entry, read_at: new Date().toISOString() } : entry,
+                  ),
+                }));
+              } catch {
+                /* Leave the item unread if the server update failed. */
+              }
+            }
+            setNotificationsOpen(false);
+            const job = allJobs.find((entry) => entry.id === item.job_id);
+            navigate("jobs");
+            if (job) setModal({ type: "job", id: job.id });
+          },
+        })),
+        ...workspaceSignals,
+      ]
+        .sort((a, b) => notificationDate(b.date) - notificationDate(a.date))
+        .slice(0, 30),
+    [notificationInbox, workspaceSignals, allJobs],
+  );
+  const markAllNotificationsRead = async () => {
+    try {
+      await api.markAllNotificationsRead("cookie");
+      setNotificationInbox((current) => ({
+        unreadCount: 0,
+        items: current.items.map((item) => ({
+          ...item,
+          read_at: item.read_at || new Date().toISOString(),
+        })),
+      }));
+    } catch (error) {
+      notify(error?.message || "Could not update notifications. Try again.");
+    }
+  };
   const visibleAgents = allAgents.filter(
     (a) =>
       (filter === "All" ||
@@ -499,18 +582,22 @@ export default function Workspace() {
             <div className="workspace-notifications">
               <button
                 className={`icon-button notification-trigger${notificationsOpen ? " active" : ""}`}
-                aria-label={`Notifications${notifications.length ? ` (${notifications.length} unread)` : ""}`}
+                aria-label={`Notifications${notificationInbox.unreadCount ? ` (${notificationInbox.unreadCount} unread)` : ""}`}
                 aria-expanded={notificationsOpen}
                 onClick={() => setNotificationsOpen((open) => !open)}
               >
                 <Bell size={15} />
-                {notifications.length > 0 && (
-                  <span className="notification-count">{Math.min(notifications.length, 99)}</span>
+                {notificationInbox.unreadCount > 0 && (
+                  <span className="notification-count">
+                    {Math.min(notificationInbox.unreadCount, 99)}
+                  </span>
                 )}
               </button>
               {notificationsOpen && (
                 <WorkspaceNotifications
                   items={notifications}
+                  unreadCount={notificationInbox.unreadCount}
+                  onReadAll={markAllNotificationsRead}
                   onClose={() => setNotificationsOpen(false)}
                 />
               )}

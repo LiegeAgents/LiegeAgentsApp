@@ -26,6 +26,7 @@ import { superAgentsRouter, xCallback } from "./routes/superAgents.js";
 import { githubHooksRouter } from "./routes/githubTriggers.js";
 import { runtimeRouter } from "./routes/runtime.js";
 import { stakingRouter } from "./routes/staking.js";
+import { notificationsRouter } from "./routes/notifications.js";
 
 export const app = express();
 export const healthPayload = () => ({
@@ -103,6 +104,7 @@ app.get("/api/v1/auth/x/callback", xCallback);
 // Exported so the API contract test can list every route.
 export const routers = [
   ["/v1", accountRouter],
+  ["/v1/notifications", notificationsRouter],
   ["/v1/agents", agentsRouter],
   ["/v1/jobs", jobsRouter],
   ["/v1/jobs", legionsRouter],
