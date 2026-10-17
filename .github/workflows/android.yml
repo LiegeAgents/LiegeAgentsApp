@@ -55,5 +55,5 @@ jobs:
         with: { name: liege-mobile-apk, path: android/liege-mobile.apk, retention-days: 1 }
       - name: Publish tagged release
         if: startsWith(github.ref, 'refs/tags/android-v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with: { files: android/liege-mobile.apk, generate_release_notes: true }

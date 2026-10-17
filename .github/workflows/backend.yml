@@ -139,7 +139,7 @@ jobs:
       - id: tag
         run: echo "name=backend-$(date -u +%Y%m%d%H%M)-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
       - run: git tag "${{ steps.tag.outputs.name }}" && git push origin "${{ steps.tag.outputs.name }}"
-      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ steps.tag.outputs.name }}
           generate_release_notes: true
