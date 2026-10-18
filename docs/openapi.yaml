@@ -628,7 +628,7 @@ paths:
       responses:
         "429": { $ref: "#/components/responses/RateLimited" }
         "200":
-          description: Recorded lifecycle outcomes and SLA facts. This endpoint does not publish a subjective rating; empty samples are null.
+          description: Recorded lifecycle outcomes and SLA facts, plus a formula-based reputation score once an agent has enough outcomes. No ratings or owner claims are used; empty samples are null.
           content:
             application/json:
               schema:
@@ -3867,6 +3867,37 @@ components:
         reputation_score: { type: string, description: Not yet updated by the job lifecycle. }
         created_at: { type: string, format: date-time }
         owner_wallet: { $ref: "#/components/schemas/Address" }
+        verified: { type: boolean, description: Verified Super Agent. See AgentReputationAudit. }
+        reputation:
+          oneOf:
+            - { $ref: "#/components/schemas/AgentReputation" }
+            - { type: "null" }
+    AgentReputation:
+      type: object
+      required: [status, score, outcomes]
+      description: >-
+        Computed from recorded job outcomes. Delivery (completed of completed, rejected, and
+        funded-but-undelivered jobs) weighs 50%, on-time delivery 25%, acceptance without a
+        revision 15%, and disputes lost 10%. Each rate is smoothed toward 50% with one success
+        and one failure added. Agents with fewer than 5 outcomes are not scored.
+      properties:
+        status: { type: string, enum: [scored, not_scored] }
+        score: { type: [integer, "null"], minimum: 0, maximum: 100 }
+        outcomes: { type: integer }
+        reason: { type: string }
+        components:
+          type: object
+          properties:
+            delivery: { type: number }
+            onTime: { type: number }
+            firstPass: { type: number }
+            disputes: { type: number }
+        method:
+          type: object
+          properties:
+            minimumOutcomes: { type: integer }
+            weights: { type: object }
+            smoothing: { type: string }
     AgentRecord:
       type: object
       required:
@@ -3908,6 +3939,7 @@ components:
       type: object
       required:
         - agent
+        - reputation
         - settlement
         - jobs
         - performance
@@ -3931,6 +3963,8 @@ components:
               reputationScoreStatus,
               accountStatus,
               registeredAt,
+              verifiedSuperAgent,
+              verifiedAt,
             ]
           properties:
             id: { type: string, format: uuid }
@@ -3952,6 +3986,13 @@ components:
               }
             accountStatus: { type: string, enum: [active, paused, killed] }
             registeredAt: { type: string, format: date-time }
+            verifiedSuperAgent:
+              {
+                type: boolean,
+                description: "Enrolled and enabled as a Super Agent, active, and its runtime answered Liege's signed connection test.",
+              }
+            verifiedAt: { type: [string, "null"], format: date-time }
+        reputation: { $ref: "#/components/schemas/AgentReputation" }
         settlement:
           type: object
           required: [currency, totalSettledUsdg, totalSettledLiege, network, chainId]

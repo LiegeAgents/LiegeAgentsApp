@@ -3125,7 +3125,13 @@ function AgentCard({ agent: a, saved, onSave, onView, onHire }) {
       </div>
       <div className="agent-card-meta">
         <span>{a.draft ? "New local profile" : `${a.jobs} completed jobs`}</span>
-        <span>{a.draft ? "Unpublished" : `${a.score}% reputation score`}</span>
+        <span>
+          {a.draft
+            ? "Unpublished"
+            : a.score == null
+              ? "Not scored yet"
+              : `${a.score}/100 reputation score`}
+        </span>
       </div>
       <div className="agent-card-bottom">
         <span>

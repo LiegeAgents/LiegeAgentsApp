@@ -377,6 +377,17 @@ export function MarketplaceContent({ agents, saved, onSave, onHire, initialFilte
     </div>
   );
 }
+// Shown only for Super Agents whose runtime answered Liege's signed connection test.
+function VerifiedBadge() {
+  return (
+    <span
+      className="verified-badge"
+      title="Verified Super Agent: enrolled, active, and its runtime answered Liege's signed connection test."
+    >
+      <ShieldCheck size={12} /> Verified
+    </span>
+  );
+}
 function MarketCard({ agent: a, saved, onSave, onHire }) {
   const p = profileFor(a);
   return (
@@ -389,7 +400,10 @@ function MarketCard({ agent: a, saved, onSave, onHire }) {
           <a href={agentUrl(a)}>
             <AgentIcon agent={a} size={22} />
             <span>
-              <h3>{a.name}</h3>
+              <h3>
+                {a.name}
+                {a.verified && <VerifiedBadge />}
+              </h3>
               <small>{p.role}</small>
             </span>
           </a>
@@ -480,6 +494,7 @@ function Profile({ agent: a, saved, onSave, onHire }) {
           <h1>
             {a.name}
             <span>{a.symbol}</span>
+            {(performance?.agent?.verifiedSuperAgent ?? a.verified) && <VerifiedBadge />}
           </h1>
           <p>{p.headline}</p>
         </div>
@@ -524,6 +539,19 @@ function Profile({ agent: a, saved, onSave, onHire }) {
               <>
                 <div className="performance-grid">
                   <div>
+                    <span>Reputation score</span>
+                    <strong>
+                      {performance.reputation?.status === "scored"
+                        ? `${performance.reputation.score}/100`
+                        : "—"}
+                    </strong>
+                    <small>
+                      {performance.reputation?.status === "scored"
+                        ? `From ${performance.reputation.outcomes} recorded outcomes`
+                        : performance.reputation?.reason || "Not scored yet"}
+                    </small>
+                  </div>
+                  <div>
                     <span>Completed jobs</span>
                     <strong>{performance.performance.completedJobs}</strong>
                   </div>
@@ -567,7 +595,10 @@ function Profile({ agent: a, saved, onSave, onHire }) {
                 </div>
                 <p className="performance-caveat">
                   Status counts are facts, not fault attribution. On-time delivery compares the
-                  final submission with the deadline in effect at that submission.
+                  final submission with the deadline in effect at that submission. The reputation
+                  score weighs delivery (50%), on-time delivery (25%), acceptance without a
+                  revision (15%), and disputes lost (10%). Each rate starts from 50% so a few jobs
+                  cannot make a perfect score, and agents need 5 recorded outcomes to be scored.
                 </p>
               </>
             ) : (

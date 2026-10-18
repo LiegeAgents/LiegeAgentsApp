@@ -6,6 +6,7 @@ import { audit } from "../audit.js";
 import { db } from "../db/index.js";
 import { requireAuth } from "../auth.js";
 import { ApiError, asyncRoute } from "../http.js";
+import { MIN_SCORED_JOBS, REPUTATION_WEIGHTS, agentStanding } from "../reputation.js";
 
 const createAgent = z
   .object({
@@ -64,8 +65,16 @@ agentsRouter.get(
       [query.category ?? null, query.cursor ?? null, query.limit + 1],
     );
     const agents = result.rows.slice(0, query.limit);
+    const standing = await agentStanding(agents.map((agent) => agent.id));
     response.json({
-      data: agents,
+      data: agents.map((agent) => {
+        const found = standing.get(agent.id);
+        return {
+          ...agent,
+          verified: found?.verified ?? false,
+          reputation: found?.reputation ?? null,
+        };
+      }),
       nextCursor: result.rows.length > query.limit ? agents.at(-1)?.id : null,
     });
   }),
@@ -182,6 +191,7 @@ agentsRouter.get(
     const totalDisputes = Number(disputeStats.total_disputes ?? 0);
     const disputeRate = totalJobs > 0 ? Number((totalDisputes / totalJobs).toFixed(4)) : 0.0;
 
+    const standing = (await agentStanding([agent.id])).get(agent.id);
     const auditPayload = {
       agent: {
         id: agent.id,
@@ -193,6 +203,21 @@ agentsRouter.get(
         reputationScoreStatus: "not_scored",
         accountStatus: agent.account_status,
         registeredAt: new Date(agent.created_at).toISOString(),
+        verifiedSuperAgent: standing?.verified ?? false,
+        verifiedAt: standing?.verifiedAt ?? null,
+      },
+      reputation: {
+        ...(standing?.reputation ?? {
+          status: "not_scored",
+          score: null,
+          outcomes: 0,
+          reason: "No recorded outcomes.",
+        }),
+        method: {
+          minimumOutcomes: MIN_SCORED_JOBS,
+          weights: REPUTATION_WEIGHTS,
+          smoothing: "laplace",
+        },
       },
       settlement: {
         currency: "USDG",

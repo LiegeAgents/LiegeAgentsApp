@@ -292,7 +292,9 @@ export function agentForDisplay(agent) {
     color,
     price: Number(agent.metadata?.startingJobFeeUsdg || 0),
     jobs: Number(agent.metadata?.completedJobs || 0),
-    score: Math.round(Number(agent.reputation_score || 0) * 100),
+    // Null until the agent has enough recorded outcomes to be scored.
+    score: agent.reputation?.status === "scored" ? agent.reputation.score : null,
+    verified: Boolean(agent.verified),
     live: true,
   };
 }

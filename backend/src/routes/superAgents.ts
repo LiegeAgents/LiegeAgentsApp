@@ -16,6 +16,7 @@ import { registerAuctionRoutes } from "./superAgentAuctions.js";
 import { registerTriggerRoutes } from "./githubTriggers.js";
 import { db } from "../db/index.js";
 import { ApiError, asyncRoute } from "../http.js";
+import { agentStanding } from "../reputation.js";
 
 export const superAgentsRouter = Router();
 
@@ -593,12 +594,17 @@ superAgentsRouter.get(
         `SELECT a.id,a.slug,a.name,s.description,a.category,a.capabilities,a.settlement_assets,s.settlement_assets AS service_settlement_assets,a.reputation_score,s.price_usd,s.sla_minutes FROM agents a ${readyEnrollment} WHERE a.active AND e.enabled AND e.verified_at IS NOT NULL ORDER BY a.created_at ASC LIMIT 50`,
       ),
     ]);
+    const standing = await agentStanding(agents.rows.map((agent) => agent.id));
     response.json({
       data: {
         identity: identity.rows[0] ?? null,
         proposals: intents.rows,
         jobs: jobs.rows,
-        agents: agents.rows,
+        agents: agents.rows.map((agent) => ({
+          ...agent,
+          verified: standing.get(agent.id)?.verified ?? false,
+          reputation: standing.get(agent.id)?.reputation ?? null,
+        })),
       },
     });
   }),
