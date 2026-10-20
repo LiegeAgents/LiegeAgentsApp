@@ -26,7 +26,7 @@ import { AgentIcon } from "./ProductArt";
 import { Button, Empty } from "./UI";
 import { money } from "./data";
 import { profileFor } from "./agentProfiles";
-import { api, agentForDisplay, marketplaceAgentMatches } from "./api";
+import { api, agentForDisplay, compareTrackRecord, marketplaceAgentMatches } from "./api";
 import "./marketplace.css";
 
 const categories = [
@@ -139,6 +139,12 @@ export function MarketplaceContent({ agents, saved, onSave, onHire, initialFilte
     [settlementAsset, setSettlementAsset] = useState("all"),
     [sort, setSort] = useState("recommended"),
     [savedOnly, setSavedOnly] = useState(initialFilter === "Saved"),
+    // `?verified=1` opens the marketplace on verified Super Agents only.
+    [verifiedOnly, setVerifiedOnly] = useState(
+      () =>
+        typeof window !== "undefined" &&
+        new URLSearchParams(window.location.search).get("verified") === "1",
+    ),
     [layout, setLayout] = useState("grid");
   useEffect(() => {
     setCategory(initialFilter === "Saved" ? "All" : initialFilter);
@@ -146,7 +152,14 @@ export function MarketplaceContent({ agents, saved, onSave, onHire, initialFilte
   }, [initialFilter]);
   const filtered = useMemo(() => {
     const result = agents.filter((agent) =>
-      marketplaceAgentMatches(agent, { category, settlementAsset, savedOnly, saved, query }),
+      marketplaceAgentMatches(agent, {
+        category,
+        settlementAsset,
+        savedOnly,
+        saved,
+        query,
+        verifiedOnly,
+      }),
     );
     return sort === "low"
       ? result.sort((a, b) => (a.servicePriceUsd ?? Infinity) - (b.servicePriceUsd ?? Infinity))
@@ -154,13 +167,26 @@ export function MarketplaceContent({ agents, saved, onSave, onHire, initialFilte
         ? result.sort((a, b) => (b.servicePriceUsd ?? -Infinity) - (a.servicePriceUsd ?? -Infinity))
         : sort === "name"
           ? result.sort((a, b) => a.name.localeCompare(b.name))
-          : result;
-  }, [agents, category, settlementAsset, savedOnly, saved, query, sort]);
+          : sort === "track"
+            ? result.sort(compareTrackRecord)
+            : result;
+  }, [agents, category, settlementAsset, savedOnly, saved, query, sort, verifiedOnly]);
+  const verifiedCount = agents.filter((agent) =>
+    marketplaceAgentMatches(agent, {
+      category,
+      settlementAsset,
+      savedOnly,
+      saved,
+      query,
+      verifiedOnly: true,
+    }),
+  ).length;
   const reset = () => {
     setQuery("");
     setCategory("All");
     setSettlementAsset("all");
     setSavedOnly(false);
+    setVerifiedOnly(false);
   };
   return (
     <div className="marketplace-content">
@@ -226,6 +252,7 @@ export function MarketplaceContent({ agents, saved, onSave, onHire, initialFilte
               savedOnly,
               saved,
               query,
+              verifiedOnly,
             }),
           ).length;
           return (
@@ -267,6 +294,7 @@ export function MarketplaceContent({ agents, saved, onSave, onHire, initialFilte
                       savedOnly,
                       saved,
                       query,
+                      verifiedOnly,
                     }),
                   ).length
                 }
@@ -274,7 +302,21 @@ export function MarketplaceContent({ agents, saved, onSave, onHire, initialFilte
             )}
           </button>
         ))}
-        {(category !== "All" || settlementAsset !== "all" || savedOnly || query.trim()) && (
+        <button
+          type="button"
+          className={"market-verified-filter " + (verifiedOnly ? "active" : "")}
+          aria-pressed={verifiedOnly}
+          onClick={() => setVerifiedOnly(!verifiedOnly)}
+        >
+          <ShieldCheck size={13} />
+          Verified only
+          <small>{verifiedCount}</small>
+        </button>
+        {(category !== "All" ||
+          settlementAsset !== "all" ||
+          savedOnly ||
+          verifiedOnly ||
+          query.trim()) && (
           <button type="button" className="market-filter-reset" onClick={reset}>
             Clear filters
           </button>
@@ -301,6 +343,7 @@ export function MarketplaceContent({ agents, saved, onSave, onHire, initialFilte
               <option value="low">Reference price: low to high</option>
               <option value="high">Reference price: high to low</option>
               <option value="name">Name: A to Z</option>
+              <option value="track">Track record: strongest first</option>
             </select>
           </label>
           <div className="market-view-switch" aria-label="Results layout">

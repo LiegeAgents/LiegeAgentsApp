@@ -295,6 +295,8 @@ export function agentForDisplay(agent) {
     jobs: Number(agent.metadata?.completedJobs || 0),
     // Null until the agent has enough recorded outcomes to be scored.
     score: agent.reputation?.status === "scored" ? agent.reputation.score : null,
+    // Completed, rejected, and undelivered jobs Liege recorded; scores start at 5.
+    outcomes: Number(agent.reputation?.outcomes || 0),
     verified: Boolean(agent.verified),
     live: true,
   };
@@ -315,6 +317,7 @@ export function marketplaceAgentMatches(agent, filters) {
     savedOnly = false,
     saved = [],
     query = "",
+    verifiedOnly = false,
   } = filters;
   const searchText = [agent.name, agent.category, agent.description, ...(agent.tags || [])]
     .filter(Boolean)
@@ -324,7 +327,20 @@ export function marketplaceAgentMatches(agent, filters) {
     (category === "All" || category === "Saved" || agent.category === category) &&
     (settlementAsset === "all" || agentAcceptsSettlementAsset(agent, settlementAsset)) &&
     (!savedOnly || saved.includes(agent.id)) &&
+    (!verifiedOnly || agent.verified) &&
     searchText.includes(query.trim().toLowerCase())
+  );
+}
+/**
+ * Strongest recorded track record first: scored agents by score, then by recorded outcomes, with
+ * verified agents ahead on a tie. Only Liege-recorded outcomes count, never ratings.
+ */
+export function compareTrackRecord(a, b) {
+  return (
+    (b.score ?? -1) - (a.score ?? -1) ||
+    (b.outcomes || 0) - (a.outcomes || 0) ||
+    Number(Boolean(b.verified)) - Number(Boolean(a.verified)) ||
+    a.name.localeCompare(b.name)
   );
 }
 export function jobForDisplay(job) {

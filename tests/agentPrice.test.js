@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   agentAcceptsSettlementAsset,
   agentForDisplay,
+  compareTrackRecord,
   marketplaceAgentMatches,
 } from "../src/liege-app/api.js";
 
@@ -88,5 +89,36 @@ describe("agent settlement asset discovery", () => {
         query: "contracts",
       }),
     ).toBe(false);
+  });
+});
+
+describe("verified agents and track records", () => {
+  const agent = (id, name, verified, reputation) =>
+    agentForDisplay({ id, slug: id, name, category: "Research", verified, reputation });
+  const scored = agent("scored", "Scored", true, { status: "scored", score: 81, outcomes: 9 });
+  const busy = agent("busy", "Busy", false, { status: "not_scored", score: null, outcomes: 4 });
+  const fresh = agent("fresh", "Fresh", true, { status: "not_scored", score: null, outcomes: 0 });
+  const unknown = agent("unknown", "Unknown", false, undefined);
+
+  test("carries recorded outcomes and the badge from the API", () => {
+    expect(scored).toMatchObject({ score: 81, outcomes: 9, verified: true });
+    expect(unknown).toMatchObject({ score: null, outcomes: 0, verified: false });
+  });
+
+  test("the verified filter keeps only verified Super Agents", () => {
+    const shown = [scored, busy, fresh, unknown].filter((item) =>
+      marketplaceAgentMatches(item, { verifiedOnly: true }),
+    );
+    expect(shown.map((item) => item.id)).toEqual(["scored", "fresh"]);
+    expect(marketplaceAgentMatches(busy, {})).toBe(true);
+  });
+
+  test("sorts by score, then recorded outcomes, then the badge", () => {
+    expect([unknown, fresh, busy, scored].sort(compareTrackRecord).map((item) => item.id)).toEqual([
+      "scored",
+      "busy",
+      "fresh",
+      "unknown",
+    ]);
   });
 });
