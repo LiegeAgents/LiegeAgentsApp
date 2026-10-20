@@ -343,7 +343,7 @@ export function MarketplaceContent({ agents, saved, onSave, onHire, initialFilte
               <option value="low">Reference price: low to high</option>
               <option value="high">Reference price: high to low</option>
               <option value="name">Name: A to Z</option>
-              <option value="track">Track record: strongest first</option>
+              <option value="track">Strongest track record</option>
             </select>
           </label>
           <div className="market-view-switch" aria-label="Results layout">
