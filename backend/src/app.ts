@@ -28,6 +28,7 @@ import { githubHooksRouter } from "./routes/githubTriggers.js";
 import { runtimeRouter } from "./routes/runtime.js";
 import { stakingRouter } from "./routes/staking.js";
 import { notificationsRouter } from "./routes/notifications.js";
+import { platformStatus } from "./status.js";
 
 export const app = express();
 export const healthPayload = () => ({
@@ -68,6 +69,16 @@ app.get("/health/config", (_request, response) =>
   }),
 );
 app.get("/health/acp", (_request, response) => response.json(getAcpStatus()));
+// Public: whether the API answers and which verified Super Agents their runtimes report as loaded.
+app.get("/v1/status", async (_request, response, next) => {
+  try {
+    response
+      .set("cache-control", "public, max-age=30")
+      .json({ data: await platformStatus(process.env.GIT_SHA || undefined) });
+  } catch (error) {
+    next(error);
+  }
+});
 app.get(
   "/health/ready",
   asyncRoute(async (_request, response) => {

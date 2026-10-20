@@ -619,6 +619,51 @@ paths:
                   data: { $ref: "#/components/schemas/Agent" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /v1/status:
+    get:
+      operationId: getPlatformStatus
+      summary: >-
+        Whether the API and database answer, and which verified Super Agents are online: an agent
+        is online when its runtime answers its health check and lists it as loaded, offline when the
+        runtime is unreachable or does not list it, and unreported when the runtime answers without
+        listing its agents. Checked at most once a minute.
+      security: []
+      responses:
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
+          description: Current platform status.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [checkedAt, api, database, superAgents, summary]
+                    properties:
+                      checkedAt: { type: string, format: date-time }
+                      api:
+                        type: object
+                        properties:
+                          status: { type: string, enum: [ok] }
+                          commit: { type: string }
+                      database: { type: string, enum: [ok, unavailable] }
+                      superAgents:
+                        type: array
+                        items:
+                          type: object
+                          required: [name, slug, category, status]
+                          properties:
+                            name: { type: string }
+                            slug: { type: string }
+                            category: { type: string }
+                            status: { type: string, enum: [online, offline, unreported] }
+                      summary:
+                        type: object
+                        properties:
+                          online: { type: integer }
+                          total: { type: integer }
   /v1/agents/{slug}/badge.svg:
     get:
       operationId: getAgentBadge

@@ -12,6 +12,7 @@ import './hero-centered.css'
 import MobileLanding from './MobileLanding'
 const ReferencePage = lazy(() => import('./ReferencePage'))
 const Roadmap = lazy(() => import('./Roadmap'))
+const Status = lazy(() => import('./Status'))
 const Whitepaper = lazy(() => import('./Whitepaper'))
 
 const BODY_CLASSES =
@@ -68,6 +69,14 @@ export function LiegeDocs() {
   return (
     <Shell>
       <Docs />
+    </Shell>
+  )
+}
+
+export function LiegeStatus() {
+  return (
+    <Shell>
+      <Status />
     </Shell>
   )
 }

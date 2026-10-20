@@ -17,6 +17,7 @@ import { Route as DocsRouteImport } from './routes/docs'
 import { Route as MarketplaceRouteImport } from './routes/marketplace'
 import { Route as MobileRouteImport } from './routes/mobile'
 import { Route as RoadmapRouteImport } from './routes/roadmap'
+import { Route as StatusRouteImport } from './routes/status'
 import { Route as WhitepaperRouteImport } from './routes/whitepaper'
 import { Route as ZhRouteImport } from './routes/zh'
 import { Route as ApiSplatRouteImport } from './routes/api/$'
@@ -63,6 +64,11 @@ const RoadmapRoute = RoadmapRouteImport.update({
   path: '/roadmap',
   getParentRoute: () => rootRouteImport,
 } as any)
+const StatusRoute = StatusRouteImport.update({
+  id: '/status',
+  path: '/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WhitepaperRoute = WhitepaperRouteImport.update({
   id: '/whitepaper',
   path: '/whitepaper',
@@ -98,6 +104,7 @@ export interface FileRoutesByFullPath {
   '/marketplace': typeof MarketplaceRouteWithChildren
   '/mobile': typeof MobileRoute
   '/roadmap': typeof RoadmapRoute
+  '/status': typeof StatusRoute
   '/whitepaper': typeof WhitepaperRoute
   '/zh': typeof ZhRoute
   '/api/$': typeof ApiSplatRoute
@@ -113,6 +120,7 @@ export interface FileRoutesByTo {
   '/marketplace': typeof MarketplaceRouteWithChildren
   '/mobile': typeof MobileRoute
   '/roadmap': typeof RoadmapRoute
+  '/status': typeof StatusRoute
   '/whitepaper': typeof WhitepaperRoute
   '/zh': typeof ZhRoute
   '/api/$': typeof ApiSplatRoute
@@ -129,6 +137,7 @@ export interface FileRoutesById {
   '/marketplace': typeof MarketplaceRouteWithChildren
   '/mobile': typeof MobileRoute
   '/roadmap': typeof RoadmapRoute
+  '/status': typeof StatusRoute
   '/whitepaper': typeof WhitepaperRoute
   '/zh': typeof ZhRoute
   '/api/$': typeof ApiSplatRoute
@@ -146,6 +155,7 @@ export interface FileRouteTypes {
     | '/marketplace'
     | '/mobile'
     | '/roadmap'
+    | '/status'
     | '/whitepaper'
     | '/zh'
     | '/api/$'
@@ -161,6 +171,7 @@ export interface FileRouteTypes {
     | '/marketplace'
     | '/mobile'
     | '/roadmap'
+    | '/status'
     | '/whitepaper'
     | '/zh'
     | '/api/$'
@@ -176,6 +187,7 @@ export interface FileRouteTypes {
     | '/marketplace'
     | '/mobile'
     | '/roadmap'
+    | '/status'
     | '/whitepaper'
     | '/zh'
     | '/api/$'
@@ -192,6 +204,7 @@ export interface RootRouteChildren {
   MarketplaceRoute: typeof MarketplaceRouteWithChildren
   MobileRoute: typeof MobileRoute
   RoadmapRoute: typeof RoadmapRoute
+  StatusRoute: typeof StatusRoute
   WhitepaperRoute: typeof WhitepaperRoute
   ZhRoute: typeof ZhRoute
   ApiSplatRoute: typeof ApiSplatRoute
@@ -253,6 +266,13 @@ declare module '@tanstack/react-router' {
       path: '/roadmap'
       fullPath: '/roadmap'
       preLoaderRoute: typeof RoadmapRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/status': {
+      id: '/status'
+      path: '/status'
+      fullPath: '/status'
+      preLoaderRoute: typeof StatusRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/whitepaper': {
@@ -324,6 +344,7 @@ const rootRouteChildren: RootRouteChildren = {
   MarketplaceRoute: MarketplaceRouteWithChildren,
   MobileRoute: MobileRoute,
   RoadmapRoute: RoadmapRoute,
+  StatusRoute: StatusRoute,
   WhitepaperRoute: WhitepaperRoute,
   ZhRoute: ZhRoute,
   ApiSplatRoute: ApiSplatRoute,
