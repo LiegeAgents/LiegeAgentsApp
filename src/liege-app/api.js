@@ -127,6 +127,7 @@ export const api = {
     }),
   jobRevision: (token, id) => request(`/v1/jobs/${id}/revision`, { token }),
   jobAttachments: (token, id) => request(`/v1/jobs/${id}/attachments`, { token }),
+  jobReceipt: (token, id) => request(`/v1/jobs/${id}/receipt`, { token }),
   jobAttachment: (token, id, attachmentId) =>
     request(`/v1/jobs/${id}/attachments/${attachmentId}`, { token }),
   attachLink: (token, id, input) =>

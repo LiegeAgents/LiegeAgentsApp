@@ -33,6 +33,7 @@ import { consumeExecutionGrant } from "../executionGrants.js";
 import { registerProgressRoutes } from "./jobProgress.js";
 import { registerRevisionRoutes } from "./jobRevisions.js";
 import { registerAttachmentRoutes } from "./jobAttachments.js";
+import { registerReceiptRoutes } from "./jobReceipts.js";
 import { advanceSquad } from "../superAgentSquads.js";
 import { resolveJobEscrowMode } from "../jobEscrowMode.js";
 
@@ -1623,3 +1624,4 @@ jobsRouter.post(
 registerProgressRoutes(jobsRouter, assertRuntimeAgentScope);
 registerRevisionRoutes(jobsRouter);
 registerAttachmentRoutes(jobsRouter);
+registerReceiptRoutes(jobsRouter);

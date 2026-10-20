@@ -2045,6 +2045,87 @@ paths:
                   data: { $ref: "#/components/schemas/SettlementRunSummary" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
 
+  /v1/jobs/{id}/receipt:
+    get:
+      operationId: getJobReceipt
+      summary: >-
+        A settled job's onchain receipt: its public facts, Merkle leaf and proof, and the
+        Robinhood Chain transaction that anchors the batch root. Parties only. Verify it by hashing
+        the receipt, folding in the proof, and comparing the root with the transaction input.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The receipt and proof. `anchor` is null until the receipt is batched.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties: { data: { $ref: "#/components/schemas/JobReceipt" } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/receipt-anchors/{id}:
+    get:
+      operationId: getReceiptAnchor
+      summary: Public facts of an anchored receipt batch. Only the Merkle root is public.
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
+          description: The batch root and its transaction.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [id, merkleRoot, receipts, status, chainId, txHash, data]
+                    properties:
+                      id: { type: string, format: uuid }
+                      merkleRoot: { type: string }
+                      receipts: { type: integer }
+                      status: { type: string, enum: [sent, confirmed] }
+                      chainId: { type: integer }
+                      anchorAddress: { type: [string, "null"] }
+                      txHash: { type: [string, "null"] }
+                      blockNumber: { type: [integer, "null"] }
+                      data: { type: string, description: The exact transaction input. }
+                      createdAt: { type: string, format: date-time }
+                      confirmedAt: { type: [string, "null"], format: date-time }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/cron/anchor-receipts:
+    post:
+      operationId: anchorReceipts
+      summary: >-
+        Build receipts for newly settled jobs, confirm earlier anchors, and write one new batch
+        root to Robinhood Chain. Runs exclusively; also runs in-process.
+      security: [{ cronSecret: [] }]
+      responses:
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
+          description: What this pass did.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [status]
+                    properties:
+                      status: { type: string, enum: [busy, disabled, idle, anchored, failed] }
+                      created: { type: integer }
+                      confirmed: { type: integer }
+                      receipts: { type: integer }
+                      txHash: { type: string }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
   /v1/cron/run-schedules:
     post:
       operationId: runSuperAgentSchedules
@@ -3872,6 +3953,46 @@ components:
           oneOf:
             - { $ref: "#/components/schemas/AgentReputation" }
             - { type: "null" }
+    JobReceipt:
+      type: object
+      required: [receipt, leaf, proof, anchor, method]
+      properties:
+        receipt:
+          type: object
+          description: >-
+            Public facts of the settled job. The deliverable appears only as its SHA-256.
+          required: [v, chainId, jobId, job, agentId, outcome, asset, budget, settledAt]
+          properties:
+            v: { type: integer }
+            chainId: { type: integer }
+            jobId: { type: string, format: uuid }
+            job: { type: string }
+            agentId: { type: string, format: uuid }
+            outcome: { type: string, enum: [completed, rejected] }
+            escrow: { type: string }
+            asset: { type: string }
+            budget: { type: string }
+            evaluatorFee: { type: string }
+            fundedAt: { type: [string, "null"] }
+            submittedAt: { type: [string, "null"] }
+            settledAt: { type: string }
+            deliverableSha256: { type: [string, "null"] }
+            settlementTx: { type: string }
+        leaf: { type: string }
+        proof: { type: [array, "null"], items: { type: string } }
+        anchor:
+          type: [object, "null"]
+          properties:
+            batchId: { type: string, format: uuid }
+            status: { type: string, enum: [pending, sent, confirmed] }
+            merkleRoot: { type: string }
+            chainId: { type: integer }
+            anchorAddress: { type: [string, "null"] }
+            txHash: { type: [string, "null"] }
+            blockNumber: { type: [integer, "null"] }
+            confirmedAt: { type: [string, "null"] }
+            data: { type: string }
+        method: { type: object }
     AgentReputation:
       type: object
       required: [status, score, outcomes]

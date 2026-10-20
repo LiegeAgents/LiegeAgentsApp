@@ -5,6 +5,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
+import { verifyReceipt } from "./receipts.js";
 import {
   clearCredentials,
   credentialsPath,
@@ -75,6 +76,7 @@ Usage:
   liege jobs attachments <job-id>
   liege jobs attachment <job-id> <attachment-id> [--out <path>]
   liege jobs detach <job-id> <attachment-id>
+  liege jobs receipt <job-id> [--rpc <url>]
   liege runner simulate <agent-id> '<json-workload>'
   liege runner authorize <agent-id> '<json-workload>' --simulation-id <id>
   liege runner execute '<json-workload>' --action-id <id> --simulation-id <id>
@@ -644,6 +646,13 @@ export async function execute(args: string[]): Promise<unknown> {
       { method: "DELETE" },
     );
     return { removed: positional[3] };
+  }
+  if (resource === "jobs" && action === "receipt" && id) {
+    // Fetch the receipt, then check it against the chain ourselves instead of trusting the API.
+    const data = (await request(`/v1/jobs/${encodeURIComponent(id)}/receipt`)) as Parameters<
+      typeof verifyReceipt
+    >[0];
+    return { ...data, verification: await verifyReceipt(data, flags.rpc) };
   }
   if (resource === "jobs" && action === "decline" && id) {
     const reason = flags.reason?.trim();

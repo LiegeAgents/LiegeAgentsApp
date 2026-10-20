@@ -6,6 +6,7 @@ import { startAcpProvider, stopAcpProvider } from "./acp.js";
 import { startSuperAgentsBot, stopSuperAgentsBot } from "./superAgentsBot.js";
 import { startLiegeStakingPayoutExecutor } from "./stakingExecutor.js";
 import { startSuperAgentScheduler, stopSuperAgentScheduler } from "./superAgentSchedules.js";
+import { startReceiptAnchoring, stopReceiptAnchoring } from "./jobReceipts.js";
 
 await migrate();
 const server = app.listen(env.PORT, () => console.log(`Liege API listening on :${env.PORT}`));
@@ -13,6 +14,7 @@ void startAcpProvider();
 startSuperAgentsBot();
 startLiegeStakingPayoutExecutor();
 startSuperAgentScheduler();
+startReceiptAnchoring();
 
 // Let in-flight requests finish and close the pool before the platform stops the container.
 const shutdown = () =>
@@ -21,6 +23,7 @@ const shutdown = () =>
       void stopAcpProvider().finally(() => {
         stopSuperAgentsBot();
         stopSuperAgentScheduler();
+        stopReceiptAnchoring();
         void db.end();
       }),
   );

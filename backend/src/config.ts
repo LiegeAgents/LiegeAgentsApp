@@ -51,6 +51,23 @@ const env = z
       .string()
       .regex(/^0x[0-9a-fA-F]{64}$/)
       .optional(),
+    // A dedicated wallet that writes receipt Merkle roots to Robinhood Chain and pays their gas.
+    // Without it, receipts are still built and wait for anchoring.
+    // Optional and never fatal: a blank or malformed key only switches anchoring off.
+    RECEIPT_ANCHOR_PRIVATE_KEY: z
+      .string()
+      .optional()
+      .transform((value) => {
+        const key = value?.trim();
+        if (!key) return undefined;
+        if (/^0x[0-9a-fA-F]{64}$/.test(key)) return key;
+        console.warn(
+          "RECEIPT_ANCHOR_PRIVATE_KEY is not a 0x-prefixed 32-byte key; receipts will not be anchored.",
+        );
+        return undefined;
+      }),
+    // How often the API builds receipts and anchors a batch; 0 leaves it to the cron route.
+    RECEIPT_ANCHOR_INTERVAL_MS: z.coerce.number().int().min(0).default(600_000),
     USDG_TOKEN_ADDRESS: z
       .string()
       .regex(/^0x[0-9a-fA-F]{40}$/)

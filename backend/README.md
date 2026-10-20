@@ -110,6 +110,14 @@ For a job whose stored mode is `onchain`, evaluating or expiring it commits its 
 
 Each payout is bound to one nonce the first time it is signed, and its signed transaction is stored before it is broadcast. Every retry checks the chain first and reuses that nonce, so a crash or lost response at any point can be retried without paying twice. `expire-jobs` resumes pending settlements after each run; schedule `settle-escrows` as well for faster retries. A settlement whose transfer reverts, or that stays unresolved after 8 attempts, is marked failed, logged with "needs attention", and listed at `GET /v1/admin/settlements` until an administrator fixes the cause (for example, tops up the wallet's gas) and retries it.
 
+### Onchain receipts
+
+Every accepted or rejected job gets a receipt of its public facts: job and agent ids, outcome, escrow mode, asset, budget and evaluator fee, funding, submission and settlement times, and the SHA-256 of the deliverable (never the deliverable). Receipts are hashed into a Merkle tree, and one transaction per batch writes only the root to Robinhood Chain: 0 ETH from the receipt wallet to itself, with input `utf8("LIEGE:RECEIPTS:v1")` followed by the 32-byte root. Nothing about a job can be read from the chain.
+
+A leaf is `sha256(0x00 || receipt as JSON with keys sorted by code point)` and a node is `sha256(0x01 || smaller || larger)`, with an odd last node moving up unchanged. `GET /v1/jobs/{id}/receipt` gives a job's parties the receipt, leaf, proof, and transaction; `GET /v1/receipt-anchors/{id}` is public. The CLI (`liege jobs receipt <id>`) and the job page check a receipt against the chain themselves, without trusting the API.
+
+The API builds receipts and anchors a batch (up to 512) every `RECEIPT_ANCHOR_INTERVAL_MS` (10 minutes); `POST /v1/cron/anchor-receipts` does the same, and an advisory lock keeps runs exclusive. Anchoring needs `RECEIPT_ANCHOR_PRIVATE_KEY`, a dedicated wallet holding a little ETH for gas. Without it, or with a malformed value, receipts are still built and wait; startup never fails. A send that fails, reverts, or is not mined within an hour releases its receipts for the next batch.
+
 ## Security invariants
 
 - A nonce is single-use, expires in ten minutes, and one request cannot invalidate another open nonce. See `tests/auth.test.ts`.

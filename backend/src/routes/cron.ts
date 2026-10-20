@@ -6,6 +6,7 @@ import { ApiError, asyncRoute } from "../http.js";
 import { escrowAccount, transfer, userBalance } from "../ledger.js";
 import { planSettlement, processPendingSettlements } from "../settlement.js";
 import { processDueSchedules } from "../superAgentSchedules.js";
+import { anchorReceipts } from "../jobReceipts.js";
 import { deliverPendingWebhooks, enqueueWebhookEvent } from "../webhooks.js";
 
 export const cronRouter = Router();
@@ -154,5 +155,13 @@ cronRouter.post(
   "/run-schedules",
   asyncRoute(async (_request, response) => {
     response.json({ data: { runs: await processDueSchedules() } });
+  }),
+);
+
+// Receipts are also anchored in-process (RECEIPT_ANCHOR_INTERVAL_MS); a lock keeps runs exclusive.
+cronRouter.post(
+  "/anchor-receipts",
+  asyncRoute(async (_request, response) => {
+    response.json({ data: await anchorReceipts() });
   }),
 );

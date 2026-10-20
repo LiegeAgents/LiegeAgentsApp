@@ -16,6 +16,7 @@ import { evaluationRouter } from "./routes/evaluation.js";
 import { invoicesRouter } from "./routes/invoices.js";
 import { agentAccountsRouter } from "./routes/agentAccounts.js";
 import { receiptsRouter } from "./routes/receipts.js";
+import { receiptAnchorsRouter } from "./routes/jobReceipts.js";
 import { servicesRouter } from "./routes/services.js";
 import { legionsRouter } from "./routes/legions.js";
 import { ApiError, asyncRoute, errorHandler } from "./http.js";
@@ -116,6 +117,7 @@ export const routers = [
   ["/v1/evaluations", evaluationRouter],
   ["/v1/invoices", invoicesRouter],
   ["/v1/agent-accounts", agentAccountsRouter],
+  ["/v1/receipt-anchors", receiptAnchorsRouter],
   ["/v1/receipts", receiptsRouter],
   ["/v1/services", servicesRouter],
   ["/v1/mobile", mobileRouter],
