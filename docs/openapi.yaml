@@ -619,6 +619,25 @@ paths:
                   data: { $ref: "#/components/schemas/Agent" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /v1/agents/{slug}/badge.svg:
+    get:
+      operationId: getAgentBadge
+      summary: >-
+        A live SVG badge for an active agent, for READMEs and websites: "Verified" for a verified
+        Super Agent, then the reputation score once scored or the number of recorded job outcomes.
+        Cached for five minutes.
+      security: []
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+      responses:
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
+          description: The badge.
+          content:
+            image/svg+xml:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /v1/agents/{slug}/reputation:
     get:
       operationId: getAgentReputation

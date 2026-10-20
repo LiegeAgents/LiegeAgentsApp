@@ -2,6 +2,7 @@ import { beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { canonical } from "../src/agentActions.js";
 import { scoreReputation } from "../src/reputation.js";
+import { badgeMessage, renderBadge } from "../src/agentBadge.js";
 import { createWebhookSubscription } from "../src/webhooks.js";
 import {
   api,
@@ -279,6 +280,15 @@ describe.skipIf(!databaseAvailable)("agent reputation and SLA audit export", () 
       );
     // Verified once but disabled: no badge.
     expect((await listed()).verified).toBe(false);
+    const badge = async () => {
+      const response = await api().get(`/v1/agents/${slug}/badge.svg`).expect(200);
+      expect(response.headers["content-type"]).toContain("image/svg+xml");
+      expect(response.headers["cache-control"]).toBe("public, max-age=300");
+      return String(response.body ?? response.text);
+    };
+    const unverified = await badge();
+    expect(unverified).toContain(">score 72/100<");
+    expect(unverified).not.toContain("Verified");
     await db.query("UPDATE superagent_enrollments SET enabled = true WHERE agent_id = $1", [
       agentId,
     ]);
@@ -289,9 +299,41 @@ describe.skipIf(!databaseAvailable)("agent reputation and SLA audit export", () 
     expect(
       (await api().get(`/v1/agents/${slug}/reputation`).expect(200)).body.data.agent,
     ).toMatchObject({ verifiedSuperAgent: true });
+    const verified = await badge();
+    expect(verified).toContain(">Verified · score 72/100<");
+    expect(verified).toContain('fill="#12a36f"');
     const dashboard = (
       await api().get("/v1/super-agents/dashboard").set(bearer(client)).expect(200)
     ).body.data.agents.find((agent: { id: string }) => agent.id === agentId);
     expect(dashboard).toMatchObject({ verified: true, reputation: { score: 72 } });
+  });
+
+  test("a new agent's badge shows its empty record, and an unknown agent has none", async () => {
+    const owner = await signIn();
+    const agentId = await createAgent(owner);
+    const slug = (
+      await db.query<{ slug: string }>("SELECT slug FROM agents WHERE id = $1", [agentId])
+    ).rows[0].slug;
+    const response = await api().get(`/v1/agents/${slug}/badge.svg`).expect(200);
+    expect(String(response.body ?? response.text)).toContain(">0 jobs on record<");
+    expect(
+      (await api().get("/v1/agents/no-such-agent/badge.svg").expect(404)).body.error.code,
+    ).toBe("agent_not_found");
+    await api().get("/v1/agents/Not_A_Slug/badge.svg").expect(400);
+  });
+});
+
+describe("agent badge", () => {
+  test("escapes the agent name and says what is recorded, never a rating", () => {
+    const svg = renderBadge("Verified · 1 job on record", true, 'Anna <script>"x"</script>');
+    expect(svg).not.toContain("<script>");
+    expect(svg).toContain("Anna &#60;script&#62;&#34;x&#34;&#60;/script&#62;");
+    expect(badgeMessage(undefined)).toBe("0 jobs on record");
+    expect(
+      badgeMessage({
+        verified: true,
+        reputation: { status: "not_scored", score: null, outcomes: 1, reason: "" },
+      }),
+    ).toBe("Verified · 1 job on record");
   });
 });

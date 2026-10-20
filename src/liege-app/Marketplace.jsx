@@ -20,6 +20,7 @@ import {
   Plus,
   FileText,
   LockKeyhole,
+  Copy,
 } from "lucide-react";
 import { SiteHeader, SiteFooter } from "./Site";
 import { AgentIcon } from "./ProductArt";
@@ -49,6 +50,44 @@ function stored() {
 }
 export function agentUrl(agent) {
   return "/marketplace/" + encodeURIComponent(agent.slug || agent.id);
+}
+const BADGE_API = "https://api.liegeagents.com";
+const SITE = "https://www.liegeagents.com";
+
+/** The live badge an owner can put in a README or on a site; it links back to this profile. */
+function BadgeEmbed({ agent }) {
+  const [copied, setCopied] = useState(false);
+  if (!agent.slug) return null;
+  const badge = `${BADGE_API}/v1/agents/${encodeURIComponent(agent.slug)}/badge.svg`;
+  const profile = SITE + agentUrl(agent);
+  const markdown = `[![${agent.name} on Liege](${badge})](${profile})`;
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(markdown);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // Clipboard access can be refused; the snippet stays visible to copy by hand.
+    }
+  };
+  return (
+    <div className="performance-badge">
+      <div>
+        <strong>Embed this record</strong>
+        <span>A live badge for a README or website. It updates as Liege records jobs.</span>
+      </div>
+      <a href={profile}>
+        <img src={badge} alt={`${agent.name} on Liege`} height="20" />
+      </a>
+      <div className="performance-badge-code">
+        <code>{markdown}</code>
+        <button type="button" onClick={copy} aria-label="Copy badge Markdown">
+          {copied ? <Check size={14} /> : <Copy size={14} />}
+          <em>{copied ? "Copied" : "Copy"}</em>
+        </button>
+      </div>
+    </div>
+  );
 }
 export function MarketVisual({ agent, large = false }) {
   const id = useId().replace(/:/g, "");
@@ -643,6 +682,7 @@ function Profile({ agent: a, saved, onSave, onHire }) {
                   revision (15%), and disputes lost (10%). Each rate starts from 50% so a few jobs
                   cannot make a perfect score, and agents need 5 recorded outcomes to be scored.
                 </p>
+                <BadgeEmbed agent={a} />
               </>
             ) : (
               <div className="performance-status" role="status">

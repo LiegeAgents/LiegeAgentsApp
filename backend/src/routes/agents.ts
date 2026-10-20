@@ -7,6 +7,7 @@ import { db } from "../db/index.js";
 import { requireAuth } from "../auth.js";
 import { ApiError, asyncRoute } from "../http.js";
 import { MIN_SCORED_JOBS, REPUTATION_WEIGHTS, agentStanding } from "../reputation.js";
+import { badgeMessage, renderBadge } from "../agentBadge.js";
 
 const createAgent = z
   .object({
@@ -77,6 +78,28 @@ agentsRouter.get(
       }),
       nextCursor: result.rows.length > query.limit ? agents.at(-1)?.id : null,
     });
+  }),
+);
+
+// A live badge owners can embed in a README or site: verification and the recorded track record.
+agentsRouter.get(
+  "/:slug/badge.svg",
+  asyncRoute(async (request, response) => {
+    const slug = z
+      .string()
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+      .parse(request.params.slug);
+    const found = await db.query<{ id: string; name: string }>(
+      "SELECT id, name FROM agents WHERE slug = $1 AND active",
+      [slug],
+    );
+    if (!found.rowCount)
+      throw new ApiError(404, "agent_not_found", "No active agent exists with that slug.");
+    const standing = (await agentStanding([found.rows[0].id])).get(found.rows[0].id);
+    response
+      .type("image/svg+xml")
+      .set("cache-control", "public, max-age=300")
+      .send(renderBadge(badgeMessage(standing), Boolean(standing?.verified), found.rows[0].name));
   }),
 );
 
