@@ -1,6 +1,14 @@
 import { createInterface } from "node:readline";
 import { linkedAccessToken } from "./credentials.js";
-import { attach, getApiUrl, getSessionToken, NOT_SIGNED_IN, request, type Json } from "./index.js";
+import {
+  attach,
+  getApiUrl,
+  getSessionToken,
+  NOT_SIGNED_IN,
+  request,
+  summarizeWatch,
+  type Json,
+} from "./index.js";
 
 // Interactive Super Agents chat (`liege --spg`). It only drafts proposals: approval,
 // funding, and signing stay in the Super Agents dashboard, exactly as for the web chatbot.
@@ -126,6 +134,30 @@ export function parseRepeat(line: string, budget: number) {
 }
 
 const shortId = (value: unknown) => String(value).slice(0, 8);
+const shortToken = (value: unknown) => `${String(value).slice(0, 6)}…${String(value).slice(-4)}`;
+
+const WATCH_CHAINS = ["robinhood", "ethereum", "base", "arbitrum", "bsc"];
+
+/** `/watch 0x… base auto`: the token, an optional chain, optional auto-funding. */
+export function parseWatch(line: string) {
+  const words = line.trim().split(/\s+/).slice(1);
+  const token = words.find((word) => /^0x[0-9a-f]{40}$/i.test(word));
+  const others = words.filter((word) => word !== token).map((word) => word.toLowerCase());
+  const chain = others.find((word) => WATCH_CHAINS.includes(word));
+  const autoFund = others.some((word) => /^auto(-?fund)?$/.test(word));
+  const unknown = others.filter((word) => word !== chain && !/^auto(-?fund)?$/.test(word));
+  if (!token || unknown.length) return null;
+  return { token: token.toLowerCase(), ...(chain ? { chain } : {}), autoFund };
+}
+
+const watchErrors: Record<string, string> = {
+  already_watching: "That token is already on your watchlist. /watchlist shows it.",
+  watch_agent_unavailable: "No rug-check agent is taking work right now. Try again later.",
+  budget_required:
+    "Constantine has no listed price to use per check. Add the watch in the dashboard with your own budget.",
+  schedule_limit:
+    "You're at the limit for recurring jobs and watches. Cancel one with /schedule cancel <id> first.",
+};
 
 export const chatHelp = () => [
   bold("Describe the work in plain English, for example:"),
@@ -147,6 +179,9 @@ export const chatHelp = () => [
   "  /triggers        Show the GitHub repositories your agents review",
   "  /schedules       Show your recurring jobs",
   "  /schedule <pause|resume|cancel> <id>",
+  "  /watch <token> [chain] [auto]",
+  "                   Have Constantine re-check a token daily; alerts only if a signal worsens",
+  "  /watchlist       Show the tokens you watch and their latest checks",
   "  /new             Discard the current draft",
   "  /help            Show this help",
   "  /exit            Leave the chat",
@@ -363,6 +398,80 @@ export class ChatSession {
     this.write(green(`Recurring job ${shortId(updated.id)} is ${updated.status}.`));
   }
 
+  private async watch(line: string) {
+    const options = parseWatch(line);
+    if (!options) {
+      this.write(yellow(`Usage: /watch <0x token address> [${WATCH_CHAINS.join("|")}] [auto]`));
+      return;
+    }
+    let watch: Json;
+    try {
+      watch = (await request("/v1/super-agents/watchlist", {
+        method: "POST",
+        body: JSON.stringify({ ...options, source: "cli" }),
+      })) as Json;
+    } catch (error) {
+      const friendly = watchErrors[String((error as { code?: unknown }).code)];
+      if (!friendly) throw error;
+      this.write(yellow(friendly));
+      return;
+    }
+    const unit = String(watch.settlement_asset).toUpperCase();
+    this.write(green(`Watching ${watch.watch_token} on ${watch.chain_name}.`));
+    this.write(
+      `Constantine re-checks it daily: ${Number(watch.budget_amount)} ${unit} per check, up to ${Number(watch.spend_cap)} ${unit} in total.`,
+    );
+    this.write(
+      dim(
+        "The first check is the baseline. After that you get an alert only when ownership, liquidity, a tax, or a honeypot flag gets worse.",
+      ),
+    );
+    this.write(
+      watch.auto_fund
+        ? dim("Checks paid from your Liege balance are funded automatically.")
+        : dim(
+            "Each check opens a job for you to fund in the dashboard. Add `auto` to fund checks from your Liege balance.",
+          ),
+    );
+    this.write(
+      dim(`Manage it with /watchlist and /schedule <pause|resume|cancel> ${shortId(watch.id)}.`),
+    );
+  }
+
+  private async watchlist() {
+    const watches = (await request("/v1/super-agents/watchlist")) as Json[];
+    if (!watches.length)
+      this.write(dim("No watched tokens yet. Add one with /watch <token> [chain]."));
+    for (const item of watches.slice(0, 10)) {
+      const watch = summarizeWatch(item);
+      const unit = watch.settlementAsset.toUpperCase();
+      const next = watch.nextCheckAt
+        ? ` · next ${new Date(watch.nextCheckAt).toLocaleString()}`
+        : "";
+      this.write(
+        `  ${dim(shortId(watch.id))}  ${watch.status.padEnd(9)} ${bold(shortToken(watch.token))} on ${watch.chain}, ${Number(watch.budgetAmount)} ${unit}/check, ${Number(watch.committedAmount)}/${Number(watch.spendCap)} ${unit} used${next}`,
+      );
+      const latest = watch.latest;
+      if (latest)
+        this.write(
+          `    Latest check: ${latest.verdict}${latest.riskScore == null ? "" : `, risk ${latest.riskScore}/100`}${latest.baseline ? dim(" (baseline)") : ""}${latest.checkedAt ? dim(` · ${new Date(latest.checkedAt).toLocaleString()}`) : ""}`,
+        );
+      else this.write(dim("    No check delivered yet."));
+      if (watch.lastAlert)
+        this.write(
+          yellow(
+            `    Last alert${watch.lastAlert.checkedAt ? ` ${new Date(watch.lastAlert.checkedAt).toLocaleDateString()}` : ""}: ${watch.lastAlert.changes.join(" ")}`,
+          ),
+        );
+      if (watch.awaitingFunding)
+        this.write(
+          yellow(
+            `    ${watch.awaitingFunding} check${watch.awaitingFunding === 1 ? "" : "s"} waiting for funding in the dashboard.`,
+          ),
+        );
+    }
+  }
+
   private async command(line: string) {
     const [name, arg, extra] = line.slice(1).split(/\s+/);
     switch (name.toLowerCase()) {
@@ -498,13 +607,17 @@ export class ChatSession {
               ? ` · next ${new Date(String(item.next_run_at)).toLocaleString()}`
               : "";
           this.write(
-            `  ${dim(shortId(item.id))}  ${String(item.status).padEnd(9)} ${item.agent_name}, ${item.cadence}, ${Number(item.budget_amount)} ${unit}/run, ${Number(item.committed_amount)}/${Number(item.spend_cap)} ${unit} used${next}`,
+            `  ${dim(shortId(item.id))}  ${String(item.status).padEnd(9)} ${item.agent_name}, ${item.cadence}, ${Number(item.budget_amount)} ${unit}/run, ${Number(item.committed_amount)}/${Number(item.spend_cap)} ${unit} used${next}${item.watch_token ? dim(` · watching ${shortToken(item.watch_token)}`) : ""}`,
           );
         }
         return;
       }
       case "schedule":
         return this.scheduleAction(arg?.toLowerCase(), extra);
+      case "watch":
+        return this.watch(line);
+      case "watchlist":
+        return this.watchlist();
       case "job": {
         if (!arg) {
           this.write(yellow("Usage: /job <job-id>"));

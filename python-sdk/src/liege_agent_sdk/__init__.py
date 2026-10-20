@@ -44,6 +44,11 @@ from .models import (
     SuperAgentScheduleCadence,
     SuperAgentScheduleRun,
     SuperAgentScheduleSource,
+    SuperAgentWatch,
+    SuperAgentWatchChain,
+    SuperAgentWatchChange,
+    SuperAgentWatchRun,
+    SuperAgentWatchSignal,
 )
 
 __all__ = [
@@ -91,5 +96,10 @@ __all__ = [
     "SuperAgentScheduleCadence",
     "SuperAgentScheduleRun",
     "SuperAgentScheduleSource",
+    "SuperAgentWatch",
+    "SuperAgentWatchChain",
+    "SuperAgentWatchChange",
+    "SuperAgentWatchRun",
+    "SuperAgentWatchSignal",
 ]
 __version__ = "0.1.16"

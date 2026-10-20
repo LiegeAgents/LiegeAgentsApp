@@ -65,6 +65,23 @@ const schedule = await client.createSuperAgentSchedule({
 await client.pauseSuperAgentSchedule(schedule.id);
 ```
 
+A watchlist entry is a daily schedule with a token attached: Constantine re-checks the token each
+day as an ordinary paid job, and Liege alerts the owner only when ownership, liquidity, a tax, or a
+honeypot flag got worse than on the previous check. The first check is the baseline. Use
+`createSuperAgentWatch`, `listSuperAgentWatchlist`, and `getSuperAgentWatch`; each run carries the
+check's `verdict`, `riskScore`, and the `changes` that triggered an alert. The per-check budget
+defaults to the service's listed price for USDG and the spend cap to 30 checks. Pause, resume, or
+cancel a watch with the schedule helpers.
+
+```ts
+const watch = await client.createSuperAgentWatch({
+  token: "0x…",
+  chain: "base",
+  autoFund: false,
+});
+await client.cancelSuperAgentSchedule(watch.id);
+```
+
 Use `listJobs(status, limit, settlementAsset)` or `listJobsPage` to inspect only `"usdg"` or
 `"liege"` jobs while preserving the two settlement rails independently.
 

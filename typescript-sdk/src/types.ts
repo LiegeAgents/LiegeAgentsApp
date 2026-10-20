@@ -72,6 +72,8 @@ export interface SuperAgentSchedule {
   status: SuperAgentScheduleStatus;
   statusReason: string | null;
   source: "dashboard" | "cli";
+  watchToken?: string | null;
+  watchChain?: SuperAgentWatchChain | null;
   createdAt: string;
   updatedAt: string;
   runs: SuperAgentScheduleRun[];
@@ -83,6 +85,54 @@ export interface CreateSuperAgentScheduleInput {
   cadence: SuperAgentScheduleCadence;
   spendCap: number;
   settlementAsset?: SettlementAsset;
+  maxRuns?: number;
+  autoFund?: boolean;
+  startAt?: string;
+  source?: "dashboard" | "cli";
+}
+export type SuperAgentWatchChain = "robinhood" | "ethereum" | "base" | "arbitrum" | "bsc";
+export interface SuperAgentWatchChange {
+  signal: "honeypot" | "ownership" | "liquidity" | "tax";
+  label: string;
+  detail: string;
+}
+export interface SuperAgentWatchRun extends SuperAgentScheduleRun {
+  outcome: "funded" | "awaiting_funding" | "skipped" | "failed";
+  verdict: string | null;
+  riskScore: number | null;
+  baseline: boolean | null;
+  changes: SuperAgentWatchChange[];
+  checkedAt: string | null;
+}
+export interface SuperAgentWatch {
+  id: string;
+  watchToken: string;
+  watchChain: SuperAgentWatchChain;
+  chainName: string;
+  agentId: string;
+  agentName: string;
+  settlementAsset: SettlementAsset;
+  budgetAmount: string;
+  nextRunAt: string | null;
+  spendCap: string;
+  committedAmount: string;
+  maxRuns: number | null;
+  runsCount: number;
+  autoFund: boolean;
+  status: SuperAgentScheduleStatus;
+  statusReason: string | null;
+  source: "dashboard" | "cli";
+  createdAt: string;
+  updatedAt: string;
+  runs: SuperAgentWatchRun[];
+}
+export interface CreateSuperAgentWatchInput {
+  token: string;
+  chain?: SuperAgentWatchChain;
+  agentId?: string;
+  settlementAsset?: SettlementAsset;
+  budgetAmount?: number;
+  spendCap?: number;
   maxRuns?: number;
   autoFund?: boolean;
   startAt?: string;

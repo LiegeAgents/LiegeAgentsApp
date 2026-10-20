@@ -379,3 +379,101 @@ def test_async_super_agent_schedule_helpers():
             assert paused.status == "active"
 
     asyncio.run(run())
+
+
+def test_super_agent_watchlist():
+    requests = []
+    watch = {
+        "id": "watch-1", "watch_token": "0x1111111111111111111111111111111111111111",
+        "watch_chain": "base", "chain_name": "Base", "agent_id": "agent-constantine",
+        "agent_name": "Constantine", "settlement_asset": "usdg", "budget_amount": "0.5",
+        "next_run_at": "2026-10-21T00:00:00Z", "spend_cap": "15", "committed_amount": "1",
+        "max_runs": None, "runs_count": 2, "auto_fund": True, "status": "active",
+        "status_reason": None, "source": "cli", "created_at": "2026-10-19T00:00:00Z",
+        "updated_at": "2026-10-20T00:00:00Z", "runs": [{
+            "id": "run-2", "slot": "2026-10-20T00:00:00Z", "outcome": "funded", "detail": None,
+            "created_at": "2026-10-20T00:00:00Z", "job_id": "job-2", "job_status": "submitted",
+            "verdict": "high risk", "risk_score": 72, "baseline": False,
+            "changes": [{"signal": "liquidity", "label": "Liquidity", "detail": "Liquidity fell by 60%."}],
+            "checked_at": "2026-10-20T00:05:00Z",
+        }, {
+            "id": "run-1", "slot": "2026-10-19T00:00:00Z", "outcome": "awaiting_funding",
+            "detail": "Auto-funding is off.", "created_at": "2026-10-19T00:00:00Z", "job_id": "job-1",
+            "job_status": "open", "verdict": None, "risk_score": None, "baseline": None,
+            "changes": [], "checked_at": None,
+        }],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append((request.method, request.url.path, json.loads(request.content) if request.content else None))
+        if request.url.path.endswith("/watchlist") and request.method == "GET":
+            return httpx.Response(200, json={"data": [watch]})
+        return httpx.Response(201 if request.method == "POST" else 200, json={"data": watch})
+
+    with LiegeClient("https://api.test", token="session", client=httpx.Client(transport=httpx.MockTransport(handler))) as client:
+        created = client.create_super_agent_watch(
+            "0x1111111111111111111111111111111111111111", chain="base", source="cli",
+        )
+        assert created.watch_token == "0x1111111111111111111111111111111111111111"
+        assert created.chain_name == "Base"
+        assert created.budget_amount == "0.5"
+        latest, first = created.runs
+        assert (latest.verdict, latest.risk_score, latest.baseline) == ("high risk", 72, False)
+        assert latest.changes[0].signal == "liquidity"
+        assert latest.changes[0].detail == "Liquidity fell by 60%."
+        assert (first.verdict, first.risk_score, first.changes) == (None, None, [])
+        assert client.list_super_agent_watchlist()[0].watch_chain == "base"
+        assert client.get_super_agent_watch("watch-1").id == "watch-1"
+
+    assert requests[0] == ("POST", "/v1/super-agents/watchlist", {
+        "token": "0x1111111111111111111111111111111111111111", "chain": "base",
+        "settlementAsset": "usdg", "autoFund": False, "source": "cli",
+    })
+    assert [(method, path) for method, path, _ in requests[1:]] == [
+        ("GET", "/v1/super-agents/watchlist"),
+        ("GET", "/v1/super-agents/watchlist/watch-1"),
+    ]
+
+
+def test_schedules_carry_the_watched_token():
+    base = {"id": "s", "agent_id": "a", "cadence": "daily", "status": "active", "runs": []}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": [
+            {**base, "watch_token": None, "watch_chain": None},
+            {**base, "watch_token": "0x2222222222222222222222222222222222222222", "watch_chain": "bsc"},
+        ]})
+
+    with LiegeClient("https://api.test", token="session", client=httpx.Client(transport=httpx.MockTransport(handler))) as client:
+        ordinary, watched = client.list_super_agent_schedules()
+    assert (ordinary.watch_token, ordinary.watch_chain) == (None, None)
+    assert (watched.watch_token, watched.watch_chain) == ("0x2222222222222222222222222222222222222222", "bsc")
+
+
+def test_async_super_agent_watch_helpers():
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, request.url.path, json.loads(request.content) if request.content else None))
+        return httpx.Response(201, json={"data": {
+            "id": "watch-1", "watch_token": "0x1111111111111111111111111111111111111111",
+            "watch_chain": "robinhood", "chain_name": "Robinhood Chain", "status": "active", "runs": [],
+        }})
+
+    async def run() -> None:
+        async with AsyncLiegeClient("https://api.test", token="session", client=httpx.AsyncClient(
+            transport=httpx.MockTransport(handler)
+        )) as client:
+            created = await client.create_super_agent_watch(
+                "0x1111111111111111111111111111111111111111", budget_amount=2, spend_cap=10,
+            )
+            assert created.chain_name == "Robinhood Chain"
+            assert (await client.get_super_agent_watch("watch-1")).id == "watch-1"
+
+    asyncio.run(run())
+    assert seen[0] == ("POST", "/v1/super-agents/watchlist", {
+        "token": "0x1111111111111111111111111111111111111111", "chain": "robinhood",
+        "settlementAsset": "usdg", "autoFund": False, "source": "dashboard",
+        "budgetAmount": 2, "spendCap": 10,
+    })
+    assert seen[1][:2] == ("GET", "/v1/super-agents/watchlist/watch-1")

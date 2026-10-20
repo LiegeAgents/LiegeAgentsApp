@@ -220,6 +220,8 @@ type ScheduleRow = {
   runs_count: number;
   auto_fund: boolean;
   consecutive_failures: number;
+  watch_token: string | null;
+  watch_chain: string | null;
 };
 
 async function runSchedule(client: PoolClient, schedule: ScheduleRow) {
@@ -253,7 +255,14 @@ async function runSchedule(client: PoolClient, schedule: ScheduleRow) {
         asset: schedule.settlement_asset,
         budget,
         request: schedule.request,
-        policy: { scheduleId: schedule.id, slot: slot.toISOString() },
+        policy: {
+          scheduleId: schedule.id,
+          slot: slot.toISOString(),
+          // A watchlist run names its token, so Constantine checks exactly what is watched.
+          ...(schedule.watch_token
+            ? { watch: true, token: schedule.watch_token, chain: schedule.watch_chain }
+            : {}),
+        },
       });
       await client.query("RELEASE SAVEPOINT schedule_open");
       jobId = job.id;

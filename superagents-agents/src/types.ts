@@ -25,6 +25,8 @@ export type SuperAgentHandler = {
     deliverable: string;
     evidence?: string[];
     metadata?: Record<string, unknown>;
+    // Constantine on a watchlist run: the result Liege compares with the previous run.
+    watch?: Record<string, unknown>;
     // Set when the job cannot be done as asked: the runtime declines it and the client is refunded.
     decline?: string;
   }>;

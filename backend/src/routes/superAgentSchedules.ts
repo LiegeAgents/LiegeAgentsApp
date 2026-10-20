@@ -6,9 +6,9 @@ import { db } from "../db/index.js";
 import { ApiError, asyncRoute } from "../http.js";
 import { nextSlotAfter, readySuperAgent, type Cadence } from "../superAgentSchedules.js";
 
-const MAX_ACTIVE_SCHEDULES = 20;
+export const MAX_ACTIVE_SCHEDULES = 20;
 
-const scheduleInput = z
+export const scheduleInput = z
   .object({
     agentId: z.string().uuid(),
     request: z.string().trim().min(1).max(10_000),
@@ -28,7 +28,7 @@ const scheduleInput = z
 
 const scheduleColumns = `s.id, s.agent_id, a.name AS agent_name, s.request, s.settlement_asset, s.budget_amount,
   s.cadence, s.starts_at, s.next_run_at, s.spend_cap, s.committed_amount, s.max_runs, s.runs_count,
-  s.auto_fund, s.status, s.status_reason, s.source, s.created_at, s.updated_at`;
+  s.auto_fund, s.status, s.status_reason, s.source, s.watch_token, s.watch_chain, s.created_at, s.updated_at`;
 
 const runsFor = (limit: number) => `COALESCE((
   SELECT json_agg(r ORDER BY r.created_at DESC) FROM (
@@ -48,6 +48,96 @@ async function ownedSchedule(id: string, userId: string) {
   return result.rows[0];
 }
 
+export type NewSchedule = z.infer<typeof scheduleInput> & {
+  watch?: { token: string; chain: string };
+};
+
+/**
+ * Creates a schedule after checking the start, the per-user limit, and the agent. A watchlist
+ * entry is a daily schedule with a token attached; only one can watch a token per chain.
+ */
+export async function createSchedule(
+  userId: string,
+  requestId: string | undefined,
+  input: NewSchedule,
+) {
+  const startsAt = input.startAt ? new Date(input.startAt) : new Date();
+  if (
+    startsAt.getTime() < Date.now() - 5 * 60_000 ||
+    startsAt.getTime() > Date.now() + 366 * 86_400_000
+  )
+    throw new ApiError(422, "invalid_start", "Start within the next year.");
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    // Serialize per user so the active-schedule limit cannot be raced.
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`schedules:${userId}`]);
+    const active = await client.query(
+      "SELECT count(*)::int AS count FROM superagent_schedules WHERE user_id=$1 AND status IN ('active','paused')",
+      [userId],
+    );
+    if (active.rows[0].count >= MAX_ACTIVE_SCHEDULES)
+      throw new ApiError(
+        409,
+        "schedule_limit",
+        `You can keep up to ${MAX_ACTIVE_SCHEDULES} recurring jobs. Cancel one first.`,
+      );
+    if (input.watch) {
+      const watching = await client.query(
+        `SELECT 1 FROM superagent_schedules WHERE user_id=$1 AND watch_chain=$2 AND watch_token=$3
+           AND status IN ('active','paused')`,
+        [userId, input.watch.chain, input.watch.token],
+      );
+      if (watching.rowCount)
+        throw new ApiError(409, "already_watching", "This token is already on your watchlist.");
+    }
+    await readySuperAgent(client, input.agentId, input.settlementAsset, userId, input.budgetAmount);
+    const created = await client.query<{ id: string }>(
+      `INSERT INTO superagent_schedules (user_id, agent_id, request, settlement_asset, budget_amount, cadence,
+         starts_at, next_run_at, spend_cap, max_runs, auto_fund, source, watch_token, watch_chain)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
+      [
+        userId,
+        input.agentId,
+        input.request,
+        input.settlementAsset,
+        String(input.budgetAmount),
+        input.cadence,
+        startsAt,
+        String(input.spendCap),
+        input.maxRuns ?? null,
+        input.autoFund,
+        input.source,
+        input.watch?.token ?? null,
+        input.watch?.chain ?? null,
+      ],
+    );
+    await audit(client, {
+      actorId: userId,
+      action: input.watch ? "superagent.watch_created" : "superagent.schedule_created",
+      targetType: "superagent_schedule",
+      targetId: created.rows[0].id,
+      requestId,
+      metadata: {
+        agentId: input.agentId,
+        cadence: input.cadence,
+        budgetAmount: input.budgetAmount,
+        spendCap: input.spendCap,
+        autoFund: input.autoFund,
+        source: input.source,
+        ...(input.watch ? { watchChain: input.watch.chain } : {}),
+      },
+    });
+    await client.query("COMMIT");
+    return created.rows[0].id;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export function registerScheduleRoutes(router: Router) {
   // Creating or resuming a schedule authorizes future spending, so it needs an operator session
   // (dashboard or linked CLI). Reading, pausing, and cancelling are also open to the companion app.
@@ -57,75 +147,8 @@ export function registerScheduleRoutes(router: Router) {
     asyncRoute(async (request, response) => {
       const input = scheduleInput.parse(request.body);
       const userId = request.auth!.userId;
-      const startsAt = input.startAt ? new Date(input.startAt) : new Date();
-      if (
-        startsAt.getTime() < Date.now() - 5 * 60_000 ||
-        startsAt.getTime() > Date.now() + 366 * 86_400_000
-      )
-        throw new ApiError(422, "invalid_start", "Start within the next year.");
-      const client = await db.connect();
-      try {
-        await client.query("BEGIN");
-        // Serialize per user so the active-schedule limit cannot be raced.
-        await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`schedules:${userId}`]);
-        const active = await client.query(
-          "SELECT count(*)::int AS count FROM superagent_schedules WHERE user_id=$1 AND status IN ('active','paused')",
-          [userId],
-        );
-        if (active.rows[0].count >= MAX_ACTIVE_SCHEDULES)
-          throw new ApiError(
-            409,
-            "schedule_limit",
-            `You can keep up to ${MAX_ACTIVE_SCHEDULES} recurring jobs. Cancel one first.`,
-          );
-        await readySuperAgent(
-          client,
-          input.agentId,
-          input.settlementAsset,
-          userId,
-          input.budgetAmount,
-        );
-        const created = await client.query<{ id: string }>(
-          `INSERT INTO superagent_schedules (user_id, agent_id, request, settlement_asset, budget_amount, cadence,
-             starts_at, next_run_at, spend_cap, max_runs, auto_fund, source)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$7,$8,$9,$10,$11) RETURNING id`,
-          [
-            userId,
-            input.agentId,
-            input.request,
-            input.settlementAsset,
-            String(input.budgetAmount),
-            input.cadence,
-            startsAt,
-            String(input.spendCap),
-            input.maxRuns ?? null,
-            input.autoFund,
-            input.source,
-          ],
-        );
-        await audit(client, {
-          actorId: userId,
-          action: "superagent.schedule_created",
-          targetType: "superagent_schedule",
-          targetId: created.rows[0].id,
-          requestId: request.requestId,
-          metadata: {
-            agentId: input.agentId,
-            cadence: input.cadence,
-            budgetAmount: input.budgetAmount,
-            spendCap: input.spendCap,
-            autoFund: input.autoFund,
-            source: input.source,
-          },
-        });
-        await client.query("COMMIT");
-        response.status(201).json({ data: await ownedSchedule(created.rows[0].id, userId) });
-      } catch (error) {
-        await client.query("ROLLBACK");
-        throw error;
-      } finally {
-        client.release();
-      }
+      const id = await createSchedule(userId, request.requestId, input);
+      response.status(201).json({ data: await ownedSchedule(id, userId) });
     }),
   );
 

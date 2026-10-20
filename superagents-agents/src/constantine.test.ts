@@ -8,8 +8,15 @@ process.env.LIEGE_API_URL = "https://api.example.com";
 process.env.LIEGE_RUNTIME_TOKEN = "runtime-token";
 process.env.GROQ_API_KEY = "groq-key";
 
-const { assess, chains, constantineSystemPrompt, createConstantineHandler, findToken, readToken } =
-  await import("./constantine.js");
+const {
+  assess,
+  chains,
+  constantineSystemPrompt,
+  createConstantineHandler,
+  findToken,
+  readToken,
+  watchSnapshot,
+} = await import("./constantine.js");
 
 const token = "0xc32ab2e562ade6fba6d3d1e3960d49b0957ef645";
 const now = Date.parse("2026-10-15T12:00:00Z");
@@ -218,5 +225,69 @@ describe("Constantine rug checks", () => {
     expect(result.deliverable).toContain(
       "There is no contract at this address on Robinhood Chain.",
     );
+  });
+
+  test("a watchlist run carries the signals Liege compares, from the watched token", async () => {
+    const { fetcher } = network({
+      ...clean,
+      sell_tax: "0.04",
+      lp_holders: [
+        { address: "0x000000000000000000000000000000000000dEaD", percent: "0.6" },
+        { address: "0x4444444444444444444444444444444444444444", percent: "0.3", is_locked: 1 },
+        { address: "0x5555555555555555555555555555555555555555", percent: "0.1" },
+      ],
+    });
+    const result = await createConstantineHandler(async () => "Nothing serious.", fetcher).execute({
+      jobId: "job-5",
+      brief: "Watchlist check: re-check the saved token.",
+      requirements: { watch: true, token, chain: "robinhood", scheduleId: "schedule-1" },
+    });
+    expect(result.deliverable).toContain("A daily watchlist check");
+    expect(result.watch).toEqual({
+      version: 1,
+      symbol: "LIEGE",
+      verdict: "No major red flags",
+      riskScore: 0,
+      honeypot: false,
+      cannotSellAll: null,
+      noSells: false,
+      owner: "0x0000000000000000000000000000000000000000",
+      hiddenOwner: false,
+      canTakeBackOwnership: null,
+      liquidityUsd: 45_000,
+      lpLockedShare: 0.9,
+      buyTax: 0,
+      sellTax: 0.04,
+      transferTax: null,
+    });
+
+    // An ordinary rug check sends no watch result and no watchlist note.
+    const plain = await createConstantineHandler(async () => "Fine.", fetcher).execute({
+      jobId: "job-6",
+      brief: `Rug check ${token}`,
+      requirements: {},
+    });
+    expect(plain.watch).toBeUndefined();
+    expect(plain.deliverable).not.toContain("watchlist");
+  });
+
+  test("a pool that vanished reads as no liquidity; a market source that failed reads as unknown", async () => {
+    const emptied = await readToken(
+      { address: token, chain: chains.robinhood },
+      network(clean, []).fetcher,
+    );
+    expect(watchSnapshot(emptied, assess(emptied)).liquidityUsd).toBe(0);
+
+    const failing = async (url: string) =>
+      url.includes("dexscreener")
+        ? new Response("busy", { status: 503 })
+        : network(clean).fetcher(url);
+    const unknown = await readToken({ address: token, chain: chains.robinhood }, failing);
+    expect(unknown.marketRead).toBe(false);
+    const snapshot = watchSnapshot(unknown, assess(unknown));
+    expect(snapshot.liquidityUsd).toBeNull();
+    expect(snapshot.noSells).toBeNull();
+    // GoPlus still answered, so its signals are known.
+    expect(snapshot.honeypot).toBe(false);
   });
 });

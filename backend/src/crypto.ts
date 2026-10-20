@@ -129,7 +129,8 @@ export const payloadContext = (
     | "webhook-secret"
     | "artifact"
     | "access-token"
-    | "refresh-token",
+    | "refresh-token"
+    | "watch-snapshot",
 ) => `job:${jobId}:${field}`;
 export const encryptPayload = (value: string, context: string) =>
   keyring.encrypt(value, "payload", context);

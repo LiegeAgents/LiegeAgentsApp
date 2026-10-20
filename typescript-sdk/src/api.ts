@@ -31,6 +31,8 @@ import {
   type SuperAgentRuntimeToken,
   type SuperAgentSchedule,
   type CreateSuperAgentScheduleInput,
+  type SuperAgentWatch,
+  type CreateSuperAgentWatchInput,
   type Signer,
   type X402PaymentPayload,
   type X402PaymentRequired,
@@ -351,6 +353,22 @@ export class LiegeClient {
       `/v1/super-agents/schedules/${encodeURIComponent(scheduleId)}/${action}`,
       { method: "POST" },
     ).then((item) => this.mapSuperAgentSchedule(item));
+  }
+  listSuperAgentWatchlist(): Promise<SuperAgentWatch[]> {
+    return this.call<Record<string, unknown>[]>("/v1/super-agents/watchlist").then((items) =>
+      items.map((item) => this.mapSuperAgentWatch(item)),
+    );
+  }
+  getSuperAgentWatch(watchId: string): Promise<SuperAgentWatch> {
+    return this.call<Record<string, unknown>>(
+      `/v1/super-agents/watchlist/${encodeURIComponent(watchId)}`,
+    ).then((item) => this.mapSuperAgentWatch(item));
+  }
+  createSuperAgentWatch(input: CreateSuperAgentWatchInput): Promise<SuperAgentWatch> {
+    return this.call<Record<string, unknown>>("/v1/super-agents/watchlist", {
+      method: "POST",
+      body: input,
+    }).then((item) => this.mapSuperAgentWatch(item));
   }
 
   getAccount(agentId: string): Promise<AgentAccount> {
@@ -697,22 +715,68 @@ export class LiegeClient {
       status: value.status as SuperAgentSchedule["status"],
       statusReason: (value.statusReason ?? value.status_reason ?? null) as string | null,
       source: (value.source ?? "dashboard") as SuperAgentSchedule["source"],
+      watchToken: (value.watchToken ?? value.watch_token ?? null) as string | null,
+      watchChain: (value.watchChain ??
+        value.watch_chain ??
+        null) as SuperAgentSchedule["watchChain"],
+      createdAt: String(value.createdAt ?? value.created_at ?? ""),
+      updatedAt: String(value.updatedAt ?? value.updated_at ?? ""),
+      runs: runs.map((run) => this.mapSuperAgentScheduleRun(run as Record<string, unknown>)),
+    } as SuperAgentSchedule;
+  }
+  private mapSuperAgentScheduleRun(item: Record<string, unknown>) {
+    return {
+      ...item,
+      id: String(item.id),
+      slot: String(item.slot),
+      outcome: String(item.outcome),
+      detail: (item.detail ?? null) as string | null,
+      createdAt: String(item.createdAt ?? item.created_at ?? ""),
+      jobId: (item.jobId ?? item.job_id ?? null) as string | null,
+      jobStatus: (item.jobStatus ?? item.job_status ?? null) as string | null,
+    };
+  }
+  private mapSuperAgentWatch(value: Record<string, unknown>): SuperAgentWatch {
+    const runs = Array.isArray(value.runs) ? value.runs : [];
+    return {
+      ...value,
+      id: String(value.id),
+      watchToken: String(value.watchToken ?? value.watch_token ?? ""),
+      watchChain: (value.watchChain ?? value.watch_chain) as SuperAgentWatch["watchChain"],
+      chainName: String(value.chainName ?? value.chain_name ?? ""),
+      agentId: String(value.agentId ?? value.agent_id),
+      agentName: String(value.agentName ?? value.agent_name ?? ""),
+      settlementAsset: (value.settlementAsset ??
+        value.settlement_asset ??
+        "usdg") as SuperAgentWatch["settlementAsset"],
+      budgetAmount: String(value.budgetAmount ?? value.budget_amount ?? "0"),
+      nextRunAt: (value.nextRunAt ?? value.next_run_at ?? null) as string | null,
+      spendCap: String(value.spendCap ?? value.spend_cap ?? "0"),
+      committedAmount: String(value.committedAmount ?? value.committed_amount ?? "0"),
+      maxRuns:
+        value.maxRuns == null
+          ? ((value.max_runs as number | null | undefined) ?? null)
+          : Number(value.maxRuns),
+      runsCount: Number(value.runsCount ?? value.runs_count ?? 0),
+      autoFund: Boolean(value.autoFund ?? value.auto_fund),
+      status: value.status as SuperAgentWatch["status"],
+      statusReason: (value.statusReason ?? value.status_reason ?? null) as string | null,
+      source: (value.source ?? "dashboard") as SuperAgentWatch["source"],
       createdAt: String(value.createdAt ?? value.created_at ?? ""),
       updatedAt: String(value.updatedAt ?? value.updated_at ?? ""),
       runs: runs.map((run) => {
         const item = run as Record<string, unknown>;
+        const riskScore = item.riskScore ?? item.risk_score;
         return {
-          ...item,
-          id: String(item.id),
-          slot: String(item.slot),
-          outcome: String(item.outcome),
-          detail: (item.detail ?? null) as string | null,
-          createdAt: String(item.createdAt ?? item.created_at ?? ""),
-          jobId: (item.jobId ?? item.job_id ?? null) as string | null,
-          jobStatus: (item.jobStatus ?? item.job_status ?? null) as string | null,
+          ...this.mapSuperAgentScheduleRun(item),
+          verdict: (item.verdict ?? null) as string | null,
+          riskScore: riskScore == null ? null : Number(riskScore),
+          baseline: (item.baseline ?? null) as boolean | null,
+          changes: Array.isArray(item.changes) ? item.changes : [],
+          checkedAt: (item.checkedAt ?? item.checked_at ?? null) as string | null,
         };
       }),
-    } as SuperAgentSchedule;
+    } as SuperAgentWatch;
   }
   private mapAccount(value: Record<string, unknown>): AgentAccount {
     const policy = value.policy as Record<string, unknown> | null | undefined;

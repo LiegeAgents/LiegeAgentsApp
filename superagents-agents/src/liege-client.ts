@@ -81,11 +81,12 @@ export async function submitDeliverable(
   jobId: string,
   deliverable: string,
   evidence: string[] = [],
+  watch?: Record<string, unknown>,
 ) {
   return request<LiegeJob>(`/v1/jobs/${encodeURIComponent(jobId)}/submit`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ deliverable, evidence }),
+    body: JSON.stringify({ deliverable, evidence, ...(watch ? { watch } : {}) }),
   });
 }
 

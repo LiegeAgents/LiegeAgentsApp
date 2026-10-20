@@ -11,6 +11,7 @@ import { openSuperAgentJob } from "../superAgentSchedules.js";
 import { latestProgressColumn } from "../jobProgress.js";
 import { quoteIntent } from "../superAgentQuotes.js";
 import { registerScheduleRoutes } from "./superAgentSchedules.js";
+import { registerWatchlistRoutes } from "./superAgentWatchlist.js";
 import { registerSquadRoutes } from "./superAgentSquads.js";
 import { registerAuctionRoutes } from "./superAgentAuctions.js";
 import { registerTriggerRoutes } from "./githubTriggers.js";
@@ -771,6 +772,7 @@ superAgentsRouter.post(
 );
 
 registerScheduleRoutes(superAgentsRouter);
+registerWatchlistRoutes(superAgentsRouter);
 registerSquadRoutes(superAgentsRouter);
 registerAuctionRoutes(superAgentsRouter);
 registerTriggerRoutes(superAgentsRouter);

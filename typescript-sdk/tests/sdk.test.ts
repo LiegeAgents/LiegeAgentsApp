@@ -93,6 +93,136 @@ describe("LiegeClient", () => {
     ]);
   });
 
+  test("watches a token and reads each check's verdict and worsened signals", async () => {
+    const requests: Array<{ path: string; method: string; body?: unknown }> = [];
+    const watch = {
+      id: "watch-1",
+      watch_token: "0x1111111111111111111111111111111111111111",
+      watch_chain: "base",
+      chain_name: "Base",
+      agent_id: "agent-constantine",
+      agent_name: "Constantine",
+      settlement_asset: "usdg",
+      budget_amount: "0.5",
+      next_run_at: "2026-10-21T00:00:00.000Z",
+      spend_cap: "15",
+      committed_amount: "1",
+      max_runs: null,
+      runs_count: 2,
+      auto_fund: true,
+      status: "active",
+      status_reason: null,
+      source: "cli",
+      created_at: "2026-10-19T00:00:00.000Z",
+      updated_at: "2026-10-20T00:00:00.000Z",
+      runs: [
+        {
+          id: "run-2",
+          slot: "2026-10-20T00:00:00.000Z",
+          outcome: "funded",
+          detail: null,
+          created_at: "2026-10-20T00:00:00.000Z",
+          job_id: "job-2",
+          job_status: "submitted",
+          verdict: "high risk",
+          risk_score: 72,
+          baseline: false,
+          changes: [{ signal: "liquidity", label: "Liquidity", detail: "Liquidity fell by 60%." }],
+          checked_at: "2026-10-20T00:05:00.000Z",
+        },
+        {
+          id: "run-1",
+          slot: "2026-10-19T00:00:00.000Z",
+          outcome: "awaiting_funding",
+          detail: "Auto-funding is off.",
+          created_at: "2026-10-19T00:00:00.000Z",
+          job_id: "job-1",
+          job_status: "open",
+          verdict: null,
+          risk_score: null,
+          baseline: null,
+          changes: [],
+          checked_at: null,
+        },
+      ],
+    };
+    const client = new LiegeClient({
+      token: "session",
+      fetch: async (input, init) => {
+        const path = new URL(String(input)).pathname;
+        requests.push({
+          path,
+          method: init?.method ?? "GET",
+          body: init?.body ? JSON.parse(String(init.body)) : undefined,
+        });
+        return Response.json(
+          { data: path.endsWith("/watchlist") && init?.method !== "POST" ? [watch] : watch },
+          { status: init?.method === "POST" ? 201 : 200 },
+        );
+      },
+    });
+
+    const created = await client.createSuperAgentWatch({
+      token: "0x1111111111111111111111111111111111111111",
+      chain: "base",
+      source: "cli",
+    });
+    expect(created).toMatchObject({
+      id: "watch-1",
+      watchToken: "0x1111111111111111111111111111111111111111",
+      watchChain: "base",
+      chainName: "Base",
+      budgetAmount: "0.5",
+      spendCap: "15",
+      runs: [
+        {
+          jobId: "job-2",
+          verdict: "high risk",
+          riskScore: 72,
+          baseline: false,
+          changes: [{ signal: "liquidity", detail: "Liquidity fell by 60%." }],
+          checkedAt: "2026-10-20T00:05:00.000Z",
+        },
+        { jobId: "job-1", verdict: null, riskScore: null, baseline: null, changes: [] },
+      ],
+    });
+    expect(requests[0]).toEqual({
+      path: "/v1/super-agents/watchlist",
+      method: "POST",
+      body: { token: "0x1111111111111111111111111111111111111111", chain: "base", source: "cli" },
+    });
+
+    expect((await client.listSuperAgentWatchlist())[0].watchChain).toBe("base");
+    expect((await client.getSuperAgentWatch("watch-1")).id).toBe("watch-1");
+    expect(requests.slice(1).map(({ path, method }) => [path, method])).toEqual([
+      ["/v1/super-agents/watchlist", "GET"],
+      ["/v1/super-agents/watchlist/watch-1", "GET"],
+    ]);
+  });
+
+  test("schedules carry the watched token, or null for ordinary recurring jobs", async () => {
+    const base = { id: "s", agent_id: "a", cadence: "daily", status: "active", runs: [] };
+    const client = new LiegeClient({
+      fetch: async () =>
+        Response.json({
+          data: [
+            { ...base, watch_token: null, watch_chain: null },
+            {
+              ...base,
+              watch_token: "0x2222222222222222222222222222222222222222",
+              watch_chain: "bsc",
+            },
+          ],
+        }),
+    });
+    const [ordinary, watched] = await client.listSuperAgentSchedules();
+    expect(ordinary).toMatchObject({ watchToken: null, watchChain: null });
+    expect(watched).toMatchObject({
+      watchToken: "0x2222222222222222222222222222222222222222",
+      watchChain: "bsc",
+    });
+  });
+
   test("retries transient GETs and preserves request ids on terminal errors", async () => {
     let calls = 0;
     const client = new LiegeClient({

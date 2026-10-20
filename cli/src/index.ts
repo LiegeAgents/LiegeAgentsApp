@@ -62,6 +62,9 @@ Usage:
   liege superagents squads get <squad-id>
   liege superagents squads create --request <text> --steps "<agent>:<budget>:<task>; ..." [--name <text>] [--auto-fund] [--asset usdg|liege]
   liege superagents squads cancel <squad-id>
+  liege watchlist [list]
+  liege watchlist get <watch-id>
+  liege watchlist pause|resume|cancel <watch-id>
   liege jobs list [--status <status>] [--asset <usdg|liege>] [--limit <n>]
   liege jobs get <job-id>
   liege jobs simulate '<json-job>'
@@ -218,6 +221,44 @@ export function squadSteps(spec: string, agents: SquadAgent[]) {
         throw new Error(`Write each step as <agent>:<budget>:<task>, not "${part}".`);
       return { agentId: agent.id, task: task.join(":").trim(), budgetAmount: Number(budget) };
     });
+}
+
+/** A watch reduced to its latest check and its last alert, for `liege watchlist` and `/watchlist`. */
+export function summarizeWatch(watch: Json) {
+  // Runs arrive newest first; a run has a verdict once Constantine delivered its check.
+  const runs = (watch.runs as Json[] | undefined) ?? [];
+  const latest = runs.find((run) => run.verdict != null);
+  const alert = runs.find((run) => ((run.changes as Json[] | undefined) ?? []).length > 0);
+  return {
+    id: String(watch.id),
+    token: String(watch.watch_token),
+    chain: String(watch.chain_name ?? watch.watch_chain),
+    status: String(watch.status),
+    settlementAsset: String(watch.settlement_asset ?? "usdg"),
+    budgetAmount: String(watch.budget_amount),
+    committedAmount: String(watch.committed_amount),
+    spendCap: String(watch.spend_cap),
+    nextCheckAt: watch.status === "active" ? ((watch.next_run_at as string | null) ?? null) : null,
+    awaitingFunding: runs.filter(
+      (run) => run.outcome === "awaiting_funding" && run.job_status === "open",
+    ).length,
+    latest: latest
+      ? {
+          verdict: String(latest.verdict),
+          riskScore: latest.risk_score == null ? null : Number(latest.risk_score),
+          baseline: latest.baseline === true,
+          checkedAt: (latest.checked_at as string | null) ?? null,
+          jobId: (latest.job_id as string | null) ?? null,
+        }
+      : null,
+    lastAlert: alert
+      ? {
+          checkedAt: (alert.checked_at as string | null) ?? null,
+          jobId: (alert.job_id as string | null) ?? null,
+          changes: ((alert.changes as Json[]) ?? []).map((change) => String(change.detail)),
+        }
+      : null,
+  };
 }
 
 export function print(value: unknown) {
@@ -573,6 +614,17 @@ export async function execute(args: string[]): Promise<unknown> {
           method: "DELETE",
         });
     }
+  }
+  if (resource === "watchlist") {
+    // A watch is a schedule with a token attached, so pausing and cancelling use the schedule routes.
+    const path = (suffix = "") => `/v1/super-agents/schedules/${encodeURIComponent(id!)}${suffix}`;
+    if (!action || action === "list")
+      return ((await request("/v1/super-agents/watchlist")) as Json[]).map(summarizeWatch);
+    if (action === "get" && id)
+      return request(`/v1/super-agents/watchlist/${encodeURIComponent(id)}`);
+    if (action === "pause" && id) return request(path("/pause"), { method: "POST" });
+    if (action === "resume" && id) return request(path("/resume"), { method: "POST" });
+    if (action === "cancel" && id) return request(path(), { method: "DELETE" });
   }
   if (resource === "jobs" && action === "list") {
     const query = new URLSearchParams();

@@ -138,7 +138,7 @@ async function execute(agentKey: AgentKey, eventId: string, event: LiegeWebhook)
           : "Submitting the deliverable for your review.",
       90,
     );
-    await submitDeliverable(jobId, result.deliverable, result.evidence ?? []);
+    await submitDeliverable(jobId, result.deliverable, result.evidence ?? [], result.watch);
     // A GitHub-triggered review is also posted on its pull request. Best effort: the delivery in
     // Liege is what the client pays for.
     const github = githubPolicy(policy);

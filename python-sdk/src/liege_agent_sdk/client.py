@@ -20,6 +20,7 @@ from .models import (
     AgentMandate, AgentPolicyInput, Invoice, InvoiceRefund, Job, JobEvent, Receipt, Service, ServiceType, Session,
     RunnerInput, RunnerResult, RunnerArtifact, McpHarnessPreset, McpHarnessPresetsResponse, WebhookCreateInput, WebhookSubscription, Page,
     SettlementAsset, SuperAgentSchedule, SuperAgentScheduleCadence, SuperAgentScheduleSource,
+    SuperAgentWatch, SuperAgentWatchChain,
 )
 
 
@@ -257,6 +258,30 @@ class LiegeClient:
     def _super_agent_schedule_action(self, schedule_id: str, action: str) -> SuperAgentSchedule:
         value = self._request("POST", f"/v1/super-agents/schedules/{quote(schedule_id, safe='')}/{action}")
         return SuperAgentSchedule.from_dict(value)
+
+    def list_super_agent_watchlist(self) -> list[SuperAgentWatch]:
+        return [SuperAgentWatch.from_dict(item) for item in self._request("GET", "/v1/super-agents/watchlist")]
+
+    def get_super_agent_watch(self, watch_id: str) -> SuperAgentWatch:
+        value = self._request("GET", f"/v1/super-agents/watchlist/{quote(watch_id, safe='')}")
+        return SuperAgentWatch.from_dict(value)
+
+    def create_super_agent_watch(
+        self, token: str, chain: SuperAgentWatchChain = "robinhood", agent_id: str | None = None,
+        settlement_asset: SettlementAsset = "usdg", budget_amount: float | None = None,
+        spend_cap: float | None = None, max_runs: int | None = None, auto_fund: bool = False,
+        start_at: str | None = None, source: SuperAgentScheduleSource = "dashboard",
+    ) -> SuperAgentWatch:
+        body: dict[str, Any] = {
+            "token": token, "chain": chain, "settlementAsset": settlement_asset,
+            "autoFund": auto_fund, "source": source,
+        }
+        optional = {
+            "agentId": agent_id, "budgetAmount": budget_amount, "spendCap": spend_cap,
+            "maxRuns": max_runs, "startAt": start_at,
+        }
+        body.update({key: value for key, value in optional.items() if value is not None})
+        return SuperAgentWatch.from_dict(self._request("POST", "/v1/super-agents/watchlist", json=body))
 
     def create_service(self, agent_id: str, slug: str, name: str, description: str,
                        service_type: ServiceType, price_usd: str | float, sla_minutes: int,
@@ -642,6 +667,32 @@ class AsyncLiegeClient:
     async def _super_agent_schedule_action(self, schedule_id: str, action: str) -> SuperAgentSchedule:
         value = await self._request("POST", f"/v1/super-agents/schedules/{quote(schedule_id, safe='')}/{action}")
         return SuperAgentSchedule.from_dict(value)
+
+    async def list_super_agent_watchlist(self) -> list[SuperAgentWatch]:
+        items = await self._request("GET", "/v1/super-agents/watchlist")
+        return [SuperAgentWatch.from_dict(item) for item in items]
+
+    async def get_super_agent_watch(self, watch_id: str) -> SuperAgentWatch:
+        value = await self._request("GET", f"/v1/super-agents/watchlist/{quote(watch_id, safe='')}")
+        return SuperAgentWatch.from_dict(value)
+
+    async def create_super_agent_watch(
+        self, token: str, chain: SuperAgentWatchChain = "robinhood", agent_id: str | None = None,
+        settlement_asset: SettlementAsset = "usdg", budget_amount: float | None = None,
+        spend_cap: float | None = None, max_runs: int | None = None, auto_fund: bool = False,
+        start_at: str | None = None, source: SuperAgentScheduleSource = "dashboard",
+    ) -> SuperAgentWatch:
+        body: dict[str, Any] = {
+            "token": token, "chain": chain, "settlementAsset": settlement_asset,
+            "autoFund": auto_fund, "source": source,
+        }
+        optional = {
+            "agentId": agent_id, "budgetAmount": budget_amount, "spendCap": spend_cap,
+            "maxRuns": max_runs, "startAt": start_at,
+        }
+        body.update({key: value for key, value in optional.items() if value is not None})
+        value = await self._request("POST", "/v1/super-agents/watchlist", json=body)
+        return SuperAgentWatch.from_dict(value)
 
 
 def _page(value: Any, mapper: Callable[[dict[str, Any]], Any]) -> Page:

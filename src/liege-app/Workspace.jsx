@@ -417,10 +417,15 @@ export default function Workspace() {
         ...notificationInbox.items.map((item) => ({
           id: `inbox-${item.id}`,
           tone:
-            item.event_type === "job.rejected" || item.event_type === "job.expired"
-              ? "warning"
-              : "active",
-          label: item.event_type.replace("job.", "").replaceAll("_", " "),
+            item.event_type === "watch.alert"
+              ? "danger"
+              : item.event_type === "job.rejected" || item.event_type === "job.expired"
+                ? "warning"
+                : "active",
+          label:
+            item.event_type === "watch.alert"
+              ? "watchlist alert"
+              : item.event_type.replace("job.", "").replaceAll("_", " "),
           title: item.title,
           detail: item.message,
           date: item.created_at,

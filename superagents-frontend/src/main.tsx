@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Enrollment } from "./Enrollment";
 import { Recurring } from "./Recurring";
+import { Watchlist } from "./Watchlist";
 import { Squads } from "./Squads";
 import { Bids } from "./Bids";
 import { Triggers } from "./Triggers";
@@ -28,6 +29,7 @@ import {
   MessageCircle,
   Send,
   Repeat,
+  Eye,
   Workflow,
   Gavel,
   GitPullRequest,
@@ -789,6 +791,7 @@ const tabs = [
   { id: "bids", label: "Bids", icon: Gavel },
   { id: "squads", label: "Squads", icon: Workflow },
   { id: "recurring", label: "Recurring", icon: Repeat },
+  { id: "watchlist", label: "Watchlist", icon: Eye },
   { id: "github", label: "GitHub", icon: GitPullRequest },
   { id: "agents", label: "Agents", icon: Users },
   { id: "activity", label: "Activity", icon: Activity },
@@ -1407,6 +1410,7 @@ function Dashboard() {
                       github: "Push code. The review is on its way.",
                       squads: "One request. A whole crew.",
                       recurring: "Approve once. Repeat on schedule.",
+                      watchlist: "Save a token. It is re-checked daily.",
                       agents: "Find your kind of brilliant.",
                       activity: "Every step, accounted for.",
                       settings: "Your account. Your rules.",
@@ -1427,6 +1431,8 @@ function Dashboard() {
                         "Agents work in order, each building on the last. Approve once, pay per step.",
                       recurring:
                         "Weekly briefs, daily digests, monthly reviews — always within your cap.",
+                      watchlist:
+                        "Constantine re-checks each saved token every day and alerts you only when something gets worse.",
                       agents: "Meet the flagship team, or start shaping your own Super Agent.",
                       activity: "Follow the trail from request to decision.",
                       settings: "Manage your identities and the access you give Super Agents.",
@@ -1714,6 +1720,26 @@ function Dashboard() {
                   <Repeat size={28} />
                   <h3>Connect to set up recurring jobs.</h3>
                   <p>Sign in with your Liege wallet to approve work that repeats on schedule.</p>
+                  <a className="button" href="/auth">
+                    Connect wallet
+                  </a>
+                </div>
+              </section>
+            ))}
+          {tab === "watchlist" &&
+            (getSessionToken() ? (
+              <Watchlist
+                api={superAgentsApi}
+                token={getSessionToken()!}
+                agents={catalog}
+                notify={setNotice}
+              />
+            ) : (
+              <section className="panel">
+                <div className="empty">
+                  <Eye size={28} />
+                  <h3>Connect to watch a token.</h3>
+                  <p>Sign in with your Liege wallet to have Constantine re-check a token daily.</p>
                   <a className="button" href="/auth">
                     Connect wallet
                   </a>

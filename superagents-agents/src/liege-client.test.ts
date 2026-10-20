@@ -8,7 +8,7 @@ process.env.LIEGE_API_URL = "https://api.example.com";
 process.env.LIEGE_RUNTIME_TOKEN = "runtime-token";
 process.env.GROQ_API_KEY = "groq-key";
 
-const { reportProgress } = await import("./liege-client.js");
+const { reportProgress, submitDeliverable } = await import("./liege-client.js");
 const originalFetch = globalThis.fetch;
 
 describe("progress reports", () => {
@@ -44,5 +44,25 @@ describe("progress reports", () => {
       throw new Error("network down");
     }) as unknown as typeof fetch;
     await expect(reportProgress("job-1", "started", "Picked up.")).resolves.toBeUndefined();
+  });
+});
+
+describe("deliveries", () => {
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test("carry a watch result only when the handler produced one", async () => {
+    const bodies: unknown[] = [];
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)));
+      return new Response(JSON.stringify({ data: { id: "job-1", status: "submitted" } }));
+    }) as unknown as typeof fetch;
+    await submitDeliverable("job-1", "# Report", ["https://example.com/source"]);
+    await submitDeliverable("job-1", "# Report", [], { version: 1, verdict: "Caution" });
+    expect(bodies).toEqual([
+      { deliverable: "# Report", evidence: ["https://example.com/source"] },
+      { deliverable: "# Report", evidence: [], watch: { version: 1, verdict: "Caution" } },
+    ]);
   });
 });

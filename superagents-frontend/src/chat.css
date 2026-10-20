@@ -905,6 +905,79 @@
   }
 }
 
+/* Watchlist: a saved token re-checked daily, with alerts when a signal gets worse. */
+.recurring-form input.watch-input {
+  width: 100%;
+  min-height: 44px;
+  margin-bottom: 18px;
+  padding: 10px 12px;
+  border: 1px solid #365841;
+  border-radius: 9px;
+  background: #101c14;
+  color: #e6ece7;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.watch-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border: 1px solid #2e4a36;
+  border-radius: 99px;
+  color: #819889;
+  font-size: 11px;
+  vertical-align: 1px;
+}
+.watch-alert {
+  padding: 12px 14px;
+  border: 1px solid #6b3a33;
+  border-radius: 10px;
+  background: #24140f;
+  color: #f2c6bd;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.watch-alert strong {
+  color: #f08a7a;
+  font-size: 12px;
+  font-weight: 500;
+}
+.watch-alert ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.watch-alert b {
+  font-weight: 500;
+}
+.watch-runs {
+  display: grid;
+  gap: 4px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+.watch-run {
+  display: grid;
+  grid-template-columns: minmax(0, 150px) minmax(0, 1fr);
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  color: #c9d8ce;
+}
+.watch-run-time {
+  color: var(--muted);
+}
+.watch-run-alert {
+  background: #24140f;
+  color: #f08a7a;
+}
+@media (max-width: 640px) {
+  .watch-run {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+
 /* Live progress reported by the agent while a funded job runs. */
 .request-progress {
   display: block;

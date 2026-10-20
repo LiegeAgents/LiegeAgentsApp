@@ -1397,6 +1397,52 @@ paths:
                 deliverableCommit: { $ref: "#/components/schemas/TransactionHash" }
                 deliverableSalt: { $ref: "#/components/schemas/TransactionHash" }
                 submitTxHash: { $ref: "#/components/schemas/TransactionHash" }
+                watch:
+                  type: object
+                  additionalProperties: false
+                  description: >-
+                    Watchlist runs only: the rug-check result, compared with the watch's previous
+                    run. A worsened signal records a watch.alert and notifies the watch's owner.
+                    Null fields mean "not known on this run" and never alert.
+                  required:
+                    [
+                      version,
+                      symbol,
+                      verdict,
+                      riskScore,
+                      honeypot,
+                      cannotSellAll,
+                      noSells,
+                      owner,
+                      hiddenOwner,
+                      canTakeBackOwnership,
+                      liquidityUsd,
+                      lpLockedShare,
+                      buyTax,
+                      sellTax,
+                      transferTax,
+                    ]
+                  properties:
+                    version: { type: integer, enum: [1] }
+                    symbol: { type: [string, "null"], maxLength: 40 }
+                    verdict: { type: string, minLength: 1, maxLength: 40 }
+                    riskScore: { type: [integer, "null"], minimum: 0, maximum: 100 }
+                    honeypot: { type: [boolean, "null"] }
+                    cannotSellAll: { type: [boolean, "null"] }
+                    noSells: { type: [boolean, "null"] }
+                    owner:
+                      {
+                        type: [string, "null"],
+                        pattern: "^(0x[0-9a-fA-F]{40})?$",
+                        description: Empty when the contract has no owner function.,
+                      }
+                    hiddenOwner: { type: [boolean, "null"] }
+                    canTakeBackOwnership: { type: [boolean, "null"] }
+                    liquidityUsd: { type: [number, "null"], minimum: 0 }
+                    lpLockedShare: { type: [number, "null"], minimum: 0, maximum: 1 }
+                    buyTax: { type: [number, "null"], minimum: 0, maximum: 1 }
+                    sellTax: { type: [number, "null"], minimum: 0, maximum: 1 }
+                    transferTax: { type: [number, "null"], minimum: 0, maximum: 1 }
                 evidence:
                   type: array
                   maxItems: 20
@@ -3498,6 +3544,85 @@ paths:
             { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "409": { $ref: "#/components/responses/Conflict" }
+  /v1/super-agents/watchlist:
+    get:
+      operationId: listSuperAgentWatchlist
+      summary: List your watched tokens with their latest rug-check results and alerts.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Watched tokens, active and paused first.
+          content:
+            { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+    post:
+      operationId: createSuperAgentWatch
+      summary: >-
+        Watch a token. A rug-check agent (Constantine) re-checks it daily as a recurring job, and
+        you are alerted only when ownership, liquidity, a tax, or a honeypot flag worsens. Pause,
+        resume, and cancel it with the schedule routes.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string, pattern: "^0x[0-9a-fA-F]{40}$" }
+                chain:
+                  {
+                    type: string,
+                    enum: [robinhood, ethereum, base, arbitrum, bsc],
+                    default: robinhood,
+                  }
+                agentId:
+                  {
+                    type: string,
+                    format: uuid,
+                    description: A rug-check agent; the first available one when omitted.,
+                  }
+                settlementAsset: { type: string, enum: [usdg, liege], default: usdg }
+                budgetAmount:
+                  {
+                    type: number,
+                    exclusiveMinimum: 0,
+                    description: Budget per check; defaults to the listed USD price for USDG.,
+                  }
+                spendCap:
+                  {
+                    type: number,
+                    exclusiveMinimum: 0,
+                    description: Total across all checks; defaults to 30 checks.,
+                  }
+                maxRuns: { type: integer, minimum: 1, maximum: 1000 }
+                autoFund: { type: boolean, default: false }
+                startAt: { type: string, format: date-time }
+                source: { type: string, enum: [dashboard, cli], default: dashboard }
+      responses:
+        "201":
+          description: Token watched.
+          content:
+            { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/super-agents/watchlist/{id}:
+    get:
+      operationId: getSuperAgentWatch
+      summary: Get one watched token with its recent checks.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Watched token.
+          content:
+            { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /v1/super-agents/intents/{id}/decision:
     post:
       operationId: decideSuperAgentIntent

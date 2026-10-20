@@ -24,6 +24,7 @@ printf '%s\n' "$help" | grep -Fq "liege jobs revise <job-id> --feedback <text>"
 printf '%s\n' "$help" | grep -Fq "liege superagents triggers pause|resume|cancel <trigger-id>"
 printf '%s\n' "$help" | grep -Fq "liege superagents auctions award <auction-id> <bid-id> [--fund]"
 printf '%s\n' "$help" | grep -Fq "liege superagents squads create --request <text>"
+printf '%s\n' "$help" | grep -Fq "liege watchlist pause|resume|cancel <watch-id>"
 printf '%s\n' "$help" | grep -Fq "liege jobs attach <job-id> --file <path> | --url <url> [--commit <sha>]"
 sh -n install.sh
 

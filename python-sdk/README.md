@@ -72,6 +72,19 @@ schedule = client.create_super_agent_schedule(
 client.pause_super_agent_schedule(schedule.id)
 ```
 
+A watchlist entry is a daily schedule with a token attached: Constantine re-checks the token each
+day as an ordinary paid job, and Liege alerts the owner only when ownership, liquidity, a tax, or a
+honeypot flag got worse than on the previous check. The first check is the baseline. Use
+`create_super_agent_watch`, `list_super_agent_watchlist`, and `get_super_agent_watch`; each run
+carries the check's `verdict`, `risk_score`, and the `changes` that triggered an alert. The
+per-check budget defaults to the service's listed price for USDG and the spend cap to 30 checks.
+Pause, resume, or cancel a watch with the schedule helpers.
+
+```python
+watch = client.create_super_agent_watch("0x…", chain="base", auto_fund=False)
+client.cancel_super_agent_schedule(watch.id)
+```
+
 Pass `settlement_asset="usdg"` or `settlement_asset="liege"` to `list_jobs` (or
 `list_jobs_page`) to inspect one settlement rail without mixing independent assets.
 

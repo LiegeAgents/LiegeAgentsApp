@@ -74,6 +74,8 @@ export type TokenFacts = {
   pairs: DexPair[];
   // Robinhood Chain only: whether code is deployed at the address. Null when not checked.
   isContract: boolean | null;
+  // Whether DexScreener answered: with an answer, no pools means no pools, not a failed source.
+  marketRead?: boolean;
   checkedAt: string;
 };
 
@@ -123,6 +125,7 @@ export async function readToken(
     security: found && Object.keys(found).length ? found : null,
     pairs,
     isContract: typeof bytecode === "string" ? bytecode.length > 2 : null,
+    marketRead: market !== null,
     checkedAt: new Date().toISOString(),
   };
 }
@@ -282,11 +285,7 @@ export function assess(facts: TokenFacts) {
       add(top > 0.5 ? "fail" : top > 0.3 ? "warn" : "pass", "Holder concentration", detail);
     }
     if (s.lp_holders?.length) {
-      const locked = s.lp_holders
-        .filter(
-          (holder) => holder.is_locked || burnAddresses.has(String(holder.address).toLowerCase()),
-        )
-        .reduce((sum, holder) => sum + (ratio(holder.percent) ?? 0), 0);
+      const locked = lpLockedShare(s);
       add(
         locked >= 0.9 ? "pass" : "warn",
         "Liquidity lock",
@@ -343,6 +342,52 @@ export function assess(facts: TokenFacts) {
   return { checks, score: known ? score : null, verdict };
 }
 
+// Rounded so shares such as 0.6 + 0.3 compare as 0.9, not 0.8999….
+const lpLockedShare = (security: GoPlusToken) =>
+  Math.round(
+    (security.lp_holders ?? [])
+      .filter(
+        (holder) => holder.is_locked || burnAddresses.has(String(holder.address).toLowerCase()),
+      )
+      .reduce((sum, holder) => sum + (ratio(holder.percent) ?? 0), 0) * 1e6,
+  ) / 1e6;
+const share = (value: unknown) => {
+  const number = ratio(value);
+  return number === null ? null : Math.min(1, Math.max(0, number));
+};
+
+/**
+ * The watchlist's view of one check: the signals Liege compares run to run. Null means the
+ * source did not say on this run, which never raises an alert.
+ */
+export function watchSnapshot(facts: TokenFacts, outcome: ReturnType<typeof assess>) {
+  const s = facts.security;
+  const main = facts.pairs[0];
+  const owner = typeof s?.owner_address === "string" ? s.owner_address.toLowerCase() : null;
+  const symbol = s?.token_symbol ?? main?.baseToken?.symbol ?? null;
+  return {
+    version: 1 as const,
+    symbol: symbol ? String(symbol).trim().slice(0, 40) || null : null,
+    verdict: outcome.verdict,
+    riskScore: outcome.score,
+    honeypot: s ? flag(s.is_honeypot) : null,
+    cannotSellAll: s ? flag(s.cannot_sell_all) : null,
+    noSells: main ? (main.txns?.h24?.buys ?? 0) >= 10 && (main.txns?.h24?.sells ?? 0) === 0 : null,
+    owner: owner !== null && /^(0x[0-9a-f]{40})?$/.test(owner) ? owner : null,
+    hiddenOwner: s ? flag(s.hidden_owner) : null,
+    canTakeBackOwnership: s ? flag(s.can_take_back_ownership) : null,
+    liquidityUsd: facts.pairs.length
+      ? facts.pairs.reduce((sum, pair) => sum + (pair.liquidity?.usd ?? 0), 0)
+      : facts.marketRead
+        ? 0
+        : null,
+    lpLockedShare: s?.lp_holders?.length ? Math.min(1, lpLockedShare(s)) : null,
+    buyTax: s ? share(s.buy_tax) : null,
+    sellTax: s ? share(s.sell_tax) : null,
+    transferTax: s ? share(s.transfer_tax) : null,
+  };
+}
+
 const name = (facts: TokenFacts) => {
   const symbol = facts.security?.token_symbol ?? facts.pairs[0]?.baseToken?.symbol;
   const title = facts.security?.token_name ?? facts.pairs[0]?.baseToken?.name;
@@ -363,6 +408,7 @@ export function renderReport(
   facts: TokenFacts,
   outcome: ReturnType<typeof assess>,
   summary: string,
+  watch = false,
 ) {
   const group = (status: Check["status"]) =>
     outcome.checks
@@ -398,6 +444,8 @@ export function renderReport(
       `## Sources\n${sourcesFor(facts)
         .map((url) => `- ${url}`)
         .join("\n")}`,
+    watch &&
+      "_A daily watchlist check: Liege compares it with the previous check and alerts you only if ownership, liquidity, a tax, or a honeypot flag got worse._",
     "_An automated risk screen from live onchain data, not financial advice or a guarantee. A clean result means no known red flags were found, not that the token is safe._",
   ];
   return sections.filter(Boolean).join("\n\n");
@@ -478,9 +526,11 @@ export function createConstantineHandler(
             ? `There is no contract at this address on ${facts.chain.name}. Check the address and the chain: if it is on another chain, say which one in the request.`
             : `I could not find security or market data for this address on ${facts.chain.name}. It may be brand new, not yet traded, or on another chain; say which chain in the request. I will not guess at a verdict without data.`;
       }
+      const watching = (requirements as { watch?: unknown } | null)?.watch === true;
       return {
-        deliverable: renderReport(facts, outcome, summary),
+        deliverable: renderReport(facts, outcome, summary, watching),
         evidence: sourcesFor(facts),
+        ...(watching ? { watch: watchSnapshot(facts, outcome) } : {}),
         metadata: {
           model: "groq",
           agentKey: "constantine",

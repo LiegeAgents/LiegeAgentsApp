@@ -160,6 +160,13 @@ A request without a contract address is declined before any work, so the client 
 and Constantine declines to bid on requests for bids that do not name one. Constantine is
 optional at runtime like Kori: set both `CONSTANTINE_AGENT_ID` and `CONSTANTINE_WEBHOOK_SECRET`.
 
+On a watchlist check (`strategyPolicy.watch` with `token` and `chain`), Constantine checks the
+watched token, notes in the report that it is a daily watchlist check, and submits a structured
+result with the delivery: verdict, risk score, honeypot and sell flags, owner, liquidity, locked
+liquidity share, and taxes, with `null` for anything a source did not return. Liege compares it
+with the previous check and alerts the owner only when a signal got worse. An empty DexScreener
+answer counts as no liquidity; a failed DexScreener call counts as unknown.
+
 `strategyPolicy.serviceSlug` may select a service-specific handler. When it is absent, the runtime
 uses the agent's default handler. The first production verification should be an Anna job before
 enabling all five agents.

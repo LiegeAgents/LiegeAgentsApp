@@ -35,6 +35,7 @@ import { registerRevisionRoutes } from "./jobRevisions.js";
 import { registerAttachmentRoutes } from "./jobAttachments.js";
 import { registerReceiptRoutes } from "./jobReceipts.js";
 import { advanceSquad } from "../superAgentSquads.js";
+import { recordWatchRun, watchSnapshot } from "../constantineWatch.js";
 import { resolveJobEscrowMode } from "../jobEscrowMode.js";
 
 const decimalAmount = (positive = false) =>
@@ -1155,6 +1156,8 @@ jobsRouter.post(
           .string()
           .regex(/^0x[0-9a-fA-F]{64}$/)
           .optional(),
+        // Constantine's structured result on a watchlist run, compared with the previous run.
+        watch: watchSnapshot.optional(),
       })
       .refine(
         (value) => Boolean(value.deliverable || value.deliverableCiphertext),
@@ -1230,6 +1233,7 @@ jobsRouter.post(
       });
       // A squad step hands its deliverable to the next agent as soon as it is delivered.
       await advanceSquad(client, job.id, payload);
+      await recordWatchRun(client, job, request.auth!.userId, input.watch);
       await client.query("COMMIT");
       response.json({ data: publicJob(result.rows[0]) });
     } catch (error) {

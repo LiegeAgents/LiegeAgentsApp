@@ -14,6 +14,8 @@ SettlementAsset = Literal["usdg", "liege"]
 SuperAgentScheduleCadence = Literal["daily", "weekly", "monthly"]
 SuperAgentScheduleStatus = Literal["active", "paused", "cancelled", "completed"]
 SuperAgentScheduleSource = Literal["dashboard", "cli"]
+SuperAgentWatchChain = Literal["robinhood", "ethereum", "base", "arbitrum", "bsc"]
+SuperAgentWatchSignal = Literal["honeypot", "ownership", "liquidity", "tax"]
 
 SuperAgentEnrollment = dict[str, Any]
 SuperAgentRuntimeToken = dict[str, Any]
@@ -63,6 +65,8 @@ class SuperAgentSchedule:
     updated_at: str
     runs: list[SuperAgentScheduleRun]
     raw: dict[str, Any]
+    watch_token: str | None = None
+    watch_chain: SuperAgentWatchChain | None = None
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> "SuperAgentSchedule":
@@ -82,6 +86,93 @@ class SuperAgentSchedule:
             str(value.get("created_at", value.get("createdAt", ""))),
             str(value.get("updated_at", value.get("updatedAt", ""))),
             [SuperAgentScheduleRun.from_dict(item) for item in value.get("runs", [])], value,
+            value.get("watch_token", value.get("watchToken")), value.get("watch_chain", value.get("watchChain")),
+        )
+
+
+@dataclass(frozen=True)
+class SuperAgentWatchChange:
+    signal: SuperAgentWatchSignal
+    label: str
+    detail: str
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "SuperAgentWatchChange":
+        return cls(value["signal"], str(value.get("label", "")), str(value.get("detail", "")))
+
+
+@dataclass(frozen=True)
+class SuperAgentWatchRun:
+    id: str
+    slot: str
+    outcome: str
+    detail: str | None
+    created_at: str
+    job_id: str | None
+    job_status: str | None
+    verdict: str | None
+    risk_score: int | None
+    baseline: bool | None
+    changes: list[SuperAgentWatchChange]
+    checked_at: str | None
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "SuperAgentWatchRun":
+        risk_score = value.get("risk_score", value.get("riskScore"))
+        return cls(
+            str(value["id"]), str(value.get("slot", "")), str(value.get("outcome", "")),
+            value.get("detail"), str(value.get("created_at", value.get("createdAt", ""))),
+            value.get("job_id", value.get("jobId")), value.get("job_status", value.get("jobStatus")),
+            value.get("verdict"), None if risk_score is None else int(risk_score), value.get("baseline"),
+            [SuperAgentWatchChange.from_dict(item) for item in value.get("changes") or []],
+            value.get("checked_at", value.get("checkedAt")),
+        )
+
+
+@dataclass(frozen=True)
+class SuperAgentWatch:
+    id: str
+    watch_token: str
+    watch_chain: SuperAgentWatchChain
+    chain_name: str
+    agent_id: str
+    agent_name: str
+    settlement_asset: SettlementAsset
+    budget_amount: str
+    next_run_at: str | None
+    spend_cap: str
+    committed_amount: str
+    max_runs: int | None
+    runs_count: int
+    auto_fund: bool
+    status: SuperAgentScheduleStatus
+    status_reason: str | None
+    source: SuperAgentScheduleSource
+    created_at: str
+    updated_at: str
+    runs: list[SuperAgentWatchRun]
+    raw: dict[str, Any]
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "SuperAgentWatch":
+        return cls(
+            str(value["id"]), str(value.get("watch_token", value.get("watchToken", ""))),
+            value.get("watch_chain", value.get("watchChain")),
+            str(value.get("chain_name", value.get("chainName", ""))),
+            str(value.get("agent_id", value.get("agentId", ""))),
+            str(value.get("agent_name", value.get("agentName", ""))),
+            value.get("settlement_asset", value.get("settlementAsset", "usdg")),
+            str(value.get("budget_amount", value.get("budgetAmount", "0"))),
+            value.get("next_run_at", value.get("nextRunAt")),
+            str(value.get("spend_cap", value.get("spendCap", "0"))),
+            str(value.get("committed_amount", value.get("committedAmount", "0"))),
+            value.get("max_runs", value.get("maxRuns")),
+            int(value.get("runs_count", value.get("runsCount", 0))),
+            bool(value.get("auto_fund", value.get("autoFund", False))), value["status"],
+            value.get("status_reason", value.get("statusReason")), str(value.get("source", "dashboard")),
+            str(value.get("created_at", value.get("createdAt", ""))),
+            str(value.get("updated_at", value.get("updatedAt", ""))),
+            [SuperAgentWatchRun.from_dict(item) for item in value.get("runs", [])], value,
         )
 
 @dataclass(frozen=True)
