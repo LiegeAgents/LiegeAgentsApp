@@ -108,6 +108,13 @@ bun run provision:webhooks
 The command replaces matching subscriptions for the runtime URLs. Copy the resulting
 `*_WEBHOOK_SECRET` values into the deployed service environment, then redeploy it.
 
+Every provisioned agent gets a new secret, so until the deployed environment is updated those
+agents reject their webhooks. To add one agent without touching the others, name it:
+
+```bash
+bun run provision:webhooks constantine
+```
+
 Webhook URLs:
 
 ```text

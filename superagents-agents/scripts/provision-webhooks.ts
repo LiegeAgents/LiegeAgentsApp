@@ -18,6 +18,15 @@ const koriAgentId = Bun.env.KORI_AGENT_ID?.trim();
 if (koriAgentId) agents.push(["KORI", koriAgentId, "kori"]);
 const constantineAgentId = Bun.env.CONSTANTINE_AGENT_ID?.trim();
 if (constantineAgentId) agents.push(["CONSTANTINE", constantineAgentId, "constantine"]);
+// Agents named on the command line (e.g. `bun run provision:webhooks constantine`) are the only
+// ones provisioned; with none named, every agent is. Each run rotates the secrets it provisions.
+const only = Bun.argv.slice(2).map((name) => name.toLowerCase());
+const unknown = only.filter((name) => !agents.some(([, , slug]) => slug === name));
+if (unknown.length)
+  throw new Error(
+    `Unknown or unconfigured agent: ${unknown.join(", ")}. Set its *_AGENT_ID in .env first.`,
+  );
+const selected = only.length ? agents.filter(([, , slug]) => only.includes(slug)) : agents;
 const eventTypes = ["job.funded", "job.submitted", "job.expired", "job.settled", "job.revision_requested", "auction.bid_requested"];
 const headers = { authorization: `Bearer ${sessionToken}`, accept: "application/json" };
 
@@ -33,7 +42,7 @@ async function api(path: string, init: RequestInit = {}) {
 
 const subscriptions = await api("/v1/webhooks");
 const values: Record<string, string> = {};
-for (const [label, agentId, slug] of agents) {
+for (const [label, agentId, slug] of selected) {
   for (const subscription of subscriptions as Array<{ id: string; agent_id: string; url: string }>) {
     if (subscription.agent_id === agentId && subscription.url === `${serverUrl}/webhooks/${slug}`) {
       await api(`/v1/webhooks/${subscription.id}`, { method: "DELETE" });
