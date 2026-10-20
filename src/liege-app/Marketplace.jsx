@@ -27,7 +27,13 @@ import { AgentIcon } from "./ProductArt";
 import { Button, Empty } from "./UI";
 import { money } from "./data";
 import { profileFor } from "./agentProfiles";
-import { api, agentForDisplay, compareTrackRecord, marketplaceAgentMatches } from "./api";
+import {
+  api,
+  agentAcceptsSettlementAsset,
+  agentForDisplay,
+  compareTrackRecord,
+  marketplaceAgentMatches,
+} from "./api";
 import "./marketplace.css";
 
 const categories = [
@@ -184,7 +190,41 @@ export function MarketplaceContent({ agents, saved, onSave, onHire, initialFilte
         typeof window !== "undefined" &&
         new URLSearchParams(window.location.search).get("verified") === "1",
     ),
-    [layout, setLayout] = useState("grid");
+    [layout, setLayout] = useState("grid"),
+    // Up to three agents to compare, by slug; `?compare=a,b` opens the comparison directly.
+    [compare, setCompare] = useState(() =>
+      typeof window === "undefined"
+        ? []
+        : (new URLSearchParams(window.location.search).get("compare") || "")
+            .split(",")
+            .filter(Boolean)
+            .slice(0, MAX_COMPARE),
+    ),
+    [comparing, setComparing] = useState(
+      () =>
+        typeof window !== "undefined" &&
+        Boolean(new URLSearchParams(window.location.search).get("compare")),
+    );
+  useEffect(() => {
+    // Keep the comparison shareable on the public marketplace only.
+    if (typeof window === "undefined" || !window.location.pathname.startsWith("/marketplace"))
+      return;
+    const url = new URL(window.location.href);
+    if (comparing && compare.length) url.searchParams.set("compare", compare.join(","));
+    else url.searchParams.delete("compare");
+    window.history.replaceState(null, "", url);
+  }, [compare, comparing]);
+  const toggleCompare = (slug) =>
+    setCompare((current) =>
+      current.includes(slug)
+        ? current.filter((item) => item !== slug)
+        : current.length < MAX_COMPARE
+          ? [...current, slug]
+          : current,
+    );
+  const compared = compare
+    .map((slug) => agents.find((agent) => (agent.slug || agent.id) === slug))
+    .filter(Boolean);
   useEffect(() => {
     setCategory(initialFilter === "Saved" ? "All" : initialFilter);
     setSavedOnly(initialFilter === "Saved");
@@ -403,6 +443,14 @@ export function MarketplaceContent({ agents, saved, onSave, onHire, initialFilte
           </div>
         </div>
       </div>
+      {comparing && compared.length > 0 && (
+        <ComparePanel
+          agents={compared}
+          onRemove={(slug) => toggleCompare(slug)}
+          onClose={() => setComparing(false)}
+          onHire={onHire}
+        />
+      )}
       {filtered.length ? (
         <div className={"market-grid " + (layout === "list" ? "market-list" : "")}>
           {filtered.map((a) => (
@@ -412,6 +460,9 @@ export function MarketplaceContent({ agents, saved, onSave, onHire, initialFilte
               saved={saved.includes(a.id)}
               onSave={() => onSave(a.id)}
               onHire={() => onHire(a)}
+              compared={compare.includes(a.slug || a.id)}
+              compareFull={compare.length >= MAX_COMPARE}
+              onCompare={() => toggleCompare(a.slug || a.id)}
             />
           ))}
         </div>
@@ -426,6 +477,29 @@ export function MarketplaceContent({ agents, saved, onSave, onHire, initialFilte
         >
           Try a different capability or save an agent to build your shortlist.
         </Empty>
+      )}
+      {compare.length > 0 && !comparing && (
+        <div className="market-compare-bar" role="region" aria-label="Agents to compare">
+          <span>
+            {compared.map((agent) => agent.name).join(" · ")}
+            <small>
+              {compare.length} of {MAX_COMPARE}
+            </small>
+          </span>
+          <button type="button" className="secondary" onClick={() => setCompare([])}>
+            Clear
+          </button>
+          <button
+            type="button"
+            disabled={compare.length < 2}
+            onClick={() => {
+              setComparing(true);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+          >
+            Compare {compare.length}
+          </button>
+        </div>
       )}
       <div className="market-assurance">
         {[
@@ -470,7 +544,134 @@ function VerifiedBadge() {
     </span>
   );
 }
-function MarketCard({ agent: a, saved, onSave, onHire }) {
+const MAX_COMPARE = 3;
+const percent = (rate) => (rate == null ? "—" : `${Math.round(rate * 100)}%`);
+
+/** Agents side by side: price, settlement, and the Liege-recorded track record. */
+function ComparePanel({ agents, onRemove, onClose, onHire }) {
+  const [records, setRecords] = useState({});
+  useEffect(() => {
+    let active = true;
+    for (const agent of agents) {
+      const slug = agent.slug || agent.id;
+      if (records[slug] !== undefined) continue;
+      api
+        .agentReputation(slug)
+        .then((result) => active && setRecords((all) => ({ ...all, [slug]: result.data || null })))
+        .catch(() => active && setRecords((all) => ({ ...all, [slug]: null })));
+    }
+    return () => {
+      active = false;
+    };
+  }, [agents.map((agent) => agent.slug || agent.id).join(",")]);
+  const accepts = (agent) =>
+    ["usdg", "liege"]
+      .filter((asset) => agentAcceptsSettlementAsset(agent, asset))
+      .map((asset) => asset.toUpperCase())
+      .join(", ") || "Not listed";
+  const rows = [
+    ["Verified Super Agent", (a) => (a.verified ? "Yes" : "No")],
+    ["Category", (a) => profileFor(a).role],
+    [
+      "Reference price",
+      (a) => (a.servicePriceUsd == null ? "Not listed" : `$${money(a.servicePriceUsd)} USD`),
+    ],
+    ["Accepts", accepts],
+    [
+      "Reputation score",
+      (a, r) =>
+        r?.reputation?.status === "scored"
+          ? `${r.reputation.score}/100`
+          : `Not scored yet (${r?.reputation?.outcomes ?? a.outcomes ?? 0} of 5 outcomes)`,
+    ],
+    ["Completed jobs", (a, r) => r?.performance?.completedJobs ?? "—"],
+    ["On-time delivery", (a, r) => percent(r?.performance?.onTimeDeliveryRate)],
+    [
+      "Average turnaround",
+      (a, r) =>
+        r?.sla?.avgTurnaroundMinutes == null
+          ? "—"
+          : `${Math.round(r.sla.avgTurnaroundMinutes)} min`,
+    ],
+    ["Jobs with revision requests", (a, r) => r?.performance?.jobsWithRevisionRequests ?? "—"],
+    ["Rejected jobs", (a, r) => r?.performance?.rejectedJobs ?? "—"],
+  ];
+  return (
+    <section className="market-compare" id="compare" aria-label="Compare agents">
+      <div className="market-compare-heading">
+        <div>
+          <span className="eyebrow">
+            <i /> SIDE BY SIDE
+          </span>
+          <h2>Compare agents</h2>
+          <p>Track records come from recorded Liege job outcomes, not ratings or owner claims.</p>
+        </div>
+        <button type="button" className="market-filter-reset" onClick={onClose}>
+          Close comparison
+        </button>
+      </div>
+      <div className="market-compare-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">
+                <span className="sr-only">Detail</span>
+              </th>
+              {agents.map((a) => (
+                <th scope="col" key={a.id}>
+                  <a href={agentUrl(a)}>
+                    <AgentIcon agent={a} size={18} />
+                    <span>
+                      {a.name}
+                      {a.verified && <VerifiedBadge />}
+                    </span>
+                  </a>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${a.name} from the comparison`}
+                    onClick={() => onRemove(a.slug || a.id)}
+                  >
+                    ×
+                  </button>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(([label, value]) => (
+              <tr key={label}>
+                <th scope="row">{label}</th>
+                {agents.map((a) => {
+                  const slug = a.slug || a.id;
+                  return (
+                    <td key={a.id}>
+                      {records[slug] === undefined && label !== "Verified Super Agent"
+                        ? "…"
+                        : value(a, records[slug])}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+            <tr>
+              <th scope="row">
+                <span className="sr-only">Hire</span>
+              </th>
+              {agents.map((a) => (
+                <td key={a.id}>
+                  <button type="button" className="market-compare-hire" onClick={() => onHire(a)}>
+                    Create a brief <Plus size={13} />
+                  </button>
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+function MarketCard({ agent: a, saved, onSave, onHire, compared, compareFull, onCompare }) {
   const p = profileFor(a);
   return (
     <article className="market-card" style={{ "--agent-accent": a.color }}>
@@ -522,9 +723,23 @@ function MarketCard({ agent: a, saved, onSave, onHire }) {
             View profile <ArrowUpRight size={14} />
           </a>
         </div>
-        <button className="market-card-hire" onClick={onHire}>
-          Create a brief <Plus size={13} />
-        </button>
+        <div className="market-card-actions">
+          {onCompare && (
+            <button
+              type="button"
+              className={"market-compare-toggle " + (compared ? "active" : "")}
+              aria-pressed={compared}
+              disabled={!compared && compareFull}
+              onClick={onCompare}
+            >
+              {compared ? <Check size={13} /> : <Plus size={13} />}
+              Compare
+            </button>
+          )}
+          <button className="market-card-hire" onClick={onHire}>
+            Create a brief <Plus size={13} />
+          </button>
+        </div>
       </div>
     </article>
   );
