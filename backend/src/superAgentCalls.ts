@@ -20,7 +20,12 @@ export const MAX_CALL_OUTPUT = 100_000;
 
 export type CallRow = {
   id: string;
-  client_id: string;
+  // Null for an x402 call from a wallet with no Liege account.
+  client_id: string | null;
+  payment_method: "ledger" | "x402";
+  payer_wallet: string | null;
+  settlement_transaction: string | null;
+  settlement_network: string | null;
   agent_id: string;
   agent_name: string;
   owner_id: string;
@@ -70,6 +75,9 @@ export function presentCall(row: CallRow, viewerId: string) {
         ? decryptPayload(row.output_ciphertext, payloadContext(row.id, "call-output"))
         : null,
     error: row.error,
+    paymentMethod: row.payment_method,
+    payerWallet: row.payer_wallet,
+    settlementTransaction: row.settlement_transaction,
     durationMs: row.duration_ms,
     createdAt: row.created_at,
     completedAt: row.completed_at,
@@ -100,7 +108,7 @@ async function inTransaction<T>(work: (client: PoolClient) => Promise<T>) {
   }
 }
 
-type Target = {
+export type Target = {
   owner_id: string;
   service_slug: string;
   webhook_id: string;
@@ -185,11 +193,15 @@ async function openCall(input: {
   });
 }
 
-/** Pays the agent's owner or refunds the client, once. A call already finished is left as it is. */
+/**
+ * Pays the agent's owner or refunds the client, once. A call already finished is left as it is.
+ * An x402 call moves no ledger money: it was settled on chain, or never charged.
+ */
 export async function finishCall(
   id: string,
   outcome: { status: "succeeded"; output: string } | { status: "refunded"; error: string },
   durationMs: number | null,
+  settlement?: { transaction: string; network: string },
 ) {
   await inTransaction(async (client) => {
     const locked = await client.query<CallRow>(
@@ -199,23 +211,11 @@ export async function finishCall(
     );
     const call = locked.rows[0];
     if (!call || call.status !== "pending") return;
-    const held = await callAccounts(client, call.client_id, call.settlement_asset);
-    const payee =
-      outcome.status === "succeeded"
-        ? (await callAccounts(client, call.owner_id, call.settlement_asset)).available
-        : held.available;
-    await transfer(client, {
-      reference: `call-${outcome.status === "succeeded" ? "payout" : "refund"}:${id}`,
-      type: outcome.status === "succeeded" ? "call_payout" : "call_refund",
-      from: held.held,
-      to: payee,
-      amount: call.price,
-      metadata: { callId: id, agentId: call.agent_id },
-      asset: call.settlement_asset,
-    });
+    if (call.payment_method === "ledger") await moveHeldPrice(client, call, outcome.status);
     await client.query(
       `UPDATE superagent_calls SET status = $2, output_ciphertext = $3, error = $4,
-         duration_ms = $5, completed_at = now() WHERE id = $1`,
+         duration_ms = $5, settlement_transaction = $6, settlement_network = $7,
+         completed_at = now() WHERE id = $1`,
       [
         id,
         outcome.status,
@@ -224,13 +224,32 @@ export async function finishCall(
           : null,
         outcome.status === "refunded" ? outcome.error : null,
         durationMs,
+        settlement?.transaction ?? null,
+        settlement?.network ?? null,
       ],
     );
   });
 }
 
+async function moveHeldPrice(client: PoolClient, call: CallRow, status: CallRow["status"]) {
+  const held = await callAccounts(client, call.client_id!, call.settlement_asset);
+  const payee =
+    status === "succeeded"
+      ? (await callAccounts(client, call.owner_id, call.settlement_asset)).available
+      : held.available;
+  await transfer(client, {
+    reference: `call-${status === "succeeded" ? "payout" : "refund"}:${call.id}`,
+    type: status === "succeeded" ? "call_payout" : "call_refund",
+    from: held.held,
+    to: payee,
+    amount: call.price,
+    metadata: { callId: call.id, agentId: call.agent_id },
+    asset: call.settlement_asset,
+  });
+}
+
 /** Sends the call and decides the outcome from the runtime's reply. Never throws. */
-async function dispatch(id: string, agentId: string, request: string, target: Target) {
+export async function dispatch(id: string, agentId: string, request: string, target: Target) {
   const secret = decryptPayload(
     target.secret_ciphertext,
     payloadContext(target.webhook_id, "webhook-secret"),

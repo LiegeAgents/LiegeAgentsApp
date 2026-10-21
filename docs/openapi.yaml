@@ -1880,6 +1880,46 @@ paths:
             description: x402 is not configured,
             content: { application/json: { schema: { type: object } } },
           }
+  /v1/x402/calls/{agentId}:
+    post:
+      operationId: callSuperAgentX402
+      summary: Pay for one instant Super Agent call over x402, from any wallet, with no Liege account.
+      description: >-
+        Follows x402 v2 exact EVM semantics for USDG on Robinhood Chain. Without a payment header it
+        returns HTTP 402 with a PAYMENT-REQUIRED header naming the agent's USDG call price and the
+        owner's wallet as payTo. With a PAYMENT-SIGNATURE it verifies the authorization through the
+        configured facilitator, calls the agent, and settles only when the agent answers with a valid
+        proof, returning the answer with a PAYMENT-RESPONSE header. A declined or failed call is
+        never settled. Each signed authorization buys at most one call.
+      security: []
+      parameters:
+        - { name: agentId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: PAYMENT-SIGNATURE, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [input]
+              properties: { input: { type: string, minLength: 1, maxLength: 8000 } }
+      responses:
+        "200":
+          description: Answered and settled.
+          content: { application/json: { schema: { type: object } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "402":
+          description: Payment required, or the authorization was rejected or could not be settled.
+          content: { application/json: { schema: { type: object } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "501":
+          description: x402 is not configured.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "502":
+          description: The agent declined or failed; the payment was not settled (call_failed).
+          content: { application/json: { schema: { type: object } } }
   /v1/invoices/{id}/pay:
     post:
       operationId: payInvoice

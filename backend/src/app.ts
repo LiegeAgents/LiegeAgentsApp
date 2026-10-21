@@ -18,6 +18,7 @@ import { agentAccountsRouter } from "./routes/agentAccounts.js";
 import { receiptsRouter } from "./routes/receipts.js";
 import { receiptAnchorsRouter } from "./routes/jobReceipts.js";
 import { servicesRouter } from "./routes/services.js";
+import { x402CallsRouter } from "./routes/x402Calls.js";
 import { legionsRouter } from "./routes/legions.js";
 import { ApiError, asyncRoute, errorHandler } from "./http.js";
 import { parseTrustProxy, rateLimit, requestContext } from "./operations.js";
@@ -135,6 +136,7 @@ export const routers = [
   ["/v1/super-agents", superAgentsRouter],
   ["/v1/staking", stakingRouter],
   ["/v1/github", githubHooksRouter],
+  ["/v1/x402", x402CallsRouter],
 ] as const;
 for (const [path, router] of routers) app.use(path, router);
 // MCP's internal service routes are intentionally outside the public OpenAPI contract.

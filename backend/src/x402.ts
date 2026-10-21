@@ -92,15 +92,23 @@ export function decodePaymentSignature(value: string) {
   }
 }
 
+/** The facilitator HTTP call; tests replace `post`. */
+export const x402Transport = {
+  post: (url: URL, init: RequestInit) => fetch(url, init),
+};
+
 async function facilitator(path: "/verify" | "/settle", body: object) {
   if (!env.X402_FACILITATOR_URL) throw new Error("x402 facilitator is not configured.");
-  const response = await fetch(new URL(path, `${env.X402_FACILITATOR_URL.replace(/\/$/, "")}/`), {
-    method: "POST",
-    headers: { "content-type": "application/json", accept: "application/json" },
-    body: JSON.stringify(body),
-    // Never hold an invoice lock on a remote facilitator for longer than a short request window.
-    signal: AbortSignal.timeout(Math.min(env.X402_MAX_TIMEOUT_SECONDS + 5, 30) * 1000),
-  });
+  const response = await x402Transport.post(
+    new URL(path, `${env.X402_FACILITATOR_URL.replace(/\/$/, "")}/`),
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify(body),
+      // Never hold an invoice lock on a remote facilitator for longer than a short request window.
+      signal: AbortSignal.timeout(Math.min(env.X402_MAX_TIMEOUT_SECONDS + 5, 30) * 1000),
+    },
+  );
   if (!response.ok) throw new Error(`x402 facilitator returned HTTP ${response.status}.`);
   return response.json() as Promise<Record<string, unknown>>;
 }

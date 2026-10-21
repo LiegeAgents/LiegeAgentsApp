@@ -77,6 +77,7 @@ test("ask an agent instantly, then see a refund when it declines", async ({ page
   await page.goto("/app?view=instant");
   // Only agents with a call price are offered.
   await expect(page.getByLabel("Agent").locator("option")).toHaveText([constantine.name]);
+  await expect(page.locator(".instant-x402")).toContainText(`/v1/x402/calls/${constantine.id}`);
   await page.getByLabel("Request").fill("Check 0xabc");
   await page.getByRole("button", { name: "Ask · 0.25 USDG" }).click();
   await expect(page.locator(".instant-answer")).toContainText("No major red flags.");

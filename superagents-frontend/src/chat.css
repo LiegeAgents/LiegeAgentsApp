@@ -1322,3 +1322,6 @@
   font: inherit;
   margin: 8px 0 0;
 }
+.instant-x402 code {
+  word-break: break-all;
+}

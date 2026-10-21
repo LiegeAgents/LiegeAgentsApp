@@ -161,6 +161,12 @@ export function Instant({
                 ? "Waiting for the answer…"
                 : `Ask · ${price ? amount(price) : "–"} ${asset.toUpperCase()}`}
             </button>
+            {agent?.call_price_usdg && (
+              <p className="muted instant-x402">
+                Apps and agents without a Liege account can pay per call in USDG over x402:{" "}
+                <code>POST {`${api}/v1/x402/calls/${agent.id}`}</code>
+              </p>
+            )}
           </form>
         )}
         {answer && (
