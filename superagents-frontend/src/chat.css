@@ -793,7 +793,8 @@
 }
 .recurring-form select,
 .recurring-form textarea,
-.recurring-form input[type="number"] {
+.recurring-form input[type="number"],
+.recurring-form input.hire-key-name {
   width: 100%;
   min-height: 44px;
   margin-bottom: 18px;
@@ -1348,4 +1349,27 @@
   background: #0b140e;
   color: #e6ece7;
   padding: 11px 13px;
+}
+
+/* Hiring key shown once after creation */
+.hire-key-created {
+  margin-top: 16px;
+  display: grid;
+  gap: 10px;
+}
+.hire-key-created pre {
+  max-height: 260px;
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.05);
+  font-size: 12px;
+  white-space: pre;
+}
+.hire-key-created .button {
+  justify-self: start;
+}
+.hire-key-item header small {
+  text-transform: none;
 }

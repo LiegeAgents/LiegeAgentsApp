@@ -580,9 +580,10 @@ superAgentsRouter.get(
         [userId],
       ),
       db.query(
-        `SELECT i.id,i.raw_text,i.parsed,i.negotiation,i.status,i.expires_at,i.created_at,i.decided_at,a.id AS agent_id,a.name AS agent_name,a.slug AS agent_slug,
-           j.id AS job_id,j.status AS job_status,${latestProgressColumn("j")}
+        `SELECT i.id,i.raw_text,i.parsed,i.negotiation,i.status,i.source,i.expires_at,i.created_at,i.decided_at,a.id AS agent_id,a.name AS agent_name,a.slug AS agent_slug,
+           hk.name AS hire_key_name,j.id AS job_id,j.status AS job_status,${latestProgressColumn("j")}
          FROM superagent_intents i LEFT JOIN agents a ON a.id=i.agent_id
+         LEFT JOIN hire_keys hk ON hk.id=i.hire_key_id
          LEFT JOIN jobs j ON j.client_id=i.user_id AND j.strategy_policy->>'intentId'=i.id::text
          WHERE i.user_id=$1 ORDER BY i.created_at DESC LIMIT 50`,
         [userId],
@@ -615,6 +616,63 @@ superAgentsRouter.get(
   }),
 );
 
+/**
+ * Creates a pending Super Agent proposal from a request (and an optional budget), as the
+ * dashboard, CLI, and hiring keys do. `cap` limits the budget a hiring key may propose.
+ */
+export async function createIntent(
+  userId: string,
+  requestId: string | undefined,
+  input: {
+    text: string;
+    source: "dashboard" | "cli" | "mcp";
+    budgetAmount?: number;
+    hireKeyId?: string;
+    cap?: (budget: number, asset: "usdg" | "liege") => Promise<void>;
+  },
+) {
+  const parsedText = await parseSuperAgentIntent(input.text);
+  const parsed =
+    input.budgetAmount === undefined
+      ? parsedText
+      : {
+          ...parsedText,
+          budgetAmount: input.budgetAmount,
+          budgetUsdg: parsedText.settlementAsset === "usdg" ? input.budgetAmount : null,
+        };
+  const asset = parsed.settlementAsset;
+  const budget = intentAmount(parsed);
+  const agent = await findEnrolledAgent(parsed.agentName, asset);
+  if (!agent)
+    throw new ApiError(
+      422,
+      "agent_unavailable",
+      parsed.agentName
+        ? `${parsed.agentName} is not currently enrolled and discoverable as a Super Agent.`
+        : "Include the name of an enrolled Super Agent.",
+    );
+  if (!budget)
+    throw new ApiError(
+      422,
+      "incomplete_proposal",
+      `Include an available agent and a positive ${asset.toUpperCase()} budget to create a proposal.`,
+    );
+  await input.cap?.(budget, asset);
+  const result = await db.query(
+    `INSERT INTO superagent_intents (user_id,raw_text,parsed,agent_id,status,source,hire_key_id) VALUES ($1,$2,$3,$4,'pending',$5,$6) RETURNING id,raw_text,parsed,agent_id,status,expires_at,created_at`,
+    [userId, input.text, parsed, agent.id, input.source, input.hireKeyId ?? null],
+  );
+  await audit(db, {
+    actorId: userId,
+    action: "superagent.intent_created",
+    targetType: "superagent_intent",
+    targetId: result.rows[0].id,
+    requestId,
+    metadata: { source: input.source, matched: true },
+  });
+  return { ...result.rows[0], agent, quote: await quoteIntent(parsed) };
+}
+
 superAgentsRouter.post(
   "/intents/parse",
   requireSessionOrMobileAuth("mobile:read"),
@@ -630,54 +688,8 @@ superAgentsRouter.post(
   requireSessionOrMobileAuth("mobile:approve"),
   asyncRoute(async (request, response) => {
     const input = intentInput.parse(request.body);
-    const parsedText = await parseSuperAgentIntent(input.text);
-    const parsed =
-      input.budgetAmount === undefined
-        ? parsedText
-        : {
-            ...parsedText,
-            budgetAmount: input.budgetAmount,
-            budgetUsdg: parsedText.settlementAsset === "usdg" ? input.budgetAmount : null,
-          };
-    const asset = parsed.settlementAsset;
-    const budget = intentAmount(parsed);
-    const agent = await findEnrolledAgent(parsed.agentName, asset);
-    if (!agent)
-      throw new ApiError(
-        422,
-        "agent_unavailable",
-        parsed.agentName
-          ? `${parsed.agentName} is not currently enrolled and discoverable as a Super Agent.`
-          : "Include the name of an enrolled Super Agent.",
-      );
-    if (!agent || !budget) {
-      throw new ApiError(
-        422,
-        "incomplete_proposal",
-        `Include an available agent and a positive ${asset.toUpperCase()} budget to create a proposal.`,
-      );
-    }
-    const result = await db.query(
-      `INSERT INTO superagent_intents (user_id,raw_text,parsed,agent_id,status,source) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id,raw_text,parsed,agent_id,status,expires_at,created_at`,
-      [
-        request.auth!.userId,
-        input.text,
-        parsed,
-        agent?.id ?? null,
-        agent ? "pending" : "unmatched",
-        input.source,
-      ],
-    );
-    await audit(db, {
-      actorId: request.auth!.userId,
-      action: "superagent.intent_created",
-      targetType: "superagent_intent",
-      targetId: result.rows[0].id,
-      requestId: request.requestId,
-      metadata: { source: input.source, matched: Boolean(agent) },
-    });
     response.status(201).json({
-      data: { ...result.rows[0], agent: agent ?? null, quote: await quoteIntent(parsed) },
+      data: await createIntent(request.auth!.userId, request.requestId, input),
     });
   }),
 );
@@ -687,9 +699,10 @@ superAgentsRouter.get(
   requireSessionOrMobileAuth("mobile:read"),
   asyncRoute(async (request, response) => {
     const result = await db.query(
-      `SELECT i.id,i.raw_text,i.parsed,i.negotiation,i.status,i.source,i.expires_at,i.created_at,i.decided_at,a.id AS agent_id,a.name AS agent_name,j.id AS job_id,j.status AS job_status,
+      `SELECT i.id,i.raw_text,i.parsed,i.negotiation,i.status,i.source,i.expires_at,i.created_at,i.decided_at,a.id AS agent_id,a.name AS agent_name,hk.name AS hire_key_name,j.id AS job_id,j.status AS job_status,
        ${latestProgressColumn("j")}
        FROM superagent_intents i LEFT JOIN agents a ON a.id=i.agent_id
+       LEFT JOIN hire_keys hk ON hk.id=i.hire_key_id
        LEFT JOIN jobs j ON j.client_id=i.user_id AND j.strategy_policy->>'intentId'=i.id::text
        WHERE i.user_id=$1 ORDER BY i.created_at DESC LIMIT 100`,
       [request.auth!.userId],
@@ -698,6 +711,94 @@ superAgentsRouter.get(
   }),
 );
 
+/**
+ * Counters a pending proposal's budget; the agent's rule answers at once. A hiring key counters
+ * only its own proposals, and `cap` refuses agreed budgets above its limits.
+ */
+export async function counterIntent(
+  userId: string,
+  requestId: string | undefined,
+  id: string,
+  budgetAmount: number,
+  hireKeyId?: string,
+  cap?: (agreed: number) => Promise<void>,
+) {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const found = await client.query<{
+      parsed: unknown;
+      agent_id: string | null;
+      agent_name: string | null;
+      negotiation: CounterRound[];
+    }>(
+      `SELECT i.parsed, i.agent_id, a.name AS agent_name, i.negotiation
+         FROM superagent_intents i LEFT JOIN agents a ON a.id = i.agent_id
+         WHERE i.id=$1 AND i.user_id=$2 AND i.status='pending' AND i.expires_at > now()
+           AND ($3::uuid IS NULL OR i.hire_key_id = $3)
+         FOR UPDATE OF i`,
+      [id, userId, hireKeyId ?? null],
+    );
+    const intent = found.rows[0];
+    if (!intent)
+      throw new ApiError(
+        409,
+        "proposal_unavailable",
+        "This Super Agent proposal is no longer available.",
+      );
+    if (!intent.agent_id)
+      throw new ApiError(
+        422,
+        "agent_unmatched",
+        "Match this request to an active agent before countering it.",
+      );
+    const parsed = intentShape.parse(intent.parsed);
+    const { round, negotiation } = await counterProposal(
+      client,
+      { agent_id: intent.agent_id, negotiation: intent.negotiation },
+      parsed.settlementAsset,
+      budgetAmount,
+    );
+    await cap?.(round.agreed);
+    const terms = normalizeIntent({
+      ...parsed,
+      budgetAmount: round.agreed,
+      budgetUsdg: round.agreed,
+    });
+    const updated = await client.query(
+      `UPDATE superagent_intents SET parsed=$3, negotiation=$4 WHERE id=$1 AND user_id=$2
+         RETURNING id, parsed, negotiation, status, expires_at`,
+      [id, userId, terms, JSON.stringify(negotiation)],
+    );
+    await audit(client, {
+      actorId: userId,
+      action: "superagent.intent_countered",
+      targetType: "superagent_intent",
+      targetId: id,
+      requestId,
+      metadata: { offer: round.offer, outcome: round.outcome, agreed: round.agreed },
+    });
+    await client.query("COMMIT");
+    const name = intent.agent_name ?? "The agent";
+    const left = MAX_COUNTERS - negotiation.length;
+    return {
+      ...updated.rows[0],
+      round,
+      message:
+        round.outcome === "accepted"
+          ? `${name} accepts ${round.agreed} USDG. Approve the proposal to open the job.`
+          : left > 0
+            ? `${name} can do it for ${round.agreed} USDG. Approve at that price, or counter once more.`
+            : `${round.agreed} USDG is ${name}'s best price. Approve it or dismiss the proposal.`,
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 // The client counters a pending proposal's budget; the agent's rule answers at once.
 superAgentsRouter.post(
   "/intents/:id/counter",
@@ -705,80 +806,9 @@ superAgentsRouter.post(
   asyncRoute(async (request, response) => {
     const id = z.string().uuid().parse(request.params.id);
     const { budgetAmount } = counterInput.parse(request.body);
-    const client = await db.connect();
-    try {
-      await client.query("BEGIN");
-      const found = await client.query<{
-        parsed: unknown;
-        agent_id: string | null;
-        agent_name: string | null;
-        negotiation: CounterRound[];
-      }>(
-        `SELECT i.parsed, i.agent_id, a.name AS agent_name, i.negotiation
-         FROM superagent_intents i LEFT JOIN agents a ON a.id = i.agent_id
-         WHERE i.id=$1 AND i.user_id=$2 AND i.status='pending' AND i.expires_at > now()
-         FOR UPDATE OF i`,
-        [id, request.auth!.userId],
-      );
-      const intent = found.rows[0];
-      if (!intent)
-        throw new ApiError(
-          409,
-          "proposal_unavailable",
-          "This Super Agent proposal is no longer available.",
-        );
-      if (!intent.agent_id)
-        throw new ApiError(
-          422,
-          "agent_unmatched",
-          "Match this request to an active agent before countering it.",
-        );
-      const parsed = intentShape.parse(intent.parsed);
-      const { round, negotiation } = await counterProposal(
-        client,
-        { agent_id: intent.agent_id, negotiation: intent.negotiation },
-        parsed.settlementAsset,
-        budgetAmount,
-      );
-      const terms = normalizeIntent({
-        ...parsed,
-        budgetAmount: round.agreed,
-        budgetUsdg: round.agreed,
-      });
-      const updated = await client.query(
-        `UPDATE superagent_intents SET parsed=$3, negotiation=$4 WHERE id=$1 AND user_id=$2
-         RETURNING id, parsed, negotiation, status, expires_at`,
-        [id, request.auth!.userId, terms, JSON.stringify(negotiation)],
-      );
-      await audit(client, {
-        actorId: request.auth!.userId,
-        action: "superagent.intent_countered",
-        targetType: "superagent_intent",
-        targetId: id,
-        requestId: request.requestId,
-        metadata: { offer: round.offer, outcome: round.outcome, agreed: round.agreed },
-      });
-      await client.query("COMMIT");
-      const name = intent.agent_name ?? "The agent";
-      const left = MAX_COUNTERS - negotiation.length;
-      response.json({
-        data: {
-          ...updated.rows[0],
-          round,
-          message:
-            round.outcome === "accepted"
-              ? `${name} accepts ${round.agreed} USDG. Approve the proposal to open the job.`
-              : left > 0
-                ? `${name} can do it for ${round.agreed} USDG. Approve at that price, or counter once more.`
-                : `${round.agreed} USDG is ${name}'s best price. Approve it or dismiss the proposal.`,
-        },
-      });
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    } finally {
-      client.release();
-    }
+    response.json({
+      data: await counterIntent(request.auth!.userId, request.requestId, id, budgetAmount),
+    });
   }),
 );
 

@@ -104,7 +104,7 @@ async function policyFor(agentId: string) {
   return publicPolicy(result.rows[0], agentId);
 }
 
-const internal = (value: string | undefined) => {
+export const internalServiceToken = (value: string | undefined) => {
   if (!value || !env.MCP_INTERNAL_API_TOKEN) return false;
   const expected = Buffer.from(env.MCP_INTERNAL_API_TOKEN);
   const actual = Buffer.from(value);
@@ -112,7 +112,7 @@ const internal = (value: string | undefined) => {
 };
 
 async function connection(request: { header(name: string): string | undefined }) {
-  if (!internal(request.header("x-mcp-internal-token")))
+  if (!internalServiceToken(request.header("x-mcp-internal-token")))
     throw new ApiError(401, "invalid_mcp_service", "A valid MCP service token is required.");
   const token = request.header("x-mcp-connection-token");
   if (!token)

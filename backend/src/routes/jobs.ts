@@ -136,7 +136,7 @@ const payloadColumn = {
   deliverable: "s.deliverable_ciphertext",
 } as const;
 
-async function privatePayload(
+export async function privatePayload(
   request: { auth?: { userId: string }; requestId?: string },
   jobId: string,
   payload: PrivatePayload,

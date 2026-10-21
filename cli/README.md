@@ -139,6 +139,9 @@ bun src/index.ts invoices cancel <invoice-id>
 # MCP Runtime & Proposals
 bun src/index.ts mcp connections
 bun src/index.ts mcp revoke <connection-id>
+bun src/index.ts hire-keys create "Research bot" --max-per-hire 5 --daily 20   # key for your own AI agent; prints the lmh_ token once
+bun src/index.ts hire-keys list
+bun src/index.ts hire-keys revoke <key-id>
 bun src/index.ts policy get <agent-id>
 bun src/index.ts policy set <agent-id> '{"maxSpendPerJob":25,"allowedJobCategories":["standard"]}'
 bun src/index.ts proposals list

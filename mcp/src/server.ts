@@ -581,6 +581,81 @@ function serverFor(connectionToken: string) {
   );
   return server;
 }
+// A hiring key (lmh_) lets the client's own agent hire Super Agents. Proposals wait for the
+// key owner's approval and funding in Liege; no tool here approves or pays.
+function hireServerFor(hireKey: string) {
+  const server = new McpServer({ name: "liege-hire", version: "0.1.3" });
+  const hire = (path: string, init?: RequestInit) =>
+    api(`/v1/internal/mcp/hire${path}`, hireKey, init);
+  const post = (path: string, body: unknown) =>
+    hire(path, { method: "POST", body: JSON.stringify(body) });
+  server.registerTool(
+    "get_hire_key",
+    {
+      description:
+        "Show this hiring key's limits: the most it may propose per hire, its daily budget, and how much it has proposed in the last 24 hours (USDG).",
+    },
+    async () => text(await hire("/session")),
+  );
+  server.registerTool(
+    "find_super_agents",
+    {
+      description:
+        "List Liege Super Agents that can be hired now, with their service, listed USD price, delivery time (SLA minutes), verification, and track record.",
+    },
+    async () => text(await hire("/agents")),
+  );
+  server.registerTool(
+    "quote_hire",
+    {
+      description:
+        "Price a request before proposing it. Name the agent and describe the work, e.g. 'Hire Scott to summarize this week's Robinhood Chain news'. Returns the parsed request and a quote with a suggested budget and delivery time.",
+      inputSchema: { text: z.string().min(1).max(10_000) },
+    },
+    async ({ text: request }) => text(await post("/quote", { text: request })),
+  );
+  server.registerTool(
+    "propose_hire",
+    {
+      description:
+        "Propose hiring a Super Agent. Creates a pending request in the key owner's Liege account, within this key's per-hire and daily USDG limits. The owner approves and funds it in Liege; nothing is paid by this call.",
+      inputSchema: {
+        text: z.string().min(1).max(10_000),
+        budgetAmount: z.number().positive().optional(),
+      },
+    },
+    async ({ text: request, budgetAmount }) =>
+      text(await post("/proposals", { text: request, budgetAmount })),
+  );
+  server.registerTool(
+    "counter_hire_quote",
+    {
+      description:
+        "Offer a lower USDG budget on a pending proposal. The agent accepts or names its best price at once; at most two counters per proposal.",
+      inputSchema: { proposalId: z.string().uuid(), budgetAmount: z.number().positive() },
+    },
+    async ({ proposalId, budgetAmount }) =>
+      text(await post(`/proposals/${proposalId}/counter`, { budgetAmount })),
+  );
+  server.registerTool(
+    "list_my_hires",
+    {
+      description:
+        "List proposals made with this key, newest first, with approval status, the job's status, and the agent's latest progress update.",
+    },
+    async () => text(await hire("/proposals")),
+  );
+  server.registerTool(
+    "get_hire_result",
+    {
+      description:
+        "Read the agent's delivered work for an approved proposal. Returns a note instead while it is pending approval or not yet delivered.",
+      inputSchema: { proposalId: z.string().uuid() },
+    },
+    async ({ proposalId }) => text(await hire(`/proposals/${proposalId}/result`)),
+  );
+  return server;
+}
 const app = createMcpExpressApp({ host: "0.0.0.0", allowedHosts });
 app.use((request, response, next) => {
   const requestId = request.header("x-request-id")?.match(/^[0-9a-f-]{36}$/i)?.[0] ?? randomUUID();
@@ -609,7 +684,9 @@ app.post("/mcp", async (request, response) => {
   if (!connectionToken)
     return response.status(401).json({ error: "Bearer MCP connection token required." });
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-  const server = serverFor(connectionToken);
+  const server = connectionToken.startsWith("lmh_")
+    ? hireServerFor(connectionToken)
+    : serverFor(connectionToken);
   try {
     await server.connect(transport);
     await transport.handleRequest(request, response, request.body);

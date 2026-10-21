@@ -99,6 +99,8 @@ export type RequestItem = {
   progress?: { message: string; percent: number | null; created_at: string } | null;
   // Counter-offers the client has made on this proposal (two at most).
   rounds?: number;
+  // Name of the hiring key whose AI agent proposed this request.
+  hireKey?: string | null;
 };
 export const permissions = [
   {

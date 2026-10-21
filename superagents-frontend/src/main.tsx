@@ -4,6 +4,7 @@ import { Enrollment } from "./Enrollment";
 import { Recurring } from "./Recurring";
 import { Watchlist } from "./Watchlist";
 import { Instant } from "./Instant";
+import { HireKeys } from "./HireKeys";
 import { Squads } from "./Squads";
 import { Bids } from "./Bids";
 import { Triggers } from "./Triggers";
@@ -35,6 +36,7 @@ import {
   Workflow,
   Gavel,
   GitPullRequest,
+  KeyRound,
 } from "lucide-react";
 import {
   agents,
@@ -795,6 +797,7 @@ const tabs = [
   { id: "recurring", label: "Recurring", icon: Repeat },
   { id: "watchlist", label: "Watchlist", icon: Eye },
   { id: "instant", label: "Instant", icon: Zap },
+  { id: "hire-keys", label: "Hiring keys", icon: KeyRound },
   { id: "github", label: "GitHub", icon: GitPullRequest },
   { id: "agents", label: "Agents", icon: Users },
   { id: "activity", label: "Activity", icon: Activity },
@@ -1129,6 +1132,7 @@ function Dashboard() {
                 id: proposal.id,
                 progress: proposal.progress ?? null,
                 rounds: Array.isArray(proposal.negotiation) ? proposal.negotiation.length : 0,
+                hireKey: proposal.hire_key_name ?? null,
                 agentName: proposal.agent_name || parsed.agentName || "Unmatched agent",
                 title: parsed.request || proposal.raw_text || "Super Agent request",
                 agentId: matched?.id ?? "",
@@ -1314,6 +1318,7 @@ function Dashboard() {
                   <strong>{r.title}</strong>
                   <small>
                     {r.agentName || (a ? `${a.name} by LiegeAgents` : "Unmatched agent")} · {r.id}
+                    {r.hireKey ? ` · via ${r.hireKey}` : ""}
                   </small>
                   {r.progress && r.status === "In progress" && (
                     <small className="request-progress">› {r.progress.message}</small>
@@ -1449,6 +1454,7 @@ function Dashboard() {
                       squads: "One request. A whole crew.",
                       recurring: "Approve once. Repeat on schedule.",
                       watchlist: "Save a token. It is re-checked daily.",
+                      "hire-keys": "Let your AI agent hire ours.",
                       agents: "Find your kind of brilliant.",
                       activity: "Every step, accounted for.",
                       settings: "Your account. Your rules.",
@@ -1471,6 +1477,8 @@ function Dashboard() {
                         "Weekly briefs, daily digests, monthly reviews — always within your cap.",
                       watchlist:
                         "Constantine re-checks each saved token every day and alerts you only when something gets worse.",
+                      "hire-keys":
+                        "Your agent finds, prices, and proposes work over MCP. You approve and fund.",
                       agents: "Meet the flagship team, or start shaping your own Super Agent.",
                       activity: "Follow the trail from request to decision.",
                       settings: "Manage your identities and the access you give Super Agents.",
@@ -1804,6 +1812,21 @@ function Dashboard() {
                 </div>
               </section>
             ))}
+          {tab === "hire-keys" &&
+            (getSessionToken() ? (
+              <HireKeys api={superAgentsApi} token={getSessionToken()!} notify={setNotice} />
+            ) : (
+              <section className="panel">
+                <div className="empty">
+                  <KeyRound size={28} />
+                  <h3>Connect to create a hiring key.</h3>
+                  <p>Sign in with your Liege wallet to let your own AI agent propose work.</p>
+                  <a className="button" href="/auth">
+                    Connect wallet
+                  </a>
+                </div>
+              </section>
+            ))}
           {tab === "activity" && (
             <section className="panel">
               <div className="panel-heading">
@@ -1923,6 +1946,11 @@ function Dashboard() {
           </div>
           <h4>The original request</h4>
           <blockquote>{selected.source}</blockquote>
+          {selected.hireKey && (
+            <p className="muted">
+              Proposed by your AI agent with the hiring key “{selected.hireKey}”.
+            </p>
+          )}
           <h4>Proposed brief</h4>
           <p>{selected.brief}</p>
           {selected.progress && (

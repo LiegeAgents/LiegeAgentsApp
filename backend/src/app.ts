@@ -10,6 +10,7 @@ import { adminRouter } from "./routes/admin.js";
 import { adminAccessRouter } from "./routes/adminAccess.js";
 import { accountRouter } from "./routes/account.js";
 import { mcpInternalRouter, mcpRouter } from "./routes/mcp.js";
+import { hireKeysRouter, hireRouter } from "./routes/hireKeys.js";
 import { webhooksRouter } from "./routes/webhooks.js";
 import { runnersRouter } from "./routes/runners.js";
 import { evaluationRouter } from "./routes/evaluation.js";
@@ -149,7 +150,9 @@ export const routers = [
 ] as const;
 for (const [path, router] of routers) app.use(path, router);
 // MCP's internal service routes are intentionally outside the public OpenAPI contract.
+app.use("/v1/mcp/hire-keys", hireKeysRouter);
 app.use("/v1/mcp", mcpRouter);
+app.use("/v1/internal/mcp/hire", hireRouter);
 app.use("/v1/internal/mcp", mcpInternalRouter);
 app.use("/v1/internal/runtime", runtimeRouter);
 app.use((_request, _response, next) => next(new ApiError(404, "not_found", "Route not found.")));

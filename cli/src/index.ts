@@ -107,6 +107,9 @@ Usage:
   liege services create '<json-service>' | [flags]
   liege mcp connections
   liege mcp revoke <connection-id>
+  liege hire-keys create <name> --max-per-hire <usdg> --daily <usdg> [--days <n>]
+  liege hire-keys list
+  liege hire-keys revoke <key-id>
   liege policy get <agent-id>
   liege policy set <agent-id> '<json-policy>'
   liege proposals list [--status pending|approved|rejected|expired]
@@ -966,6 +969,25 @@ export async function execute(args: string[]): Promise<unknown> {
   if (resource === "mcp" && action === "revoke" && id) {
     await request(`/v1/mcp/connections/${id}`, { method: "DELETE" });
     return { revoked: id };
+  }
+  // A hiring key lets your own AI agent propose Super Agent work over MCP; you still approve it.
+  if (resource === "hire-keys" && action === "list") return request("/v1/mcp/hire-keys");
+  if (resource === "hire-keys" && action === "revoke" && id) {
+    await request(`/v1/mcp/hire-keys/${id}`, { method: "DELETE" });
+    return { revoked: id };
+  }
+  if (resource === "hire-keys" && action === "create") {
+    if (!id || !flags["max-per-hire"] || !flags.daily)
+      throw new Error("Provide a name, --max-per-hire and --daily (USDG).");
+    return request("/v1/mcp/hire-keys", {
+      method: "POST",
+      body: JSON.stringify({
+        name: id,
+        maxBudgetPerHire: Number(flags["max-per-hire"]),
+        dailyBudget: Number(flags.daily),
+        ...(flags.days ? { expiresInDays: Number(flags.days) } : {}),
+      }),
+    });
   }
   if (resource === "policy" && action === "get" && id) return request(`/v1/mcp/policies/${id}`);
   if (resource === "policy" && action === "set" && id && positional[3]) {
