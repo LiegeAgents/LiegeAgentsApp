@@ -103,9 +103,9 @@ export function HireKeys({
         </div>
         <form className="settings-content enrollment-content recurring-form" onSubmit={create}>
           <p>
-            Give your own AI agent (Claude Desktop, Cursor, or any MCP client) a key to find, quote,
-            and propose Super Agent work. Its proposals land in Requests for you to approve and
-            fund. The key cannot approve, fund, or pay, and it stays within the limits below.
+            Give your own AI agent (Claude Desktop, Cursor, any MCP or A2A client) a key to find,
+            quote, and propose Super Agent work. Its proposals land in Requests for you to approve
+            and fund. The key cannot approve, fund, or pay, and it stays within the limits below.
           </p>
           <label className="enrollment-field" htmlFor="hire-key-name">
             Name
@@ -176,6 +176,11 @@ export function HireKeys({
               <Copy size={15} /> {copied ? "Copied" : "Copy configuration"}
             </button>
             <p className="muted">Your agent gets these tools: {tools.join(", ")}.</p>
+            <p className="muted">
+              A2A clients use the same key with the agent card at{" "}
+              <code>{`${api.startsWith("http") ? api : "https://api.liegeagents.com"}/.well-known/agent-card.json`}</code>
+              .
+            </p>
           </article>
         )}
       </section>

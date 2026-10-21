@@ -627,12 +627,19 @@ export async function createIntent(
     text: string;
     source: "dashboard" | "cli" | "mcp";
     budgetAmount?: number;
+    // Names the agent when the caller already chose one, as an agent's own A2A endpoint does.
+    agentName?: string;
+    // Without a budget, propose the quote's suggested budget (the listed USDG price).
+    suggestBudget?: boolean;
     hireKeyId?: string;
     cap?: (budget: number, asset: "usdg" | "liege") => Promise<void>;
   },
 ) {
-  const parsedText = await parseSuperAgentIntent(input.text);
-  const parsed =
+  const parsedRequest = await parseSuperAgentIntent(input.text);
+  const parsedText = input.agentName
+    ? { ...parsedRequest, agentName: input.agentName }
+    : parsedRequest;
+  let parsed =
     input.budgetAmount === undefined
       ? parsedText
       : {
@@ -641,7 +648,7 @@ export async function createIntent(
           budgetUsdg: parsedText.settlementAsset === "usdg" ? input.budgetAmount : null,
         };
   const asset = parsed.settlementAsset;
-  const budget = intentAmount(parsed);
+  let budget = intentAmount(parsed);
   const agent = await findEnrolledAgent(parsed.agentName, asset);
   if (!agent)
     throw new ApiError(
@@ -651,6 +658,12 @@ export async function createIntent(
         ? `${parsed.agentName} is not currently enrolled and discoverable as a Super Agent.`
         : "Include the name of an enrolled Super Agent.",
     );
+  const suggested =
+    !budget && input.suggestBudget ? (await quoteIntent(parsed))?.suggestedBudget : null;
+  if (suggested) {
+    parsed = { ...parsed, budgetAmount: suggested, budgetUsdg: suggested };
+    budget = suggested;
+  }
   if (!budget)
     throw new ApiError(
       422,

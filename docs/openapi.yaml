@@ -2019,6 +2019,65 @@ paths:
         "502":
           description: The agent declined or failed; the payment was not settled (call_failed).
           content: { application/json: { schema: { type: object } } }
+  /.well-known/agent-card.json:
+    get:
+      operationId: getA2aAgentCard
+      summary: >-
+        The A2A (protocol 0.3.0) agent card for hiring Liege Super Agents: one skill per hireable
+        Super Agent, the JSON-RPC endpoint, and the hiring-key bearer scheme. Cached for five minutes.
+      security: []
+      responses:
+        "200":
+          description: The agent card.
+          content: { application/json: { schema: { type: object } } }
+  /v1/a2a/{slug}/agent-card.json:
+    get:
+      operationId: getA2aAgentCardForAgent
+      summary: The A2A agent card for one hireable Super Agent, with its own JSON-RPC endpoint.
+      security: []
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The agent card.
+          content: { application/json: { schema: { type: object } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/a2a:
+    post:
+      operationId: a2aRpc
+      summary: >-
+        A2A JSON-RPC 2.0 endpoint (message/send, tasks/get), authenticated with a hiring key
+        (Authorization: Bearer lmh_...). message/send creates a proposal within the key's USDG
+        limits (budget from metadata.budgetAmount, else the agent's listed price) and returns it as a
+        task; the key owner approves and funds it in Liege. tasks/get reports the proposal, the job,
+        and the delivered work as an artifact. JSON-RPC errors are returned with HTTP 200.
+      security: []
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object } } }
+      responses:
+        "200":
+          description: A JSON-RPC response with a task result or an error.
+          content: { application/json: { schema: { type: object } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+  /v1/a2a/{slug}:
+    post:
+      operationId: a2aRpcForAgent
+      summary: The A2A JSON-RPC endpoint for one Super Agent; messages are proposals to that agent.
+      security: []
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object } } }
+      responses:
+        "200":
+          description: A JSON-RPC response with a task result or an error.
+          content: { application/json: { schema: { type: object } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
   /v1/invoices/{id}/pay:
     post:
       operationId: payInvoice

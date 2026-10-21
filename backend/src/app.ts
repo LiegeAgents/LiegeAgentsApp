@@ -11,6 +11,7 @@ import { adminAccessRouter } from "./routes/adminAccess.js";
 import { accountRouter } from "./routes/account.js";
 import { mcpInternalRouter, mcpRouter } from "./routes/mcp.js";
 import { hireKeysRouter, hireRouter } from "./routes/hireKeys.js";
+import { a2aRouter, wellKnownRouter } from "./routes/a2a.js";
 import { webhooksRouter } from "./routes/webhooks.js";
 import { runnersRouter } from "./routes/runners.js";
 import { evaluationRouter } from "./routes/evaluation.js";
@@ -147,6 +148,8 @@ export const routers = [
   ["/v1/staking", stakingRouter],
   ["/v1/github", githubHooksRouter],
   ["/v1/x402", x402CallsRouter],
+  ["/v1/a2a", a2aRouter],
+  ["/.well-known", wellKnownRouter],
 ] as const;
 for (const [path, router] of routers) app.use(path, router);
 // MCP's internal service routes are intentionally outside the public OpenAPI contract.

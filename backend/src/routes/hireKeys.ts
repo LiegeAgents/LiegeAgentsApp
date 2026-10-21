@@ -33,7 +33,7 @@ const textInput = z.object({ text: z.string().trim().min(1).max(10_000) });
 const proposalInput = textInput.extend({ budgetAmount: z.number().finite().positive().optional() });
 const counterInput = z.object({ budgetAmount: z.number().finite().positive() });
 
-type HireKey = {
+export type HireKey = {
   id: string;
   user_id: string;
   name: string;
@@ -52,7 +52,11 @@ const keyColumns = `k.id, k.name, k.max_budget_per_hire, k.daily_budget, k.expir
 async function hireKey(request: { header(name: string): string | undefined }) {
   if (!internalServiceToken(request.header("x-mcp-internal-token")))
     throw new ApiError(401, "invalid_mcp_service", "A valid MCP service token is required.");
-  const token = request.header("x-mcp-connection-token");
+  return hireKeyForToken(request.header("x-mcp-connection-token"));
+}
+
+/** Resolves an active hiring key from its `lmh_` token and records its use. */
+export async function hireKeyForToken(token: string | undefined) {
   if (!token?.startsWith("lmh_"))
     throw new ApiError(401, "invalid_hire_key", "A Liege hiring key is required.");
   const result = await db.query<HireKey>(
@@ -67,7 +71,7 @@ async function hireKey(request: { header(name: string): string | undefined }) {
 }
 
 /** Refuses budgets above the key's limits. Caps bound what the key may propose, not what is paid. */
-async function withinCaps(key: HireKey, budget: number, asset: string, intentId?: string) {
+export async function withinCaps(key: HireKey, budget: number, asset: string, intentId?: string) {
   if (asset !== "usdg")
     throw new ApiError(422, "hire_key_usdg_only", "Hiring keys propose USDG budgets only.");
   const perHire = Number(key.max_budget_per_hire);
@@ -92,7 +96,7 @@ async function withinCaps(key: HireKey, budget: number, asset: string, intentId?
     );
 }
 
-const pendingNote =
+export const pendingNote =
   "Waiting for the key owner's approval in Liege Super Agents → Requests. Nothing is paid until they approve and fund it.";
 
 export const hireKeysRouter = Router();
@@ -182,25 +186,30 @@ hireRouter.get(
     response.json({ data: result.rows[0] });
   }),
 );
+/** Super Agents a hiring key can propose work to: discoverable, verified, and paid in USDG. */
+export async function hireableAgents(slug?: string) {
+  const agents = await db.query(
+    `SELECT a.id, a.slug, a.name, s.name AS service_name, s.description, a.category,
+       a.capabilities, s.price_usd, s.sla_minutes
+     FROM agents a ${readyEnrollment}
+     WHERE a.active AND e.enabled AND e.verified_at IS NOT NULL AND 'usdg' = ANY(e.settlement_assets)
+       AND ($1::text IS NULL OR a.slug = $1)
+     ORDER BY a.created_at ASC LIMIT 50`,
+    [slug ?? null],
+  );
+  const standing = await agentStanding(agents.rows.map((agent) => agent.id));
+  return agents.rows.map((agent) => ({
+    ...agent,
+    verified: standing.get(agent.id)?.verified ?? false,
+    reputation: standing.get(agent.id)?.reputation ?? null,
+  }));
+}
+
 hireRouter.get(
   "/agents",
   asyncRoute(async (request, response) => {
     await hireKey(request);
-    const agents = await db.query(
-      `SELECT a.id, a.slug, a.name, s.description, a.category, a.capabilities, s.price_usd,
-         s.sla_minutes
-       FROM agents a ${readyEnrollment}
-       WHERE a.active AND e.enabled AND e.verified_at IS NOT NULL AND 'usdg' = ANY(e.settlement_assets)
-       ORDER BY a.created_at ASC LIMIT 50`,
-    );
-    const standing = await agentStanding(agents.rows.map((agent) => agent.id));
-    response.json({
-      data: agents.rows.map((agent) => ({
-        ...agent,
-        verified: standing.get(agent.id)?.verified ?? false,
-        reputation: standing.get(agent.id)?.reputation ?? null,
-      })),
-    });
+    response.json({ data: await hireableAgents() });
   }),
 );
 hireRouter.post(
@@ -259,47 +268,57 @@ hireRouter.get(
     response.json({ data: result.rows });
   }),
 );
+/** A key's proposal with its job, and the delivered work once the agent has submitted it. */
+export async function hireOutcome(key: HireKey, id: string, requestId: string | undefined) {
+  const found = await db.query<{
+    status: string;
+    expired: boolean;
+    job_id: string | null;
+    job_status: string | null;
+    submitted_at: Date | null;
+    progress: { message: string } | null;
+  }>(
+    `SELECT i.status, i.status = 'pending' AND i.expires_at <= now() AS expired, j.id AS job_id,
+       j.status AS job_status, j.submitted_at, ${latestProgressColumn("j")}
+     FROM superagent_intents i
+     LEFT JOIN jobs j ON j.client_id = i.user_id AND j.strategy_policy->>'intentId' = i.id::text
+     WHERE i.id = $1 AND i.hire_key_id = $2`,
+    [id, key.id],
+  );
+  const row = found.rows[0];
+  if (!row) throw new ApiError(404, "proposal_not_found", "This proposal is not from this key.");
+  const base = {
+    proposalStatus: row.expired ? "expired" : row.status,
+    jobId: row.job_id,
+    jobStatus: row.job_status,
+    progress: row.progress,
+  };
+  if (!row.job_id || !row.submitted_at)
+    return {
+      ...base,
+      deliverable: null,
+      note:
+        base.proposalStatus === "pending"
+          ? pendingNote
+          : row.job_id
+            ? "The agent has not delivered yet."
+            : "This proposal did not become a job.",
+    };
+  // Read through the client's audited payload access, like the dashboard does.
+  const payload = await privatePayload(
+    { auth: { userId: key.user_id }, requestId },
+    row.job_id,
+    "deliverable",
+  );
+  return { ...base, deliverable: payload.content, deliverableHash: payload.hash };
+}
+
 hireRouter.get(
   "/proposals/:id/result",
   asyncRoute(async (request, response) => {
     const key = await hireKey(request);
     const id = z.string().uuid().parse(request.params.id);
-    const found = await db.query<{
-      status: string;
-      job_id: string | null;
-      job_status: string | null;
-      submitted_at: Date | null;
-    }>(
-      `SELECT i.status, j.id AS job_id, j.status AS job_status, j.submitted_at
-       FROM superagent_intents i
-       LEFT JOIN jobs j ON j.client_id = i.user_id AND j.strategy_policy->>'intentId' = i.id::text
-       WHERE i.id = $1 AND i.hire_key_id = $2`,
-      [id, key.id],
-    );
-    const row = found.rows[0];
-    if (!row) throw new ApiError(404, "proposal_not_found", "This proposal is not from this key.");
-    const base = { proposalStatus: row.status, jobId: row.job_id, jobStatus: row.job_status };
-    if (!row.job_id || !row.submitted_at)
-      return void response.json({
-        data: {
-          ...base,
-          deliverable: null,
-          note:
-            row.status === "pending"
-              ? pendingNote
-              : row.job_id
-                ? "The agent has not delivered yet."
-                : "This proposal did not become a job.",
-        },
-      });
-    // Read through the client's audited payload access, like the dashboard does.
-    const payload = await privatePayload(
-      { auth: { userId: key.user_id }, requestId: request.requestId },
-      row.job_id,
-      "deliverable",
-    );
-    response.json({
-      data: { ...base, deliverable: payload.content, deliverableHash: payload.hash },
-    });
+    const { progress: _progress, ...data } = await hireOutcome(key, id, request.requestId);
+    response.json({ data });
   }),
 );

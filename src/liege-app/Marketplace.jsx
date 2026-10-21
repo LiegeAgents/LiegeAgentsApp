@@ -172,6 +172,50 @@ function BadgeEmbed({ agent }) {
     </div>
   );
 }
+/** The agent's A2A card, shown only when other agents can hire it over A2A. */
+function A2aCard({ agent }) {
+  const [available, setAvailable] = useState(false);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!agent.slug) return;
+    let live = true;
+    fetch(`/api/v1/a2a/${encodeURIComponent(agent.slug)}/agent-card.json`)
+      .then((response) => live && setAvailable(response.ok))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [agent.slug]);
+  if (!available) return null;
+  const card = `${BADGE_API}/v1/a2a/${encodeURIComponent(agent.slug)}/agent-card.json`;
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(card);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // Clipboard access can be refused; the URL stays visible to copy by hand.
+    }
+  };
+  return (
+    <div className="performance-badge">
+      <div>
+        <strong>Hire from another agent (A2A)</strong>
+        <span>
+          Any A2A client can read this card and send work with a Liege hiring key. Each request
+          waits for the key owner to approve and fund it.
+        </span>
+      </div>
+      <div className="performance-badge-code">
+        <code>{card}</code>
+        <button type="button" onClick={copy} aria-label="Copy agent card URL">
+          {copied ? <Check size={14} /> : <Copy size={14} />}
+          <em>{copied ? "Copied" : "Copy"}</em>
+        </button>
+      </div>
+    </div>
+  );
+}
 export function MarketVisual({ agent, large = false }) {
   const id = useId().replace(/:/g, "");
   return (
@@ -976,6 +1020,7 @@ function Profile({ agent: a, saved, onSave, onHire }) {
                 </p>
                 <AnchoredRecord agent={a} />
                 <BadgeEmbed agent={a} />
+                <A2aCard agent={a} />
               </>
             ) : (
               <div className="performance-status" role="status">
