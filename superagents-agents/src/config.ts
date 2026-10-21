@@ -1,3 +1,4 @@
+import { signingKeyFrom, type SigningKey } from "./signing.js";
 import type { AgentKey } from "./types.js";
 
 const required = (name: string) => {
@@ -14,7 +15,9 @@ function configured(key: AgentKey) {
   const id = Boolean(process.env[`${key.toUpperCase()}_AGENT_ID`]?.trim());
   const secret = Boolean(process.env[`${key.toUpperCase()}_WEBHOOK_SECRET`]?.trim());
   if (id !== secret)
-    throw new Error(`${key.toUpperCase()}_AGENT_ID and ${key.toUpperCase()}_WEBHOOK_SECRET must be set together.`);
+    throw new Error(
+      `${key.toUpperCase()}_AGENT_ID and ${key.toUpperCase()}_WEBHOOK_SECRET must be set together.`,
+    );
   return id;
 }
 
@@ -43,9 +46,14 @@ export const config = {
         key,
         id: required(`${key.toUpperCase()}_AGENT_ID`),
         secret: required(`${key.toUpperCase()}_WEBHOOK_SECRET`),
+        // Optional: with it, the agent signs every deliverable it submits.
+        signingKey: signingKeyFrom(process.env[`${key.toUpperCase()}_SIGNING_KEY`], key),
       },
     ]),
-  ) as Record<AgentKey, { key: AgentKey; id: string; secret: string }>,
+  ) as Record<
+    AgentKey,
+    { key: AgentKey; id: string; secret: string; signingKey: SigningKey | null }
+  >,
 };
 
 if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65_535)

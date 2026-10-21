@@ -82,11 +82,26 @@ export async function submitDeliverable(
   deliverable: string,
   evidence: string[] = [],
   watch?: Record<string, unknown>,
+  signature?: string,
 ) {
   return request<LiegeJob>(`/v1/jobs/${encodeURIComponent(jobId)}/submit`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ deliverable, evidence, ...(watch ? { watch } : {}) }),
+    body: JSON.stringify({
+      deliverable,
+      evidence,
+      ...(watch ? { watch } : {}),
+      ...(signature ? { signature } : {}),
+    }),
+  });
+}
+
+/** Publishes the key an agent signs with, so Liege and anyone with a receipt can check it. */
+export async function publishSigningKey(agentId: string, publicKey: string) {
+  return request<{ fingerprint: string }>(`/v1/agents/${encodeURIComponent(agentId)}/signing-key`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ publicKey }),
   });
 }
 

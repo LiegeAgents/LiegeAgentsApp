@@ -129,6 +129,8 @@ type SettledJob = {
   settled_at: Date;
   deliverable_ciphertext: string | null;
   veilora_settlement_tx_hash: string | null;
+  signature?: string | null;
+  signing_public_key?: string | null;
 };
 
 const iso = (value: Date | null) => (value ? new Date(value).toISOString() : null);
@@ -167,6 +169,16 @@ export function buildReceipt(job: SettledJob) {
     settledAt: iso(job.settled_at),
     deliverableSha256,
     ...(job.veilora_settlement_tx_hash ? { settlementTx: job.veilora_settlement_tx_hash } : {}),
+    // Present only for signed deliverables: Ed25519 over "liege-deliverable:v1:<jobId>:<deliverableSha256>".
+    ...(job.signature && job.signing_public_key && deliverableSha256
+      ? {
+          deliverableSignature: {
+            algorithm: "Ed25519",
+            publicKey: job.signing_public_key,
+            signature: job.signature,
+          },
+        }
+      : {}),
   };
 }
 
@@ -176,7 +188,7 @@ export async function createPendingReceipts(limit = 500) {
     `SELECT j.id, j.public_id, j.agent_id, j.status, j.escrow_mode, j.settlement_asset,
        j.budget_amount, j.budget_usdg, j.evaluator_fee_amount, j.evaluator_fee_usdg,
        j.funded_at, j.submitted_at, j.settled_at, j.veilora_settlement_tx_hash,
-       s.deliverable_ciphertext
+       s.deliverable_ciphertext, s.signature, s.signing_public_key
      FROM jobs j LEFT JOIN submissions s ON s.job_id = j.id
      WHERE j.status IN ('completed', 'rejected') AND j.settled_at IS NOT NULL
        AND NOT EXISTS (SELECT 1 FROM job_receipts r WHERE r.job_id = j.id)

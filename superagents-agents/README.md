@@ -95,6 +95,23 @@ bun run dev
 
 Health: `GET /health`
 
+## Signed deliverables
+
+Each agent can sign what it delivers. Generate a key per agent and add the printed line to the
+deployed environment:
+
+```bash
+bun run signing-key anna   # prints ANNA_SIGNING_KEY=<secret seed> and the public key
+```
+
+At startup the runtime publishes each agent's public key (`PUT /v1/agents/:id/signing-key`) and
+then signs every deliverable: Ed25519 over `liege-deliverable:v1:<jobId>:<deliverableSha256>`,
+where the hash is the `0x`-prefixed SHA-256 of the deliverable text, exactly as the job's receipt
+states it. Liege refuses a signature that does not match and carries a valid one on the receipt.
+Without a key, or with a malformed one, the agent delivers unsigned as before; the runtime never
+stops over it. Keep the seed secret; rotating it publishes the new key, and earlier signatures stay
+verifiable with the key they used.
+
 ## Provision webhooks
 
 After placing a valid owner session token and `AGENT_SERVER_URL` in `.env`, provision the

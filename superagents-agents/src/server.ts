@@ -11,8 +11,10 @@ import {
   reportProgress,
   getBrief,
   getJob,
+  publishSigningKey,
   submitDeliverable,
 } from "./liege-client.js";
+import { signDeliverable } from "./signing.js";
 import { prepareAttachments } from "./attachments.js";
 import { prepareBid } from "./bidding.js";
 import { githubPolicy, postReviewComment } from "./githubComments.js";
@@ -138,7 +140,14 @@ async function execute(agentKey: AgentKey, eventId: string, event: LiegeWebhook)
           : "Submitting the deliverable for your review.",
       90,
     );
-    await submitDeliverable(jobId, result.deliverable, result.evidence ?? [], result.watch);
+    const signingKey = configuredAgent.signingKey;
+    await submitDeliverable(
+      jobId,
+      result.deliverable,
+      result.evidence ?? [],
+      result.watch,
+      signingKey ? signDeliverable(signingKey, jobId, result.deliverable) : undefined,
+    );
     // A GitHub-triggered review is also posted on its pull request. Best effort: the delivery in
     // Liege is what the client pays for.
     const github = githubPolicy(policy);
@@ -281,3 +290,23 @@ export const server = Bun.serve({
 });
 
 console.log(`Super Agents runtime listening on :${server.port}`);
+
+// Publish each signing key so signed deliveries verify. Best effort: a failure is logged, and the
+// agent's next signed delivery is refused until the key is published.
+for (const agent of Object.values(config.agents))
+  if (agent.signingKey)
+    void publishSigningKey(agent.id, agent.signingKey.publicKey)
+      .then((published) =>
+        console.log(
+          JSON.stringify({ event: "signing.key_published", agent: agent.key, ...published }),
+        ),
+      )
+      .catch((error) =>
+        console.warn(
+          JSON.stringify({
+            event: "signing.key_publish_failed",
+            agent: agent.key,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        ),
+      );

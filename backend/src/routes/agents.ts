@@ -8,6 +8,7 @@ import { requireAuth } from "../auth.js";
 import { ApiError, asyncRoute } from "../http.js";
 import { MIN_SCORED_JOBS, REPUTATION_WEIGHTS, agentStanding } from "../reputation.js";
 import { badgeMessage, renderBadge } from "../agentBadge.js";
+import { isEd25519PublicKey, keyFingerprint } from "../deliverableSignatures.js";
 
 const createAgent = z
   .object({
@@ -77,6 +78,83 @@ agentsRouter.get(
         };
       }),
       nextCursor: result.rows.length > query.limit ? agents.at(-1)?.id : null,
+    });
+  }),
+);
+
+// The key an agent signs its deliverables with, so anyone can check a signature on a receipt.
+agentsRouter.get(
+  "/:agent/signing-key",
+  asyncRoute(async (request, response) => {
+    const slug = z
+      .string()
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+      .parse(request.params.agent);
+    const found = await db.query<{ signing_public_key: string | null; signing_key_added_at: Date }>(
+      "SELECT signing_public_key, signing_key_added_at FROM agents WHERE slug = $1 AND active",
+      [slug],
+    );
+    if (!found.rowCount)
+      throw new ApiError(404, "agent_not_found", "No active agent exists with that slug.");
+    const key = found.rows[0].signing_public_key;
+    if (!key)
+      throw new ApiError(404, "signing_key_not_set", "This agent does not sign its deliverables.");
+    response.json({
+      data: {
+        algorithm: "Ed25519",
+        publicKey: key,
+        fingerprint: keyFingerprint(key),
+        addedAt: found.rows[0].signing_key_added_at,
+      },
+    });
+  }),
+);
+
+// The agent's owner, or its own runtime, publishes the key. Old signatures keep the key they used.
+agentsRouter.put(
+  "/:agent/signing-key",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const agentId = z.string().uuid().parse(request.params.agent);
+    const input = z.object({ publicKey: z.string().trim() }).parse(request.body);
+    if (!isEd25519PublicKey(input.publicKey))
+      throw new ApiError(
+        422,
+        "invalid_signing_key",
+        "Send a base64 Ed25519 public key (32 bytes).",
+      );
+    const runtime = request.runtimeAuth;
+    if (
+      runtime &&
+      (!runtime.agentIds.includes(agentId) || !runtime.scopes.includes("deliverables:write"))
+    )
+      throw new ApiError(
+        403,
+        "runtime_scope_denied",
+        "This runtime token cannot act for this agent.",
+      );
+    const updated = await db.query<{ slug: string }>(
+      `UPDATE agents SET signing_public_key = $3,
+         signing_key_added_at = CASE WHEN signing_public_key IS DISTINCT FROM $3 THEN now() ELSE signing_key_added_at END
+       WHERE id = $1 AND owner_id = $2 AND active RETURNING slug`,
+      [agentId, request.auth!.userId, input.publicKey],
+    );
+    if (!updated.rowCount)
+      throw new ApiError(404, "agent_not_found", "No active agent of yours has that id.");
+    await audit(db, {
+      actorId: request.auth!.userId,
+      action: "agent.signing_key_set",
+      targetType: "agent",
+      targetId: agentId,
+      requestId: request.requestId,
+      metadata: { fingerprint: keyFingerprint(input.publicKey) },
+    });
+    response.json({
+      data: {
+        algorithm: "Ed25519",
+        publicKey: input.publicKey,
+        fingerprint: keyFingerprint(input.publicKey),
+      },
     });
   }),
 );

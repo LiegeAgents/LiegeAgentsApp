@@ -35,6 +35,32 @@ const canonical = (value) =>
           .join(",")}}`
       : JSON.stringify(value);
 
+const fromBase64 = (value) => Uint8Array.from(atob(value), (c) => c.charCodeAt(0));
+
+/** Checks the agent's Ed25519 signature over this deliverable with the key in the receipt. */
+async function signatureCheck(receipt) {
+  const signed = receipt.deliverableSignature;
+  const message = `liege-deliverable:v1:${receipt.jobId}:${receipt.deliverableSha256}`;
+  try {
+    const key = await crypto.subtle.importKey(
+      "raw",
+      fromBase64(signed.publicKey),
+      { name: "Ed25519" },
+      false,
+      ["verify"],
+    );
+    const ok = await crypto.subtle.verify(
+      { name: "Ed25519" },
+      key,
+      fromBase64(signed.signature),
+      new TextEncoder().encode(message),
+    );
+    return ["The agent signed this exact deliverable", ok];
+  } catch {
+    return ["This browser cannot check Ed25519 signatures; try an up-to-date browser", false];
+  }
+}
+
 /** Recomputes the receipt's place onchain in this browser, using only public chain data. */
 async function verify(data) {
   const encoder = new TextEncoder();
@@ -75,6 +101,7 @@ async function verify(data) {
     ],
     ["It succeeded on Robinhood Chain", mined?.status === "0x1"],
   ];
+  if (data.receipt.deliverableSignature) checks.push(await signatureCheck(data.receipt));
   return checks;
 }
 
@@ -110,7 +137,8 @@ export default function JobReceipt({ jobId, token, status }) {
   const runCheck = async () => {
     setChecking(true);
     try {
-      setChecks(await verify(data));
+      // Before the receipt is anchored, only the agent's signature can be checked.
+      setChecks(anchor?.txHash ? await verify(data) : [await signatureCheck(data.receipt)]);
     } catch {
       setChecks([["Robinhood Chain could not be reached; try again", false]]);
     } finally {
@@ -150,6 +178,14 @@ export default function JobReceipt({ jobId, token, status }) {
               <dt>Receipt fingerprint</dt>
               <dd title={data.leaf}>{data.leaf.slice(0, 18)}…</dd>
             </div>
+            {data.receipt.deliverableSignature && (
+              <div>
+                <dt>Signed by the agent</dt>
+                <dd title={data.receipt.deliverableSignature.publicKey}>
+                  Ed25519 key {data.receipt.deliverableSignature.publicKey.slice(0, 10)}…
+                </dd>
+              </div>
+            )}
             {anchor?.txHash && (
               <div>
                 <dt>Transaction</dt>
@@ -166,9 +202,14 @@ export default function JobReceipt({ jobId, token, status }) {
             )}
           </dl>
           <div className="receipt-actions">
-            {anchor?.txHash && data.proof && (
+            {((anchor?.txHash && data.proof) || data.receipt.deliverableSignature) && (
               <Button small secondary disabled={checking} onClick={runCheck}>
-                <BadgeCheck size={13} /> {checking ? "Checking the chain…" : "Verify it yourself"}
+                <BadgeCheck size={13} />{" "}
+                {checking
+                  ? "Checking…"
+                  : anchor?.txHash
+                    ? "Verify it yourself"
+                    : "Check the agent's signature"}
               </Button>
             )}
             <Button small secondary onClick={download}>
@@ -186,7 +227,9 @@ export default function JobReceipt({ jobId, token, status }) {
           )}
           {checks && checks.every(([, ok]) => ok) && (
             <Notice>
-              Verified in your browser against Robinhood Chain. No Liege server was trusted.
+              {anchor?.txHash
+                ? "Verified in your browser against Robinhood Chain. No Liege server was trusted."
+                : "Checked in your browser with the agent's public key. No Liege server was trusted."}
             </Notice>
           )}
         </>

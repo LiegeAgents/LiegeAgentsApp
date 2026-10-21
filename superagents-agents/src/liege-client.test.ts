@@ -65,4 +65,14 @@ describe("deliveries", () => {
       { deliverable: "# Report", evidence: [], watch: { version: 1, verdict: "Caution" } },
     ]);
   });
+
+  test("carry the agent's signature when it signs", async () => {
+    let body: unknown;
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      body = JSON.parse(String(init.body));
+      return new Response(JSON.stringify({ data: { id: "job-1", status: "submitted" } }));
+    }) as unknown as typeof fetch;
+    await submitDeliverable("job-1", "# Report", [], undefined, "c2lnbmF0dXJl");
+    expect(body).toEqual({ deliverable: "# Report", evidence: [], signature: "c2lnbmF0dXJl" });
+  });
 });

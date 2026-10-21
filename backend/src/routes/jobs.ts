@@ -36,6 +36,7 @@ import { registerAttachmentRoutes } from "./jobAttachments.js";
 import { registerReceiptRoutes } from "./jobReceipts.js";
 import { advanceSquad } from "../superAgentSquads.js";
 import { recordWatchRun, watchSnapshot } from "../constantineWatch.js";
+import { SIGNATURE_PATTERN, verifyDeliverableSignature } from "../deliverableSignatures.js";
 import { resolveJobEscrowMode } from "../jobEscrowMode.js";
 
 const decimalAmount = (positive = false) =>
@@ -1158,10 +1159,16 @@ jobsRouter.post(
           .optional(),
         // Constantine's structured result on a watchlist run, compared with the previous run.
         watch: watchSnapshot.optional(),
+        // The agent's Ed25519 signature over the deliverable, checked against its published key.
+        signature: z.string().regex(SIGNATURE_PATTERN).optional(),
       })
       .refine(
         (value) => Boolean(value.deliverable || value.deliverableCiphertext),
         "deliverable is required.",
+      )
+      .refine(
+        (value) => !value.signature || Boolean(value.deliverable),
+        "A signature covers the plaintext deliverable.",
       )
       .parse(request.body);
     const jobId = z.string().uuid().parse(request.params.id);
@@ -1206,8 +1213,28 @@ jobsRouter.post(
     try {
       await client.query("BEGIN");
       const job = await transition(client, request, "submitted");
+      let signingKey: string | null = null;
+      if (input.signature) {
+        const agent = await client.query<{ signing_public_key: string | null }>(
+          "SELECT signing_public_key FROM agents WHERE id = $1",
+          [job.agent_id],
+        );
+        signingKey = agent.rows[0]?.signing_public_key ?? null;
+        if (!signingKey)
+          throw new ApiError(
+            422,
+            "signing_key_not_set",
+            "Publish the agent's signing key before sending signed deliverables.",
+          );
+        if (!verifyDeliverableSignature(signingKey, input.signature, job.id, input.deliverable!))
+          throw new ApiError(
+            422,
+            "invalid_deliverable_signature",
+            "The signature does not match this deliverable and the agent's published key.",
+          );
+      }
       await client.query(
-        "INSERT INTO submissions (job_id, provider_id, deliverable_ciphertext, deliverable_hash, evidence, veilora_deliverable_commit, veilora_deliverable_salt) VALUES ($1,$2,$3,$4,$5,$6,$7)",
+        "INSERT INTO submissions (job_id, provider_id, deliverable_ciphertext, deliverable_hash, evidence, veilora_deliverable_commit, veilora_deliverable_salt, signature, signing_public_key) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
         [
           job.id,
           request.auth!.userId,
@@ -1216,6 +1243,8 @@ jobsRouter.post(
           JSON.stringify(input.evidence),
           input.deliverableCommit?.toLowerCase() ?? null,
           input.deliverableSalt?.toLowerCase() ?? null,
+          input.signature ?? null,
+          signingKey,
         ],
       );
       const result = await client.query(
