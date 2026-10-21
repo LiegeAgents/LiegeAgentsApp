@@ -28,7 +28,12 @@ if (unknown.length)
   );
 const selected = only.length ? agents.filter(([, , slug]) => only.includes(slug)) : agents;
 const eventTypes = ["job.funded", "job.submitted", "job.expired", "job.settled", "job.revision_requested", "auction.bid_requested"];
-const headers = { authorization: `Bearer ${sessionToken}`, accept: "application/json" };
+const headers = {
+  authorization: `Bearer ${sessionToken}`,
+  accept: "application/json",
+  // A runtime token is only accepted when marked as one; an owner session needs no marker.
+  ...(Bun.env.LIEGE_RUNTIME_TOKEN?.trim() ? { "x-liege-runtime-token": "1" } : {}),
+};
 
 async function api(path: string, init: RequestInit = {}) {
   const response = await fetch(`${apiUrl}${path}`, {
