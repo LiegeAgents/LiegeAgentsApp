@@ -183,11 +183,89 @@ describe.skipIf(!databaseAvailable)("onchain receipts", () => {
     const failed = await db.query("SELECT status, error FROM receipt_batches");
     expect(failed.rows[0]).toMatchObject({ status: "failed", error: "insufficient funds for gas" });
     fake.failNext(false);
-    expect(await anchorReceipts()).toMatchObject({ status: "anchored", receipts: 1 });
-    // A one-receipt batch's root is the leaf itself.
+    // The batch carries the receipt and the agent's reputation snapshot after it.
+    expect(await anchorReceipts()).toMatchObject({
+      status: "anchored",
+      receipts: 1,
+      snapshots: 1,
+    });
     const done = (await api().get(`/v1/jobs/${jobId}/receipt`).set(bearer(client)).expect(200)).body
       .data;
-    expect(done.anchor.merkleRoot).toBe(done.leaf);
-    expect(done.proof).toEqual([]);
+    expect(done.proof).toHaveLength(1);
+    expect(verifyProof(done.leaf, done.proof, done.anchor.merkleRoot)).toBe(true);
+  });
+
+  test("each changed agent's reputation snapshot is anchored with the receipts and can be checked", async () => {
+    const [owner, other, client] = await Promise.all([signIn(), signIn(), signIn()]);
+    const agentId = await createAgent(owner);
+    const idle = await createAgent(other);
+    const slug = async (id: string) =>
+      (await db.query<{ slug: string }>("SELECT slug FROM agents WHERE id=$1", [id])).rows[0].slug;
+    const jobs = await Promise.all([1, 2, 3].map(() => createJob(client, agentId, 5)));
+    await settle(jobs[0], owner.userId, "One.");
+    await settle(jobs[1], owner.userId, "Two.");
+    await settle(jobs[2], owner.userId, "Three.", "rejected");
+
+    // Without an anchor wallet nothing is snapshotted, so nothing piles up.
+    useReceiptAnchor(null);
+    await anchorReceipts();
+    await api()
+      .get(`/v1/agents/${await slug(agentId)}/reputation-proof`)
+      .expect(404);
+
+    const fake = chain();
+    expect(await anchorReceipts()).toMatchObject({ status: "anchored", receipts: 3, snapshots: 1 });
+    const first = (
+      await api()
+        .get(`/v1/agents/${await slug(agentId)}/reputation-proof`)
+        .expect(200)
+    ).body.data;
+    expect(first.snapshot).toMatchObject({
+      v: 1,
+      kind: "reputation",
+      chainId: 4663,
+      agentId,
+      outcomes: {
+        completed: 2,
+        rejected: 1,
+        undelivered: 0,
+        onTime: 2,
+        completedWithRevision: 0,
+        disputesLost: 0,
+      },
+      // Three outcomes: not scored until five.
+      score: null,
+      method: { minimumOutcomes: 5 },
+    });
+    expect(first.leaf).toBe(leafHash(first.snapshot));
+    expect(verifyProof(first.leaf, first.proof, first.anchor.merkleRoot)).toBe(true);
+    expect(first.anchor).toMatchObject({ status: "sent", txHash: `0x${"1".padStart(64, "0")}` });
+    const batch = (await api().get(`/v1/receipt-anchors/${first.anchor.batchId}`).expect(200)).body
+      .data;
+    expect(batch).toMatchObject({ receipts: 3, reputationSnapshots: 1 });
+    // An agent with nothing recorded has nothing to prove.
+    expect(
+      (
+        await api()
+          .get(`/v1/agents/${await slug(idle)}/reputation-proof`)
+          .expect(404)
+      ).body.error.code,
+    ).toBe("reputation_not_anchored");
+
+    // No change, no new snapshot; a new outcome gets one in the next batch.
+    expect(await anchorReceipts()).toMatchObject({ status: "idle" });
+    const later = await createJob(client, agentId, 5);
+    await settle(later, owner.userId, "Four.");
+    fake.mine();
+    expect(await anchorReceipts()).toMatchObject({ status: "anchored", receipts: 1, snapshots: 1 });
+    const second = (
+      await api()
+        .get(`/v1/agents/${await slug(agentId)}/reputation-proof`)
+        .expect(200)
+    ).body.data;
+    expect(second.snapshot.outcomes.completed).toBe(3);
+    expect(second.anchor.batchId).not.toBe(first.anchor.batchId);
+    expect(verifyProof(second.leaf, second.proof, second.anchor.merkleRoot)).toBe(true);
+    expect(fake.sent).toHaveLength(2);
   });
 });

@@ -134,6 +134,8 @@ A leaf is `sha256(0x00 || receipt as JSON with keys sorted by code point)` and a
 
 The API builds receipts and anchors a batch (up to 512) every `RECEIPT_ANCHOR_INTERVAL_MS` (10 minutes); `POST /v1/cron/anchor-receipts` does the same, and an advisory lock keeps runs exclusive. Anchoring needs `RECEIPT_ANCHOR_PRIVATE_KEY`, a dedicated wallet holding a little ETH for gas. Without it, or with a malformed value, receipts are still built and wait; startup never fails. A send that fails, reverts, or is not mined within an hour releases its receipts for the next batch.
 
+Each anchoring pass also snapshots every agent whose recorded outcomes changed since its last snapshot: `{ v, kind: "reputation", chainId, agentId, at, outcomes, score, method }`, where `outcomes` are the counts behind the reputation score (completed, rejected, undelivered, on time, completed after a revision, disputes lost) and `score` is null below five outcomes. Snapshots are hashed like receipts and numbered after the batch's receipts in the same tree, so one transaction anchors both; an agent with no outcomes is not snapshotted, and nothing is snapshotted while anchoring is off. `GET /v1/agents/{slug}/reputation-proof` is public and returns the agent's latest snapshot with its leaf, proof, and anchor, and the agent's profile checks it in the browser. `GET /v1/receipt-anchors/{id}` reports `receipts` and `reputationSnapshots` separately.
+
 ## Security invariants
 
 - A nonce is single-use, expires in ten minutes, and one request cannot invalidate another open nonce. See `tests/auth.test.ts`.

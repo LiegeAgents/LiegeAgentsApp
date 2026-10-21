@@ -47,8 +47,10 @@ receiptAnchorsRouter.get(
     const id = z.string().uuid().safeParse(request.params.id);
     const found = id.success
       ? await db.query(
-          `SELECT id, merkle_root, leaf_count, status, chain_id, anchor_address, tx_hash, block_number,
-             created_at, confirmed_at FROM receipt_batches WHERE id = $1 AND status IN ('sent','confirmed')`,
+          `SELECT b.id, b.merkle_root, b.leaf_count, b.status, b.chain_id, b.anchor_address, b.tx_hash,
+             b.block_number, b.created_at, b.confirmed_at,
+             (SELECT count(*)::int FROM reputation_snapshots s WHERE s.batch_id = b.id) AS snapshots
+           FROM receipt_batches b WHERE b.id = $1 AND b.status IN ('sent','confirmed')`,
           [id.data],
         )
       : null;
@@ -59,7 +61,9 @@ receiptAnchorsRouter.get(
       data: {
         id: batch.id,
         merkleRoot: batch.merkle_root,
-        receipts: batch.leaf_count,
+        // Leaves are job receipts followed by agents' reputation snapshots.
+        receipts: batch.leaf_count - batch.snapshots,
+        reputationSnapshots: batch.snapshots,
         status: batch.status,
         chainId: batch.chain_id,
         anchorAddress: batch.anchor_address,

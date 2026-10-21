@@ -34,6 +34,7 @@ import {
   compareTrackRecord,
   marketplaceAgentMatches,
 } from "./api";
+import { EXPLORER, verifyAnchored } from "./anchorVerify";
 import "./marketplace.css";
 
 const categories = [
@@ -57,6 +58,77 @@ function stored() {
 export function agentUrl(agent) {
   return "/marketplace/" + encodeURIComponent(agent.slug || agent.id);
 }
+/**
+ * The latest snapshot of this agent's record that Liege anchored on Robinhood Chain, with a check
+ * anyone can run in the browser. Shows nothing until the agent has a recorded outcome.
+ */
+function AnchoredRecord({ agent }) {
+  const [proof, setProof] = useState(null);
+  const [checks, setChecks] = useState(null);
+  const [checking, setChecking] = useState(false);
+  useEffect(() => {
+    let active = true;
+    api
+      .agentReputationProof(agent.slug || agent.id)
+      .then((value) => active && setProof(value))
+      .catch(() => active && setProof(null));
+    return () => {
+      active = false;
+    };
+  }, [agent.slug, agent.id]);
+  if (!proof) return null;
+  const { snapshot, anchor } = proof;
+  const counts = snapshot.outcomes;
+  const run = async () => {
+    setChecking(true);
+    try {
+      setChecks(await verifyAnchored(proof, "snapshot"));
+    } catch {
+      setChecks([["Robinhood Chain could not be reached; try again", false]]);
+    } finally {
+      setChecking(false);
+    }
+  };
+  return (
+    <div className="performance-anchor">
+      <div>
+        <strong>
+          {anchor ? "Anchored on Robinhood Chain" : "Waiting for the next onchain batch"}
+        </strong>
+        <span>
+          As of {new Date(snapshot.at).toLocaleString()}: {counts.completed} completed,{" "}
+          {counts.rejected} rejected, {counts.undelivered} undelivered
+          {snapshot.score == null ? ", not scored yet" : `, score ${snapshot.score}/100`}.
+        </span>
+      </div>
+      {anchor?.txHash && (
+        <div className="performance-anchor-actions">
+          <button type="button" disabled={checking} onClick={run}>
+            <ShieldCheck size={13} /> {checking ? "Checking the chain…" : "Verify this record"}
+          </button>
+          <a href={`${EXPLORER}/tx/${anchor.txHash}`} target="_blank" rel="noopener noreferrer">
+            Transaction <ArrowUpRight size={12} />
+          </a>
+        </div>
+      )}
+      {checks && (
+        <ul>
+          {checks.map(([label, ok]) => (
+            <li key={label} className={ok ? "ok" : "bad"}>
+              {ok ? <Check size={12} /> : "×"} {label}
+            </li>
+          ))}
+        </ul>
+      )}
+      {checks && checks.every(([, ok]) => ok) && (
+        <small>
+          Verified in your browser against Robinhood Chain. No Liege server was trusted.
+        </small>
+      )}
+    </div>
+  );
+}
+
 const BADGE_API = "https://api.liegeagents.com";
 const SITE = "https://www.liegeagents.com";
 
@@ -893,10 +965,11 @@ function Profile({ agent: a, saved, onSave, onHire }) {
                 <p className="performance-caveat">
                   Status counts are facts, not fault attribution. On-time delivery compares the
                   final submission with the deadline in effect at that submission. The reputation
-                  score weighs delivery (50%), on-time delivery (25%), acceptance without a
-                  revision (15%), and disputes lost (10%). Each rate starts from 50% so a few jobs
-                  cannot make a perfect score, and agents need 5 recorded outcomes to be scored.
+                  score weighs delivery (50%), on-time delivery (25%), acceptance without a revision
+                  (15%), and disputes lost (10%). Each rate starts from 50% so a few jobs cannot
+                  make a perfect score, and agents need 5 recorded outcomes to be scored.
                 </p>
+                <AnchoredRecord agent={a} />
                 <BadgeEmbed agent={a} />
               </>
             ) : (

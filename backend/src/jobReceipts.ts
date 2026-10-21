@@ -4,6 +4,13 @@ import { privateKeyToAccount } from "viem/accounts";
 import { env } from "./config.js";
 import { decryptPayload, payloadContext } from "./crypto.js";
 import { db } from "./db/index.js";
+import {
+  MIN_SCORED_JOBS,
+  REPUTATION_WEIGHTS,
+  agentStanding,
+  type OutcomeCounts,
+  type Reputation,
+} from "./reputation.js";
 
 /**
  * Onchain receipts. Each settled job gets a receipt of its public facts; receipts are hashed into
@@ -16,6 +23,9 @@ import { db } from "./db/index.js";
  *   node = sha256(0x01 || min(a, b) || max(a, b))   (pairs are sorted, so proofs need no sides)
  * An odd node at the end of a level moves up unchanged.
  * Transaction: 0 ETH from the anchor wallet to itself, input = utf8(ANCHOR_PREFIX) || root.
+ *
+ * A batch can also carry reputation snapshots (`kind: "reputation"`), hashed the same way and
+ * numbered after the batch's receipts, so an agent's score is checkable against the chain too.
  */
 export const ANCHOR_PREFIX = "LIEGE:RECEIPTS:v1";
 export const MAX_BATCH = 512;
@@ -205,6 +215,64 @@ export async function createPendingReceipts(limit = 500) {
   return settled.rowCount ?? 0;
 }
 
+/** An agent's recorded outcomes and score at `at`, as committed to the chain. */
+export function reputationSnapshot(
+  agentId: string,
+  standing: { counts: OutcomeCounts; reputation: Reputation },
+  at: Date,
+) {
+  return {
+    v: 1,
+    kind: "reputation",
+    chainId: env.RHC_ID,
+    agentId,
+    at: at.toISOString(),
+    outcomes: standing.counts,
+    score: standing.reputation.status === "scored" ? standing.reputation.score : null,
+    method: { minimumOutcomes: MIN_SCORED_JOBS, weights: REPUTATION_WEIGHTS },
+  };
+}
+
+/**
+ * Snapshots every active agent whose recorded outcomes changed since its last snapshot. An agent
+ * with no outcomes and no earlier snapshot has nothing to prove yet and is skipped.
+ */
+export async function createPendingSnapshots() {
+  const agents = await db.query<{ id: string }>("SELECT id FROM agents WHERE active");
+  const standing = await agentStanding(agents.rows.map((agent) => agent.id));
+  const latest = await db.query<{ agent_id: string; outcomes: unknown }>(
+    `SELECT DISTINCT ON (agent_id) agent_id, snapshot->'outcomes' AS outcomes
+     FROM reputation_snapshots ORDER BY agent_id, created_at DESC, id DESC`,
+  );
+  const previous = new Map(latest.rows.map((row) => [row.agent_id, canonicalJson(row.outcomes)]));
+  const at = new Date();
+  let created = 0;
+  for (const [agentId, current] of standing) {
+    const recorded =
+      current.counts.completed + current.counts.rejected + current.counts.undelivered;
+    if (!previous.has(agentId) && recorded === 0) continue;
+    if (previous.get(agentId) === canonicalJson(current.counts)) continue;
+    const snapshot = reputationSnapshot(agentId, current, at);
+    await db.query(
+      "INSERT INTO reputation_snapshots (agent_id, snapshot, leaf_hash) VALUES ($1,$2,$3)",
+      [agentId, JSON.stringify(snapshot), leafHash(snapshot)],
+    );
+    created++;
+  }
+  return created;
+}
+
+/** Every leaf of a batch in order: its receipts, then its reputation snapshots. */
+async function batchLeaves(batchId: string) {
+  const leaves = await db.query<{ leaf_hash: string }>(
+    `SELECT leaf_hash, leaf_index FROM job_receipts WHERE batch_id=$1
+     UNION ALL SELECT leaf_hash, leaf_index FROM reputation_snapshots WHERE batch_id=$1
+     ORDER BY leaf_index`,
+    [batchId],
+  );
+  return leaves.rows.map((leaf) => leaf.leaf_hash);
+}
+
 /** Confirms sent batches; a reverted or long-lost transaction releases its receipts for retry. */
 async function confirmSentBatches(anchor: Anchor) {
   const sent = await db.query<{ id: string; tx_hash: Hex; sent_at: Date }>(
@@ -233,6 +301,10 @@ async function release(batchId: string, error: string) {
     await client.query("UPDATE job_receipts SET batch_id=NULL, leaf_index=NULL WHERE batch_id=$1", [
       batchId,
     ]);
+    await client.query(
+      "UPDATE reputation_snapshots SET batch_id=NULL, leaf_index=NULL WHERE batch_id=$1",
+      [batchId],
+    );
     await client.query("UPDATE receipt_batches SET status='failed', error=$2 WHERE id=$1", [
       batchId,
       error,
@@ -261,17 +333,23 @@ export async function anchorReceipts() {
       const created = await createPendingReceipts();
       const anchor = currentAnchor();
       if (!anchor) return { status: "disabled" as const, created };
+      await createPendingSnapshots();
       const confirmed = await confirmSentBatches(anchor);
       const pending = await db.query<{ job_id: string; leaf_hash: string }>(
         "SELECT job_id, leaf_hash FROM job_receipts WHERE batch_id IS NULL ORDER BY created_at, job_id LIMIT $1",
         [MAX_BATCH],
       );
-      if (!pending.rowCount) return { status: "idle" as const, created, confirmed };
-      const { root } = merkleTree(pending.rows.map((row) => row.leaf_hash));
+      const snapshots = await db.query<{ id: string; leaf_hash: string }>(
+        "SELECT id, leaf_hash FROM reputation_snapshots WHERE batch_id IS NULL ORDER BY created_at, id LIMIT $1",
+        [MAX_BATCH - (pending.rowCount ?? 0)],
+      );
+      const leaves = [...pending.rows, ...snapshots.rows].map((row) => row.leaf_hash);
+      if (!leaves.length) return { status: "idle" as const, created, confirmed };
+      const { root } = merkleTree(leaves);
       const batch = await db.query<{ id: string }>(
         `INSERT INTO receipt_batches (merkle_root, leaf_count, chain_id, anchor_address)
          VALUES ($1,$2,$3,$4) RETURNING id`,
-        [root, pending.rowCount, env.RHC_ID, anchor.address.toLowerCase()],
+        [root, leaves.length, env.RHC_ID, anchor.address.toLowerCase()],
       );
       const batchId = batch.rows[0].id;
       await db.query(
@@ -279,6 +357,13 @@ export async function anchorReceipts() {
          FROM unnest($2::uuid[]) WITH ORDINALITY AS p(job_id, position)
          WHERE r.job_id = p.job_id`,
         [batchId, pending.rows.map((row) => row.job_id)],
+      );
+      // Snapshots follow the receipts in the same tree.
+      await db.query(
+        `UPDATE reputation_snapshots r SET batch_id=$1, leaf_index=$3 + p.position - 1
+         FROM unnest($2::uuid[]) WITH ORDINALITY AS p(id, position)
+         WHERE r.id = p.id`,
+        [batchId, snapshots.rows.map((row) => row.id), pending.rowCount ?? 0],
       );
       try {
         const txHash = await anchor.send(anchorData(root));
@@ -294,6 +379,7 @@ export async function anchorReceipts() {
           root,
           txHash,
           receipts: pending.rowCount,
+          snapshots: snapshots.rowCount,
         };
       } catch (error) {
         await release(
@@ -332,15 +418,9 @@ export async function receiptProof(jobId: string) {
   );
   const row = found.rows[0];
   if (!row) return null;
-  let proof: string[] | null = null;
-  if (row.batch_id) {
-    const leaves = await db.query<{ leaf_hash: string }>(
-      "SELECT leaf_hash FROM job_receipts WHERE batch_id=$1 ORDER BY leaf_index",
-      [row.batch_id],
-    );
-    const tree = merkleTree(leaves.rows.map((leaf) => leaf.leaf_hash));
-    proof = tree.proofs[row.leaf_index!];
-  }
+  const proof = row.batch_id
+    ? merkleTree(await batchLeaves(row.batch_id)).proofs[row.leaf_index!]
+    : null;
   return {
     receipt: row.receipt,
     leaf: row.leaf_hash,
@@ -363,6 +443,53 @@ export async function receiptProof(jobId: string) {
       node: "sha256(0x01 || smaller hash || larger hash); an odd last node moves up unchanged",
       transaction: `a 0 ETH transaction from the anchor wallet to itself whose input is utf8("${ANCHOR_PREFIX}") followed by the 32-byte root`,
     },
+  };
+}
+
+/** An agent's latest reputation snapshot, its proof, and where the root sits onchain. */
+export async function reputationProof(agentId: string) {
+  const found = await db.query<{
+    snapshot: Record<string, unknown>;
+    leaf_hash: string;
+    leaf_index: number | null;
+    batch_id: string | null;
+    merkle_root: string | null;
+    status: string | null;
+    chain_id: number | null;
+    anchor_address: string | null;
+    tx_hash: string | null;
+    block_number: string | null;
+    confirmed_at: Date | null;
+  }>(
+    // The latest snapshot already on its way to the chain, else the latest one waiting for a batch.
+    `SELECT s.snapshot, s.leaf_hash, s.leaf_index, s.batch_id, b.merkle_root, b.status, b.chain_id,
+       b.anchor_address, b.tx_hash, b.block_number, b.confirmed_at
+     FROM reputation_snapshots s LEFT JOIN receipt_batches b ON b.id = s.batch_id
+     WHERE s.agent_id = $1
+     ORDER BY (b.status IN ('sent', 'confirmed')) DESC NULLS LAST, s.created_at DESC, s.id DESC
+     LIMIT 1`,
+    [agentId],
+  );
+  const row = found.rows[0];
+  if (!row) return null;
+  const anchored = row.batch_id && ["sent", "confirmed"].includes(row.status ?? "");
+  return {
+    snapshot: row.snapshot,
+    leaf: row.leaf_hash,
+    proof: anchored ? merkleTree(await batchLeaves(row.batch_id!)).proofs[row.leaf_index!] : null,
+    anchor: anchored
+      ? {
+          batchId: row.batch_id!,
+          status: row.status as "sent" | "confirmed",
+          merkleRoot: row.merkle_root!,
+          chainId: row.chain_id!,
+          anchorAddress: row.anchor_address,
+          txHash: row.tx_hash,
+          blockNumber: row.block_number ? Number(row.block_number) : null,
+          confirmedAt: iso(row.confirmed_at),
+          data: anchorData(row.merkle_root!),
+        }
+      : null,
   };
 }
 

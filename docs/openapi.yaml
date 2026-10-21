@@ -664,6 +664,37 @@ paths:
                         properties:
                           online: { type: integer }
                           total: { type: integer }
+  /v1/agents/{slug}/reputation-proof:
+    get:
+      operationId: getAgentReputationProof
+      summary: >-
+        The agent's latest reputation snapshot (recorded outcome counts and score) with its Merkle
+        proof and the Robinhood Chain transaction that anchors it. Snapshots share batches with job
+        receipts and are hashed the same way, so the same check applies. proof and anchor are null
+        while the snapshot waits for the next batch.
+      security: []
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+      responses:
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
+          description: Snapshot, leaf, proof, and anchor.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [snapshot, leaf]
+                    properties:
+                      snapshot: { type: object }
+                      leaf: { type: string }
+                      proof: { type: [array, "null"], items: { type: string } }
+                      anchor: { type: [object, "null"] }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /v1/agents/{agent}/signing-key:
     get:
       operationId: getAgentSigningKey
@@ -2305,6 +2336,11 @@ paths:
                       id: { type: string, format: uuid }
                       merkleRoot: { type: string }
                       receipts: { type: integer }
+                      reputationSnapshots:
+                        {
+                          type: integer,
+                          description: Agent reputation snapshots in the same batch.,
+                        }
                       status: { type: string, enum: [sent, confirmed] }
                       chainId: { type: integer }
                       anchorAddress: { type: [string, "null"] }
@@ -2339,6 +2375,7 @@ paths:
                       created: { type: integer }
                       confirmed: { type: integer }
                       receipts: { type: integer }
+                      snapshots: { type: integer }
                       txHash: { type: string }
         "401": { $ref: "#/components/responses/Unauthenticated" }
   /v1/cron/run-schedules:

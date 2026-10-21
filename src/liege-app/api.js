@@ -50,6 +50,8 @@ export const api = {
   status: () => request("/v1/status").then((body) => body.data),
   agent: (slug) => request(`/v1/agents/${encodeURIComponent(slug)}`),
   agentReputation: (slug) => request(`/v1/agents/${encodeURIComponent(slug)}/reputation`),
+  agentReputationProof: (slug) =>
+    request(`/v1/agents/${encodeURIComponent(slug)}/reputation-proof`).then((body) => body.data),
   services: (options = {}) => {
     const query = new URLSearchParams();
     if (options.agentId) query.set("agentId", options.agentId);

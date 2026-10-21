@@ -73,7 +73,7 @@ export function scoreReputation(counts: OutcomeCounts): Reputation {
 export async function agentStanding(agentIds: string[]) {
   const standing = new Map<
     string,
-    { reputation: Reputation; verified: boolean; verifiedAt: string | null }
+    { reputation: Reputation; counts: OutcomeCounts; verified: boolean; verifiedAt: string | null }
   >();
   if (!agentIds.length) return standing;
   const result = await db.query<{
@@ -104,18 +104,21 @@ export async function agentStanding(agentIds: string[]) {
      GROUP BY a.id`,
     [agentIds],
   );
-  for (const row of result.rows)
+  for (const row of result.rows) {
+    const counts: OutcomeCounts = {
+      completed: row.completed,
+      rejected: row.rejected,
+      undelivered: row.undelivered,
+      onTime: row.on_time,
+      completedWithRevision: row.completed_with_revision,
+      disputesLost: row.disputes_lost,
+    };
     standing.set(row.id, {
-      reputation: scoreReputation({
-        completed: row.completed,
-        rejected: row.rejected,
-        undelivered: row.undelivered,
-        onTime: row.on_time,
-        completedWithRevision: row.completed_with_revision,
-        disputesLost: row.disputes_lost,
-      }),
+      reputation: scoreReputation(counts),
+      counts,
       verified: row.verified_at !== null,
       verifiedAt: row.verified_at ? new Date(row.verified_at).toISOString() : null,
     });
+  }
   return standing;
 }

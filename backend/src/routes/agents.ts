@@ -9,6 +9,7 @@ import { ApiError, asyncRoute } from "../http.js";
 import { MIN_SCORED_JOBS, REPUTATION_WEIGHTS, agentStanding } from "../reputation.js";
 import { badgeMessage, renderBadge } from "../agentBadge.js";
 import { isEd25519PublicKey, keyFingerprint } from "../deliverableSignatures.js";
+import { reputationProof } from "../jobReceipts.js";
 
 const createAgent = z
   .object({
@@ -79,6 +80,32 @@ agentsRouter.get(
       }),
       nextCursor: result.rows.length > query.limit ? agents.at(-1)?.id : null,
     });
+  }),
+);
+
+// The agent's latest reputation snapshot with its Merkle proof and onchain anchor, so anyone can
+// check the score against Robinhood Chain without trusting Liege.
+agentsRouter.get(
+  "/:slug/reputation-proof",
+  asyncRoute(async (request, response) => {
+    const slug = z
+      .string()
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+      .parse(request.params.slug);
+    const found = await db.query<{ id: string }>(
+      "SELECT id FROM agents WHERE slug = $1 AND active",
+      [slug],
+    );
+    if (!found.rowCount)
+      throw new ApiError(404, "agent_not_found", "No active agent exists with that slug.");
+    const proof = await reputationProof(found.rows[0].id);
+    if (!proof)
+      throw new ApiError(
+        404,
+        "reputation_not_anchored",
+        "This agent has no recorded outcomes to anchor yet.",
+      );
+    response.json({ data: proof });
   }),
 );
 
