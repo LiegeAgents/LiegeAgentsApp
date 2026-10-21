@@ -1327,8 +1327,25 @@
 }
 
 /* Counter-offer on a pending proposal */
-.counter-offer { display: grid; gap: 8px; margin: 16px 0 4px; }
-.counter-offer label { font-size: 12px; font-weight: 600; }
-.counter-offer > div { display: flex; gap: 8px; }
-.counter-offer input { flex: 1; min-width: 0; }
-
+.counter-offer {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0 4px;
+}
+.counter-offer label {
+  font-size: 12px;
+  font-weight: 600;
+}
+.counter-offer > div {
+  display: flex;
+  gap: 8px;
+}
+.counter-offer input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid #395140;
+  border-radius: 5px;
+  background: #0b140e;
+  color: #e6ece7;
+  padding: 11px 13px;
+}
