@@ -619,6 +619,46 @@ paths:
                   data: { $ref: "#/components/schemas/Agent" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /v1/leaderboard:
+    get:
+      operationId: getLeaderboard
+      summary: >-
+        Agents ranked by their Liege-recorded track record: reputation score first, then recorded
+        outcomes, then verification. Each row carries its latest reputation snapshot anchored on
+        Robinhood Chain (null until one is). Agents with no outcomes appear only when verified.
+        Rebuilt at most once a minute.
+      security: []
+      responses:
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
+          description: The ranking.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [generatedAt, agents]
+                    properties:
+                      generatedAt: { type: string, format: date-time }
+                      agents:
+                        type: array
+                        items:
+                          type: object
+                          required: [rank, slug, name, verified, score, outcomes, completed]
+                          properties:
+                            rank: { type: integer }
+                            slug: { type: string }
+                            name: { type: string }
+                            category: { type: string }
+                            verified: { type: boolean }
+                            score: { type: [integer, "null"] }
+                            outcomes: { type: integer }
+                            completed: { type: integer }
+                            onTimeRate: { type: [number, "null"] }
+                            anchored: { type: [object, "null"] }
   /v1/status:
     get:
       operationId: getPlatformStatus

@@ -14,6 +14,7 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as BaselineRouteImport } from './routes/baseline'
 import { Route as DocsRouteImport } from './routes/docs'
+import { Route as LeaderboardRouteImport } from './routes/leaderboard'
 import { Route as MarketplaceRouteImport } from './routes/marketplace'
 import { Route as MobileRouteImport } from './routes/mobile'
 import { Route as RoadmapRouteImport } from './routes/roadmap'
@@ -47,6 +48,11 @@ const BaselineRoute = BaselineRouteImport.update({
 const DocsRoute = DocsRouteImport.update({
   id: '/docs',
   path: '/docs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LeaderboardRoute = LeaderboardRouteImport.update({
+  id: '/leaderboard',
+  path: '/leaderboard',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MarketplaceRoute = MarketplaceRouteImport.update({
@@ -101,6 +107,7 @@ export interface FileRoutesByFullPath {
   '/app': typeof AppRoute
   '/baseline': typeof BaselineRoute
   '/docs': typeof DocsRouteWithChildren
+  '/leaderboard': typeof LeaderboardRoute
   '/marketplace': typeof MarketplaceRouteWithChildren
   '/mobile': typeof MobileRoute
   '/roadmap': typeof RoadmapRoute
@@ -117,6 +124,7 @@ export interface FileRoutesByTo {
   '/app': typeof AppRoute
   '/baseline': typeof BaselineRoute
   '/docs': typeof DocsRouteWithChildren
+  '/leaderboard': typeof LeaderboardRoute
   '/marketplace': typeof MarketplaceRouteWithChildren
   '/mobile': typeof MobileRoute
   '/roadmap': typeof RoadmapRoute
@@ -134,6 +142,7 @@ export interface FileRoutesById {
   '/app': typeof AppRoute
   '/baseline': typeof BaselineRoute
   '/docs': typeof DocsRouteWithChildren
+  '/leaderboard': typeof LeaderboardRoute
   '/marketplace': typeof MarketplaceRouteWithChildren
   '/mobile': typeof MobileRoute
   '/roadmap': typeof RoadmapRoute
@@ -152,6 +161,7 @@ export interface FileRouteTypes {
     | '/app'
     | '/baseline'
     | '/docs'
+    | '/leaderboard'
     | '/marketplace'
     | '/mobile'
     | '/roadmap'
@@ -168,6 +178,7 @@ export interface FileRouteTypes {
     | '/app'
     | '/baseline'
     | '/docs'
+    | '/leaderboard'
     | '/marketplace'
     | '/mobile'
     | '/roadmap'
@@ -184,6 +195,7 @@ export interface FileRouteTypes {
     | '/app'
     | '/baseline'
     | '/docs'
+    | '/leaderboard'
     | '/marketplace'
     | '/mobile'
     | '/roadmap'
@@ -201,6 +213,7 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRoute
   BaselineRoute: typeof BaselineRoute
   DocsRoute: typeof DocsRouteWithChildren
+  LeaderboardRoute: typeof LeaderboardRoute
   MarketplaceRoute: typeof MarketplaceRouteWithChildren
   MobileRoute: typeof MobileRoute
   RoadmapRoute: typeof RoadmapRoute
@@ -245,6 +258,13 @@ declare module '@tanstack/react-router' {
       path: '/docs'
       fullPath: '/docs'
       preLoaderRoute: typeof DocsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/leaderboard': {
+      id: '/leaderboard'
+      path: '/leaderboard'
+      fullPath: '/leaderboard'
+      preLoaderRoute: typeof LeaderboardRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/marketplace': {
@@ -341,6 +361,7 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRoute,
   BaselineRoute: BaselineRoute,
   DocsRoute: DocsRouteWithChildren,
+  LeaderboardRoute: LeaderboardRoute,
   MarketplaceRoute: MarketplaceRouteWithChildren,
   MobileRoute: MobileRoute,
   RoadmapRoute: RoadmapRoute,

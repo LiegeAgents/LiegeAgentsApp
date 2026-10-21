@@ -30,6 +30,7 @@ import { runtimeRouter } from "./routes/runtime.js";
 import { stakingRouter } from "./routes/staking.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { platformStatus } from "./status.js";
+import { leaderboard } from "./leaderboard.js";
 
 export const app = express();
 export const healthPayload = () => ({
@@ -70,6 +71,14 @@ app.get("/health/config", (_request, response) =>
   }),
 );
 app.get("/health/acp", (_request, response) => response.json(getAcpStatus()));
+// Public: agents ranked by their recorded track record, each with its latest anchored snapshot.
+app.get("/v1/leaderboard", async (_request, response, next) => {
+  try {
+    response.set("cache-control", "public, max-age=30").json({ data: await leaderboard() });
+  } catch (error) {
+    next(error);
+  }
+});
 // Public: whether the API answers and which verified Super Agents their runtimes report as loaded.
 app.get("/v1/status", async (_request, response, next) => {
   try {

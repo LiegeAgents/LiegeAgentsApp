@@ -48,6 +48,7 @@ export const api = {
   url: API_URL,
   agents: () => request("/v1/agents"),
   status: () => request("/v1/status").then((body) => body.data),
+  leaderboard: () => request("/v1/leaderboard").then((body) => body.data),
   agent: (slug) => request(`/v1/agents/${encodeURIComponent(slug)}`),
   agentReputation: (slug) => request(`/v1/agents/${encodeURIComponent(slug)}/reputation`),
   agentReputationProof: (slug) =>
