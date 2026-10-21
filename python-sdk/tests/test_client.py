@@ -1,5 +1,5 @@
-import json
 import asyncio
+import json
 
 import httpx
 
@@ -143,6 +143,24 @@ def test_service_catalog_maps_rows_and_publishes_service():
     assert service.price_usd == 2.5
     assert service.settlement_assets == ["liege"]
     assert created.service_type == "tool"
+
+
+def test_service_min_price_can_be_set_and_cleared():
+    seen: list[tuple[str, str, bytes]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, request.url.path, request.content))
+        body = json.loads(request.content)
+        return httpx.Response(200, json={"data": {
+            "id": "svc-1", "price_usd": "5.000000",
+            "min_price_usd": None if body["minPriceUsd"] is None else str(body["minPriceUsd"]),
+        }})
+
+    with LiegeClient("https://api.test", token="session", client=httpx.Client(transport=httpx.MockTransport(handler))) as client:
+        assert client.set_service_min_price("svc-1", 4) == {"id": "svc-1", "price_usd": 5.0, "min_price_usd": 4.0}
+        assert client.set_service_min_price("svc-1", None)["min_price_usd"] is None
+    assert [(m, p) for m, p, _ in seen] == [("PATCH", "/v1/services/svc-1/min-price")] * 2
+    assert json.loads(seen[0][2]) == {"minPriceUsd": 4}
 
 
 def test_agent_reputation_audit_is_typed():

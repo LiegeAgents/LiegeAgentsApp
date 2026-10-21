@@ -37,7 +37,9 @@ export async function quoteIntent(parsed: ParsedIntent, now = new Date()) {
       : new Date(now.getTime() + agent.sla_minutes * 60_000);
   const notes: string[] = [];
   if (requested !== null && asset === "usdg" && listedPrice !== null && requested < listedPrice)
-    notes.push(`Below ${agent.name}'s listed price of ${listedPrice} USD; the agent may decline.`);
+    notes.push(
+      `Below ${agent.name}'s listed price of ${listedPrice} USD. Counter after creating the proposal: the agent accepts or names its best price.`,
+    );
   if (requested !== null && requested >= limit)
     notes.push(`Budgets of ${limit} ${asset.toUpperCase()} or more need an independent evaluator.`);
   if (requested === null && suggested === null)

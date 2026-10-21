@@ -166,6 +166,7 @@ export const chatHelp = () => [
   bold("Commands"),
   "  /agents          List Super Agents you can hire",
   "  /proposals       Show your recent proposals and their status",
+  "  /counter <amount> [id]  Counter a pending proposal's USDG budget (two counters at most)",
   "  /jobs            Show your recent Super Agent jobs",
   "  /job <job-id>    Show one job",
   "  /revise <job-id> <feedback>",
@@ -319,6 +320,7 @@ export class ChatSession {
     this.tracked.set(String(intent.id), { intentStatus: "pending", jobId: null, jobStatus: null });
     this.write(green(`Proposal ${intent.id} is waiting for your approval.`));
     this.write(`Approve or reject it at ${cyan(`${getDashboardUrl()}/app?view=requests`)}`);
+    this.write(dim("Want a lower price? /counter <amount> asks the agent here."));
     this.write(dim("Updates will appear here while the chat is open."));
   }
 
@@ -496,6 +498,30 @@ export class ChatSession {
           this.write(
             `  ${bold(agent.name)}${agent.price_usd ? dim(` · from ${agent.price_usd} USD`) : ""}${agent.sla_minutes ? dim(` · SLA ${agent.sla_minutes} min`) : ""}`,
           );
+        return;
+      }
+      case "counter": {
+        const amount = Number(arg);
+        if (!(amount > 0)) {
+          this.write(yellow("Usage: /counter <USDG amount> [proposal id]"));
+          return;
+        }
+        // The named proposal, else the most recent one still waiting for a decision.
+        const intents = (await request("/v1/super-agents/intents")) as Json[];
+        const target = intents.find((intent) =>
+          extra ? String(intent.id).startsWith(extra) : intent.status === "pending",
+        );
+        if (!target || target.status !== "pending") {
+          this.write(
+            yellow("No pending proposal to counter. Create one first, or check /proposals."),
+          );
+          return;
+        }
+        const answer = (await request(
+          `/v1/super-agents/intents/${encodeURIComponent(String(target.id))}/counter`,
+          { method: "POST", body: JSON.stringify({ budgetAmount: amount }) },
+        )) as Json;
+        this.write(green(String(answer.message)));
         return;
       }
       case "proposals": {

@@ -178,6 +178,34 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+  /v1/services/{id}/min-price:
+    patch:
+      operationId: setServiceMinPrice
+      summary: >-
+        Set, change, or clear (null) the lowest USD price the service accepts when a client
+        counters. Owner only; never shown to clients until offered; at most the listed price.
+        Also settable as minPriceUsd when creating the service.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [minPriceUsd]
+              properties:
+                minPriceUsd: { type: [number, "null"], exclusiveMinimum: 0 }
+      responses:
+        "200":
+          description: The service's prices.
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: object } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /v1/services/{agentId}/{slug}:
     get:
       operationId: getService
@@ -3994,6 +4022,35 @@ paths:
                 properties: { data: { $ref: "#/components/schemas/SuperAgentCall" } }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /v1/super-agents/intents/{id}/counter:
+    post:
+      operationId: counterSuperAgentIntent
+      summary: >-
+        Counter a pending proposal's USDG budget. The agent answers at once by its owner's rule: an
+        offer at or above the service's lowest price (its listed price unless the owner set a lower
+        one) is accepted; a lower offer is met with the lowest price. Each round is kept on the
+        proposal as negotiation; two counters at most. Approving then opens the job at the agreed
+        budget.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [budgetAmount]
+              properties:
+                budgetAmount: { type: number, exclusiveMinimum: 0 }
+      responses:
+        "200":
+          description: The agent's answer and the updated proposal.
+          content:
+            { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /v1/super-agents/intents/{id}/decision:
     post:
       operationId: decideSuperAgentIntent

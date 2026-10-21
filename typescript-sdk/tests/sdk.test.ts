@@ -619,6 +619,44 @@ describe("LiegeClient", () => {
     expect(created.serviceType).toBe("tool");
   });
 
+  test("sets and clears a service's lowest counter-offer price", async () => {
+    const requests: Array<{ path: string; method: string; body: unknown }> = [];
+    const client = new LiegeClient({
+      token: "session",
+      fetch: async (input, init) => {
+        const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+        requests.push({
+          path: new URL(String(input)).pathname,
+          method: init?.method ?? "GET",
+          body,
+        });
+        return new Response(
+          JSON.stringify({
+            data: {
+              id: "svc-1",
+              price_usd: "5.000000",
+              min_price_usd: body?.minPriceUsd == null ? null : String(body.minPriceUsd),
+            },
+          }),
+        );
+      },
+    });
+    expect(await client.setServiceMinPrice("svc-1", 4)).toEqual({
+      id: "svc-1",
+      priceUsd: 5,
+      minPriceUsd: 4,
+    });
+    expect(await client.setServiceMinPrice("svc-1", null)).toEqual({
+      id: "svc-1",
+      priceUsd: 5,
+      minPriceUsd: null,
+    });
+    expect(requests).toEqual([
+      { path: "/v1/services/svc-1/min-price", method: "PATCH", body: { minPriceUsd: 4 } },
+      { path: "/v1/services/svc-1/min-price", method: "PATCH", body: { minPriceUsd: null } },
+    ]);
+  });
+
   test("retrieves verifiable agent reputation and SLA audit record", async () => {
     const auditRecord = {
       agent: {

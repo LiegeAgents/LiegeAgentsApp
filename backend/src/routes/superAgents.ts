@@ -12,6 +12,7 @@ import { latestProgressColumn } from "../jobProgress.js";
 import { quoteIntent } from "../superAgentQuotes.js";
 import { registerScheduleRoutes } from "./superAgentSchedules.js";
 import { registerWatchlistRoutes } from "./superAgentWatchlist.js";
+import { MAX_COUNTERS, counterProposal, type CounterRound } from "../superAgentCounters.js";
 import { registerSquadRoutes } from "./superAgentSquads.js";
 import { registerAuctionRoutes } from "./superAgentAuctions.js";
 import { registerTriggerRoutes } from "./githubTriggers.js";
@@ -40,6 +41,8 @@ const intentShape = z.object({
   deadlineAt: z.string().trim().max(80).nullable().default(null),
   confidence: z.number().min(0).max(1).default(0.5),
 });
+
+const counterInput = z.object({ budgetAmount: z.number().finite().positive() });
 
 const intentAmount = (parsed: z.infer<typeof intentShape>) =>
   parsed.budgetAmount ?? parsed.budgetUsdg;
@@ -577,7 +580,7 @@ superAgentsRouter.get(
         [userId],
       ),
       db.query(
-        `SELECT i.id,i.raw_text,i.parsed,i.status,i.expires_at,i.created_at,i.decided_at,a.id AS agent_id,a.name AS agent_name,a.slug AS agent_slug,
+        `SELECT i.id,i.raw_text,i.parsed,i.negotiation,i.status,i.expires_at,i.created_at,i.decided_at,a.id AS agent_id,a.name AS agent_name,a.slug AS agent_slug,
            j.id AS job_id,j.status AS job_status,${latestProgressColumn("j")}
          FROM superagent_intents i LEFT JOIN agents a ON a.id=i.agent_id
          LEFT JOIN jobs j ON j.client_id=i.user_id AND j.strategy_policy->>'intentId'=i.id::text
@@ -684,7 +687,7 @@ superAgentsRouter.get(
   requireSessionOrMobileAuth("mobile:read"),
   asyncRoute(async (request, response) => {
     const result = await db.query(
-      `SELECT i.id,i.raw_text,i.parsed,i.status,i.source,i.expires_at,i.created_at,i.decided_at,a.id AS agent_id,a.name AS agent_name,j.id AS job_id,j.status AS job_status,
+      `SELECT i.id,i.raw_text,i.parsed,i.negotiation,i.status,i.source,i.expires_at,i.created_at,i.decided_at,a.id AS agent_id,a.name AS agent_name,j.id AS job_id,j.status AS job_status,
        ${latestProgressColumn("j")}
        FROM superagent_intents i LEFT JOIN agents a ON a.id=i.agent_id
        LEFT JOIN jobs j ON j.client_id=i.user_id AND j.strategy_policy->>'intentId'=i.id::text
@@ -692,6 +695,90 @@ superAgentsRouter.get(
       [request.auth!.userId],
     );
     response.json({ data: result.rows });
+  }),
+);
+
+// The client counters a pending proposal's budget; the agent's rule answers at once.
+superAgentsRouter.post(
+  "/intents/:id/counter",
+  requireSessionOrMobileAuth("mobile:approve"),
+  asyncRoute(async (request, response) => {
+    const id = z.string().uuid().parse(request.params.id);
+    const { budgetAmount } = counterInput.parse(request.body);
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const found = await client.query<{
+        parsed: unknown;
+        agent_id: string | null;
+        agent_name: string | null;
+        negotiation: CounterRound[];
+      }>(
+        `SELECT i.parsed, i.agent_id, a.name AS agent_name, i.negotiation
+         FROM superagent_intents i LEFT JOIN agents a ON a.id = i.agent_id
+         WHERE i.id=$1 AND i.user_id=$2 AND i.status='pending' AND i.expires_at > now()
+         FOR UPDATE OF i`,
+        [id, request.auth!.userId],
+      );
+      const intent = found.rows[0];
+      if (!intent)
+        throw new ApiError(
+          409,
+          "proposal_unavailable",
+          "This Super Agent proposal is no longer available.",
+        );
+      if (!intent.agent_id)
+        throw new ApiError(
+          422,
+          "agent_unmatched",
+          "Match this request to an active agent before countering it.",
+        );
+      const parsed = intentShape.parse(intent.parsed);
+      const { round, negotiation } = await counterProposal(
+        client,
+        { agent_id: intent.agent_id, negotiation: intent.negotiation },
+        parsed.settlementAsset,
+        budgetAmount,
+      );
+      const terms = normalizeIntent({
+        ...parsed,
+        budgetAmount: round.agreed,
+        budgetUsdg: round.agreed,
+      });
+      const updated = await client.query(
+        `UPDATE superagent_intents SET parsed=$3, negotiation=$4 WHERE id=$1 AND user_id=$2
+         RETURNING id, parsed, negotiation, status, expires_at`,
+        [id, request.auth!.userId, terms, JSON.stringify(negotiation)],
+      );
+      await audit(client, {
+        actorId: request.auth!.userId,
+        action: "superagent.intent_countered",
+        targetType: "superagent_intent",
+        targetId: id,
+        requestId: request.requestId,
+        metadata: { offer: round.offer, outcome: round.outcome, agreed: round.agreed },
+      });
+      await client.query("COMMIT");
+      const name = intent.agent_name ?? "The agent";
+      const left = MAX_COUNTERS - negotiation.length;
+      response.json({
+        data: {
+          ...updated.rows[0],
+          round,
+          message:
+            round.outcome === "accepted"
+              ? `${name} accepts ${round.agreed} USDG. Approve the proposal to open the job.`
+              : left > 0
+                ? `${name} can do it for ${round.agreed} USDG. Approve at that price, or counter once more.`
+                : `${round.agreed} USDG is ${name}'s best price. Approve it or dismiss the proposal.`,
+        },
+      });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }),
 );
 

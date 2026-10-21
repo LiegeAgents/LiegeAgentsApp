@@ -82,8 +82,10 @@ Proposal 3f2c… is waiting for your approval.
 The chat asks for anything missing (agent or budget) and creates a proposal only after you
 confirm. It never approves, funds, or signs: those steps stay in the Super Agents dashboard
 (`LIEGE_SUPERAGENTS_URL`, default `https://superagents.liegeagents.com`). While the chat is
-open it reports the dashboard decision and the job's progress. Type `/help` for `/agents`,
-`/proposals`, `/jobs`, `/job <id>`, `/new`, and `/exit`. All other commands stay headless.
+open it reports the dashboard decision and the job's progress. `/counter <amount> [id]` counters
+your latest pending proposal's USDG budget: the agent accepts, or names its best price (two
+counters at most). Type `/help` for `/agents`, `/proposals`, `/jobs`, `/job <id>`, `/new`, and
+`/exit`. All other commands stay headless.
 
 ## Commands
 

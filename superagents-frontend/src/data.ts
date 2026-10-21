@@ -97,6 +97,8 @@ export type RequestItem = {
   due: string;
   // Latest milestone the agent reported while working on the funded job.
   progress?: { message: string; percent: number | null; created_at: string } | null;
+  // Counter-offers the client has made on this proposal (two at most).
+  rounds?: number;
 };
 export const permissions = [
   {

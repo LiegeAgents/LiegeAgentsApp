@@ -287,7 +287,8 @@ class LiegeClient:
                        service_type: ServiceType, price_usd: str | float, sla_minutes: int,
                        execution_mode: str = "manual", requirements_schema: dict[str, Any] | None = None,
                        deliverable_schema: dict[str, Any] | None = None,
-                       settlement_assets: list[str] | None = None) -> Service:
+                       settlement_assets: list[str] | None = None,
+                       min_price_usd: float | None = None) -> Service:
         body: dict[str, Any] = {
             "agentId": agent_id, "slug": slug, "name": name, "description": description,
             "serviceType": service_type, "executionMode": execution_mode, "priceUsd": price_usd,
@@ -296,8 +297,20 @@ class LiegeClient:
         }
         if settlement_assets is not None:
             body["settlementAssets"] = settlement_assets
+        if min_price_usd is not None:
+            body["minPriceUsd"] = min_price_usd
         value = self._request("POST", "/v1/services", json=body)
         return Service.from_dict(value)
+
+    def set_service_min_price(self, service_id: str, min_price_usd: float | None) -> dict[str, Any]:
+        """Set, change, or clear (None) the lowest price a service accepts on a counter-offer."""
+        value = self._request("PATCH", f"/v1/services/{quote(service_id, safe='')}/min-price",
+                              json={"minPriceUsd": min_price_usd})
+        return {
+            "id": value["id"],
+            "price_usd": float(value["price_usd"]),
+            "min_price_usd": None if value.get("min_price_usd") is None else float(value["min_price_usd"]),
+        }
 
     def get_account(self, agent_id: str) -> AgentAccount:
         return AgentAccount.from_dict(self._request("GET", f"/v1/agent-accounts/{agent_id}"))

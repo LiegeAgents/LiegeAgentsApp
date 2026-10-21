@@ -1059,6 +1059,9 @@ function Dashboard() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("All");
   const [selected, setSelected] = useState<RequestItem | null>(null);
+  const [counterNote, setCounterNote] = useState("");
+  // Each request opens with a fresh counter-offer note.
+  useEffect(() => setCounterNote(""), [selected?.id]);
   const [agent, setAgent] = useState<Agent | null>(null);
   const [publish, setPublish] = useState(false);
   const [notice, setNotice] = useState<{ title: string; body: string } | null>(null);
@@ -1125,6 +1128,7 @@ function Dashboard() {
               return {
                 id: proposal.id,
                 progress: proposal.progress ?? null,
+                rounds: Array.isArray(proposal.negotiation) ? proposal.negotiation.length : 0,
                 agentName: proposal.agent_name || parsed.agentName || "Unmatched agent",
                 title: parsed.request || proposal.raw_text || "Super Agent request",
                 agentId: matched?.id ?? "",
@@ -1217,6 +1221,35 @@ function Dashboard() {
         title: "Workspace updated",
         body: "Your browser could not save this change locally.",
       });
+  }
+  // A counter-offer on a pending proposal; the agent's rule answers at once with the new terms.
+  async function counterOffer(budgetAmount: number) {
+    if (!selected) return;
+    const token = getSessionToken();
+    if (!token || !/^[0-9a-f-]{36}$/i.test(selected.id)) return;
+    try {
+      const response = await fetch(
+        `${superAgentsApi}/v1/super-agents/intents/${selected.id}/counter`,
+        {
+          method: "POST",
+          headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+          body: JSON.stringify({ budgetAmount }),
+        },
+      );
+      const body = await response.json().catch(() => null);
+      if (!response.ok)
+        throw new Error(body?.error?.message || "The counter-offer could not be sent.");
+      const updated = {
+        ...selected,
+        budget: String(body.data.round.agreed),
+        rounds: body.data.negotiation.length,
+      };
+      setSelected(updated);
+      setCounterNote(body.data.message);
+      setLiveRequests(requests.map((r) => (r.id === updated.id ? updated : r)));
+    } catch (error) {
+      setCounterNote(error instanceof Error ? error.message : "Try again.");
+    }
   }
   async function decide(status: "Approved draft" | "Dismissed") {
     if (!selected) return;
@@ -1932,6 +1965,40 @@ function Dashboard() {
               <dd>{selected.status}</dd>
             </div>
           </dl>
+          {selected.status === "Needs review" &&
+            selected.asset === "USDG" &&
+            /^[0-9a-f-]{36}$/i.test(selected.id) && (
+              <form
+                className="counter-offer"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const value = Number(new FormData(event.currentTarget).get("offer"));
+                  if (value > 0) void counterOffer(value);
+                }}
+              >
+                <label htmlFor="counter-offer">Counter-offer</label>
+                <div>
+                  <input
+                    id="counter-offer"
+                    name="offer"
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    placeholder={`Your price in USDG`}
+                    disabled={(selected.rounds ?? 0) >= 2}
+                  />
+                  <Button secondary type="submit" disabled={(selected.rounds ?? 0) >= 2}>
+                    Counter
+                  </Button>
+                </div>
+                <small className="muted">
+                  {counterNote ||
+                    ((selected.rounds ?? 0) >= 2
+                      ? "The agent's best price stands. Approve it or dismiss the proposal."
+                      : "The agent answers at once: it accepts, or names its best price. Two counters at most.")}
+                </small>
+              </form>
+            )}
           <p className="scope-note">
             Approval records your decision. Any funding or wallet signing remains a separate,
             explicit confirmation.

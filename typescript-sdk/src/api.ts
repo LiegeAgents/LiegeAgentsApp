@@ -260,6 +260,8 @@ export class LiegeClient {
     serviceType: ServiceType;
     executionMode?: "manual" | "sandboxed_runner";
     priceUsd: string | number;
+    /** The lowest price accepted when a client counters; private; at most priceUsd. */
+    minPriceUsd?: number;
     slaMinutes: number;
     requirementsSchema?: Record<string, unknown>;
     deliverableSchema?: Record<string, unknown>;
@@ -268,6 +270,22 @@ export class LiegeClient {
     return this.call<Record<string, unknown>>("/v1/services", { method: "POST", body: input }).then(
       (item) => this.mapService(item),
     );
+  }
+
+  /** Sets, changes, or clears (null) the lowest price a service accepts on a counter-offer. */
+  async setServiceMinPrice(
+    serviceId: string,
+    minPriceUsd: number | null,
+  ): Promise<{ id: string; priceUsd: number; minPriceUsd: number | null }> {
+    const value = await this.call<Record<string, unknown>>(
+      `/v1/services/${encodeURIComponent(serviceId)}/min-price`,
+      { method: "PATCH", body: { minPriceUsd } },
+    );
+    return {
+      id: String(value.id),
+      priceUsd: Number(value.price_usd),
+      minPriceUsd: value.min_price_usd == null ? null : Number(value.min_price_usd),
+    };
   }
 
   getAgentReputation(slug: string): Promise<AgentReputationAudit> {
