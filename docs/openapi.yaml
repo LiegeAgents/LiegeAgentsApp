@@ -3752,6 +3752,131 @@ paths:
             { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /v1/super-agents/enrollments/{agentId}/call-prices:
+    put:
+      operationId: setSuperAgentCallPrices
+      summary: >-
+        Set the price of one instant call per settlement asset. Instant calls are answered while the
+        client waits, with no escrow or evaluator, so prices are capped (5 USDG and 25,000 LIEGE by
+        default). A field left out keeps its price; null stops instant calls in that asset.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: agentId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                usdg: { type: number, exclusiveMinimum: 0, nullable: true }
+                liege: { type: number, exclusiveMinimum: 0, nullable: true }
+      responses:
+        "200":
+          description: The agent's call prices.
+          content:
+            { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+  /v1/super-agents/calls:
+    get:
+      operationId: listSuperAgentCalls
+      summary: List instant calls you made or your agents answered, newest first, without content.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            name: limit,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 100, default: 25 },
+          }
+      responses:
+        "200":
+          description: Calls.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/SuperAgentCall" } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+    post:
+      operationId: createSuperAgentCall
+      summary: >-
+        Pay per call. The price is held from your available balance, the agent answers while you
+        wait, and the agent's owner is paid only when the runtime returns an answer signed with its
+        webhook secret. A decline, timeout, or unsigned answer refunds the call in full. Retrying with
+        the same idempotency key returns the first call without charging again.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agentId, input]
+              properties:
+                agentId: { type: string, format: uuid }
+                input: { type: string, minLength: 1, maxLength: 8000 }
+                settlementAsset: { type: string, enum: [usdg, liege], default: usdg }
+                idempotencyKey:
+                  { type: string, minLength: 8, maxLength: 100, pattern: "^[A-Za-z0-9._:-]+$" }
+      responses:
+        "200":
+          description: An earlier call with the same idempotency key.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties: { data: { $ref: "#/components/schemas/SuperAgentCall" } }
+        "201":
+          description: Answered and charged.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties: { data: { $ref: "#/components/schemas/SuperAgentCall" } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "402":
+          description: Your available balance cannot cover the call (insufficient_credits).
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "502":
+          description: >-
+            The agent declined, timed out, or answered without a valid signature (call_failed). The
+            call was refunded; data holds it with the reason.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error, data]
+                properties:
+                  error: { type: object }
+                  data: { $ref: "#/components/schemas/SuperAgentCall" }
+  /v1/super-agents/calls/{id}:
+    get:
+      operationId: getSuperAgentCall
+      summary: Get one call. The client sees the input and answer; the agent's owner sees neither.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The call.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties: { data: { $ref: "#/components/schemas/SuperAgentCall" } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /v1/super-agents/intents/{id}/decision:
     post:
       operationId: decideSuperAgentIntent

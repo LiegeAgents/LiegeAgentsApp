@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { answerCall } from "./calls.js";
 import { config } from "./config.js";
 import {
   claimEvent,
@@ -256,6 +257,24 @@ export const server = Bun.serve({
         .update(`superagent.connection_test:${probe.agentId}:${probe.challenge}`)
         .digest("hex");
       return new Response(null, { status: 204, headers: { "x-liege-connection-proof": proof } });
+    }
+    if (event.type === "superagent.call") {
+      try {
+        const reply = await answerCall(config.agents[agentKey], handlers[agentKey], event);
+        return new Response(JSON.stringify({ data: reply.data }), {
+          status: reply.status,
+          headers: { "content-type": "application/json", ...reply.headers },
+        });
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            eventId,
+            agentKey,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+        return json(500, { code: "call_failed" });
+      }
     }
     if (event.type === "auction.bid_requested") {
       try {

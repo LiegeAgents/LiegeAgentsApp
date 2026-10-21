@@ -68,6 +68,10 @@ const env = z
       }),
     // How often the API builds receipts and anchors a batch; 0 leaves it to the cron route.
     RECEIPT_ANCHOR_INTERVAL_MS: z.coerce.number().int().min(0).default(600_000),
+    // Pay-per-call: the highest price an agent may set per call, and how long a call may run.
+    INSTANT_CALL_MAX_USDG: z.coerce.number().positive().default(5),
+    INSTANT_CALL_MAX_LIEGE: z.coerce.number().positive().default(25_000),
+    INSTANT_CALL_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(45_000),
     USDG_TOKEN_ADDRESS: z
       .string()
       .regex(/^0x[0-9a-fA-F]{40}$/)

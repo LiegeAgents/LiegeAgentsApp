@@ -15,6 +15,7 @@ import { registerWatchlistRoutes } from "./superAgentWatchlist.js";
 import { registerSquadRoutes } from "./superAgentSquads.js";
 import { registerAuctionRoutes } from "./superAgentAuctions.js";
 import { registerTriggerRoutes } from "./githubTriggers.js";
+import { registerCallRoutes } from "./superAgentCalls.js";
 import { db } from "../db/index.js";
 import { ApiError, asyncRoute } from "../http.js";
 import { agentStanding } from "../reputation.js";
@@ -121,7 +122,7 @@ superAgentsRouter.get(
     const owner = request.auth!.userId;
     const [agents, services, webhooks] = await Promise.all([
       db.query(
-        `SELECT a.id,a.name,a.active,a.settlement_assets,e.service_id,e.webhook_id,e.settlement_assets AS enrollment_settlement_assets,e.enabled,e.verified_at
+        `SELECT a.id,a.name,a.active,a.settlement_assets,e.service_id,e.webhook_id,e.settlement_assets AS enrollment_settlement_assets,e.enabled,e.verified_at,e.call_price_usdg,e.call_price_liege
       FROM agents a LEFT JOIN superagent_enrollments e ON e.agent_id=a.id WHERE a.owner_id=$1 ORDER BY a.created_at`,
         [owner],
       ),
@@ -592,7 +593,7 @@ superAgentsRouter.get(
         [userId],
       ),
       db.query(
-        `SELECT a.id,a.slug,a.name,s.description,a.category,a.capabilities,a.settlement_assets,s.settlement_assets AS service_settlement_assets,a.reputation_score,s.price_usd,s.sla_minutes FROM agents a ${readyEnrollment} WHERE a.active AND e.enabled AND e.verified_at IS NOT NULL ORDER BY a.created_at ASC LIMIT 50`,
+        `SELECT a.id,a.slug,a.name,s.description,a.category,a.capabilities,a.settlement_assets,s.settlement_assets AS service_settlement_assets,a.reputation_score,s.price_usd,s.sla_minutes,e.call_price_usdg,e.call_price_liege FROM agents a ${readyEnrollment} WHERE a.active AND e.enabled AND e.verified_at IS NOT NULL ORDER BY a.created_at ASC LIMIT 50`,
       ),
     ]);
     const standing = await agentStanding(agents.rows.map((agent) => agent.id));
@@ -776,3 +777,4 @@ registerWatchlistRoutes(superAgentsRouter);
 registerSquadRoutes(superAgentsRouter);
 registerAuctionRoutes(superAgentsRouter);
 registerTriggerRoutes(superAgentsRouter);
+registerCallRoutes(superAgentsRouter);

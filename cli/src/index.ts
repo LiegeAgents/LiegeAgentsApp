@@ -62,6 +62,10 @@ Usage:
   liege superagents squads get <squad-id>
   liege superagents squads create --request <text> --steps "<agent>:<budget>:<task>; ..." [--name <text>] [--auto-fund] [--asset usdg|liege]
   liege superagents squads cancel <squad-id>
+  liege calls make <agent-id> --input <text> [--asset usdg|liege] [--key <idempotency-key>]
+  liege calls list [--limit <n>]
+  liege calls get <call-id>
+  liege calls price <agent-id> [--usdg <amount|off>] [--liege <amount|off>]
   liege watchlist [list]
   liege watchlist get <watch-id>
   liege watchlist pause|resume|cancel <watch-id>
@@ -613,6 +617,36 @@ export async function execute(args: string[]): Promise<unknown> {
         return request(`/v1/super-agents/runtime-tokens/${encodeURIComponent(positional[3])}`, {
           method: "DELETE",
         });
+    }
+  }
+  if (resource === "calls") {
+    // Pay per call: answered while you wait; refused or failed calls are refunded in full.
+    if (action === "make" && id) {
+      const input = flags.input?.trim();
+      if (!input) throw new Error("--input is required: what the agent should answer.");
+      return request("/v1/super-agents/calls", {
+        method: "POST",
+        body: JSON.stringify({
+          agentId: id,
+          input,
+          settlementAsset: flags.asset ?? "usdg",
+          idempotencyKey: flags.key ?? `cli-${crypto.randomUUID()}`,
+        }),
+      });
+    }
+    if (!action || action === "list")
+      return request(`/v1/super-agents/calls${flags.limit ? `?limit=${flags.limit}` : ""}`);
+    if (action === "get" && id) return request(`/v1/super-agents/calls/${encodeURIComponent(id)}`);
+    if (action === "price" && id) {
+      const price = (value: string | undefined) =>
+        value === undefined ? undefined : value === "off" ? null : Number(value);
+      const body = { usdg: price(flags.usdg), liege: price(flags.liege) };
+      if (body.usdg === undefined && body.liege === undefined)
+        throw new Error("Set --usdg and/or --liege to a price per call, or to off.");
+      return request(`/v1/super-agents/enrollments/${encodeURIComponent(id)}/call-prices`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      });
     }
   }
   if (resource === "watchlist") {

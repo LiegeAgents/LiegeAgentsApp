@@ -35,7 +35,9 @@ const payload = (
     | "bid"
     | "github-trigger"
     | "artifact"
-    | "watch-snapshot",
+    | "watch-snapshot"
+    | "call-input"
+    | "call-output",
   id = table === "jobs" ? "id" : "job_id",
 ) => ({
   table,
@@ -61,6 +63,8 @@ const targets: Target[] = [
   payload("superagent_bids", "approach_ciphertext", "bid", "id"),
   payload("superagent_triggers", "secret_ciphertext", "github-trigger", "id"),
   payload("superagent_watch_runs", "snapshot_ciphertext", "watch-snapshot"),
+  payload("superagent_calls", "input_ciphertext", "call-input", "id"),
+  payload("superagent_calls", "output_ciphertext", "call-output", "id"),
   {
     table: "escrow_wallets",
     id: "job_id",

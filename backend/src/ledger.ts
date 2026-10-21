@@ -3,7 +3,7 @@ import type { PoolClient } from "pg";
 import { ApiError } from "./http.js";
 import { ASSET_DECIMALS, assetLabel, type SettlementAsset } from "./assets.js";
 
-type AccountKind = "available" | "escrow" | "stake" | "platform_clearing";
+type AccountKind = "available" | "escrow" | "stake" | "held" | "platform_clearing";
 
 async function account(
   client: PoolClient,
@@ -192,4 +192,12 @@ export async function escrowAccount(
   asset: SettlementAsset = "usdg",
 ) {
   return account(client, "escrow", { jobId, asset });
+}
+
+/** A user's available and held accounts; held carries the price of their open instant calls. */
+export async function callAccounts(client: PoolClient, userId: string, asset: SettlementAsset) {
+  return {
+    available: await account(client, "available", { userId, asset }),
+    held: await account(client, "held", { userId, asset }),
+  };
 }

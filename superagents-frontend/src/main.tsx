@@ -3,11 +3,13 @@ import { createRoot } from "react-dom/client";
 import { Enrollment } from "./Enrollment";
 import { Recurring } from "./Recurring";
 import { Watchlist } from "./Watchlist";
+import { Instant } from "./Instant";
 import { Squads } from "./Squads";
 import { Bids } from "./Bids";
 import { Triggers } from "./Triggers";
 import {
   ArrowUpRight,
+  Zap,
   ArrowRight,
   Check,
   ChevronLeft,
@@ -792,6 +794,7 @@ const tabs = [
   { id: "squads", label: "Squads", icon: Workflow },
   { id: "recurring", label: "Recurring", icon: Repeat },
   { id: "watchlist", label: "Watchlist", icon: Eye },
+  { id: "instant", label: "Instant", icon: Zap },
   { id: "github", label: "GitHub", icon: GitPullRequest },
   { id: "agents", label: "Agents", icon: Users },
   { id: "activity", label: "Activity", icon: Activity },
@@ -824,6 +827,8 @@ type DiscoverableAgent = {
   category?: string;
   capabilities?: string[];
   settlement_assets?: string[];
+  call_price_usdg?: string | null;
+  call_price_liege?: string | null;
 };
 
 function SuperAgentChat({
@@ -1740,6 +1745,26 @@ function Dashboard() {
                   <Eye size={28} />
                   <h3>Connect to watch a token.</h3>
                   <p>Sign in with your Liege wallet to have Constantine re-check a token daily.</p>
+                  <a className="button" href="/auth">
+                    Connect wallet
+                  </a>
+                </div>
+              </section>
+            ))}
+          {tab === "instant" &&
+            (getSessionToken() ? (
+              <Instant
+                api={superAgentsApi}
+                token={getSessionToken()!}
+                agents={catalog}
+                notify={setNotice}
+              />
+            ) : (
+              <section className="panel">
+                <div className="empty">
+                  <Zap size={28} />
+                  <h3>Connect to ask an agent instantly.</h3>
+                  <p>Sign in with your Liege wallet to pay per call from your Liege balance.</p>
                   <a className="button" href="/auth">
                     Connect wallet
                   </a>

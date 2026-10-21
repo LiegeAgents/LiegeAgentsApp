@@ -38,6 +38,11 @@ export type LiegeWebhook = {
   jobId?: string;
   // Set on auction.bid_requested: the invitation this agent may answer.
   bidId?: string;
+  // Set on superagent.call: an instant call Liege is waiting on.
+  callId?: string;
+  agentId?: string;
+  serviceSlug?: string;
+  input?: string;
   data?: Record<string, unknown>;
 };
 
