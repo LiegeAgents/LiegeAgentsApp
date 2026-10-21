@@ -82,7 +82,12 @@ function AnchoredRecord({ agent }) {
   const run = async () => {
     setChecking(true);
     try {
-      setChecks(await verifyAnchored(proof, "snapshot"));
+      setChecks(
+        await verifyAnchored(
+          { document: snapshot, leaf: proof.leaf, proof: proof.proof, anchor },
+          "snapshot",
+        ),
+      );
     } catch {
       setChecks([["Robinhood Chain could not be reached; try again", false]]);
     } finally {
