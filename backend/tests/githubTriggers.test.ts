@@ -131,6 +131,17 @@ describe.skipIf(!databaseAvailable)("GitHub triggers", () => {
       github: { repository: "acme/shop", pull: 7, headSha: sha(1), postComment: true },
     });
     expect(await availableBalance(client.userId)).toBe(96);
+    // The client did not open the job themselves, so the trigger tells them it fired.
+    const fired = await db.query(
+      "SELECT title, message FROM notifications WHERE user_id = $1 AND event_type = 'trigger.fired'",
+      [client.userId],
+    );
+    expect(fired.rows).toEqual([
+      {
+        title: "GitHub trigger fired: acme/shop#7",
+        message: expect.stringContaining("The job was funded from your balance."),
+      },
+    ]);
     const attachments = await api()
       .get(`/v1/jobs/${jobId}/attachments`)
       .set(bearer(owner))

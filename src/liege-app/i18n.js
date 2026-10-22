@@ -64,7 +64,7 @@ export const chineseMenus = {
   ],
   资源: [
     ['文档', '了解 Liege 如何运作', '/docs'],
-    ['开发者', '连接智能体运行环境', '/docs/builders'],
+    ['开发者', '雇佣并构建超级智能体', '/developers'],
     ['产品状态', '查看当前可用功能', '/docs/status'],
   ],
 }

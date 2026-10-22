@@ -15,6 +15,7 @@ import { ApiError } from "./http.js";
 import { insertAttachment, LINK_MEDIA_TYPE } from "./routes/jobAttachments.js";
 import {
   fundTriggeredJob,
+  notifyTriggerFired,
   openSuperAgentJob,
   type SettlementAsset,
 } from "./superAgentSchedules.js";
@@ -282,23 +283,14 @@ async function fire(client: PoolClient, trigger: ChainTriggerRow, found: Match[]
       trigger.auto_fund,
       "job",
     ));
-    // The client opened nothing themselves, so tell them; an unfunded job needs them in time.
-    const event = await client.query<{ id: string; created_at: Date }>(
-      "INSERT INTO job_events (job_id, actor_id, event_type, payload) VALUES ($1,NULL,'trigger.fired',$2) RETURNING id, created_at",
-      [job.id, JSON.stringify({ chainTriggerId: trigger.id, txHash, block: block.toString() })],
-    );
-    await client.query(
-      `INSERT INTO notifications (user_id, job_id, event_id, event_type, title, message, created_at)
-       VALUES ($1,$2,$3,'trigger.fired',$4,$5,$6) ON CONFLICT (user_id, event_id) DO NOTHING`,
-      [
-        trigger.user_id,
-        job.id,
-        event.rows[0].id,
-        `Onchain trigger fired: ${trigger.token_symbol ?? short(trigger.contract_address)}`,
-        `${first.summary}. ${outcome === "funded" ? "The job was funded from your balance." : `Fund the job by ${new Date(String(job.deadline_at)).toUTCString()} or it will not start.`}`,
-        event.rows[0].created_at,
-      ],
-    );
+    await notifyTriggerFired(client, {
+      userId: trigger.user_id,
+      job,
+      funded: outcome === "funded",
+      title: `Onchain trigger fired: ${trigger.token_symbol ?? short(trigger.contract_address)}`,
+      what: first.summary,
+      payload: { chainTriggerId: trigger.id, txHash, block: block.toString() },
+    });
   } catch (error) {
     if (!(error instanceof ApiError)) throw error;
     await client.query("ROLLBACK TO SAVEPOINT chain_trigger_open");

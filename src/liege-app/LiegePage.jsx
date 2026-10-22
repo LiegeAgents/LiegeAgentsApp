@@ -14,6 +14,7 @@ const ReferencePage = lazy(() => import('./ReferencePage'))
 const Roadmap = lazy(() => import('./Roadmap'))
 const Status = lazy(() => import('./Status'))
 const Leaderboard = lazy(() => import('./Leaderboard'))
+const Developers = lazy(() => import('./Developers'))
 const Whitepaper = lazy(() => import('./Whitepaper'))
 
 const BODY_CLASSES =
@@ -78,6 +79,14 @@ export function LiegeLeaderboard() {
   return (
     <Shell>
       <Leaderboard />
+    </Shell>
+  )
+}
+
+export function LiegeDevelopers() {
+  return (
+    <Shell>
+      <Developers />
     </Shell>
   )
 }

@@ -416,16 +416,22 @@ export default function Workspace() {
       [
         ...notificationInbox.items.map((item) => ({
           id: `inbox-${item.id}`,
+          // A fired trigger whose job still needs funding asks for attention until it is funded.
           tone:
             item.event_type === "watch.alert"
               ? "danger"
-              : item.event_type === "job.rejected" || item.event_type === "job.expired"
+              : item.event_type === "job.rejected" ||
+                  item.event_type === "job.expired" ||
+                  (item.event_type === "trigger.fired" &&
+                    allJobs.find((job) => job.id === item.job_id)?.status === "Open")
                 ? "warning"
                 : "active",
           label:
             item.event_type === "watch.alert"
               ? "watchlist alert"
-              : item.event_type.replace("job.", "").replaceAll("_", " "),
+              : item.event_type === "trigger.fired"
+                ? "trigger"
+                : item.event_type.replace("job.", "").replaceAll("_", " "),
           title: item.title,
           detail: item.message,
           date: item.created_at,

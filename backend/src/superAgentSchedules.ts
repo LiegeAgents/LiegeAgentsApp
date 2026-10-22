@@ -138,6 +138,43 @@ export async function openSuperAgentJob(
  * does for ledger escrow. On-chain jobs need the client's wallet and are never funded here.
  */
 /**
+ * Tells the client a trigger opened a job for them. They did not open it themselves, so the usual
+ * job notification skips them; an unfunded job needs them before its deadline.
+ */
+export async function notifyTriggerFired(
+  client: PoolClient,
+  input: {
+    userId: string;
+    job: { id: string; deadline_at?: unknown };
+    funded: boolean;
+    title: string;
+    what: string;
+    payload: Record<string, unknown>;
+  },
+) {
+  const event = await client.query<{ id: string; created_at: Date }>(
+    "INSERT INTO job_events (job_id, actor_id, event_type, payload) VALUES ($1,NULL,'trigger.fired',$2) RETURNING id, created_at",
+    [input.job.id, JSON.stringify(input.payload)],
+  );
+  await client.query(
+    `INSERT INTO notifications (user_id, job_id, event_id, event_type, title, message, created_at)
+     VALUES ($1,$2,$3,'trigger.fired',$4,$5,$6) ON CONFLICT (user_id, event_id) DO NOTHING`,
+    [
+      input.userId,
+      input.job.id,
+      event.rows[0].id,
+      input.title,
+      `${input.what}. ${
+        input.funded
+          ? "The job was funded from your balance."
+          : `Fund the job by ${new Date(String(input.job.deadline_at)).toUTCString()} or it will not start.`
+      }`,
+      event.rows[0].created_at,
+    ],
+  );
+}
+
+/**
  * After a trigger opens a job: funds it from the client's balance when the trigger allows it and
  * the job is in ledger escrow; otherwise says why the client funds it from the dashboard.
  */

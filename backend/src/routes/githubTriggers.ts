@@ -11,6 +11,7 @@ import { ApiError, asyncRoute } from "../http.js";
 import { insertAttachment, LINK_MEDIA_TYPE } from "./jobAttachments.js";
 import {
   fundTriggeredJob,
+  notifyTriggerFired,
   openSuperAgentJob,
   readySuperAgent,
   type SettlementAsset,
@@ -336,6 +337,14 @@ async function runTrigger(
         trigger.auto_fund,
         "review",
       ));
+      await notifyTriggerFired(client, {
+        userId: trigger.user_id,
+        job,
+        funded: outcome === "funded",
+        title: `GitHub trigger fired: ${trigger.repository}#${pull.number}`,
+        what: `${trigger.agent_name} will review "${pull.title.slice(0, 120)}"`,
+        payload: { triggerId: trigger.id, pull: pull.number, headSha: pull.head.sha },
+      });
     } catch (error) {
       if (!(error instanceof ApiError)) throw error;
       await client.query("ROLLBACK TO SAVEPOINT trigger_open");
