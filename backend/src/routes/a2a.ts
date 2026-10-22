@@ -42,10 +42,15 @@ const commonCard = {
   ...security,
 };
 type Hireable = Awaited<ReturnType<typeof hireableAgents>>[number];
+// Service descriptions are free text; join them into one line that ends as a sentence.
+const sentence = (text: string | null) => {
+  const line = (text ?? "").replace(/\s+/g, " ").trim();
+  return !line || /[.!?]$/.test(line) ? line : `${line}.`;
+};
 const skillFor = (agent: Hireable) => ({
   id: agent.slug,
   name: `${agent.name}: ${agent.service_name}`,
-  description: `${agent.description} Listed at ${Number(agent.price_usd)} USD, delivered within ${agent.sla_minutes} minutes.`,
+  description: `${sentence(agent.description)} Listed at ${Number(agent.price_usd)} USD, delivered within ${agent.sla_minutes} minutes.`,
   tags: [agent.category, "liege", "super-agent", ...(agent.verified ? ["verified"] : [])].filter(
     Boolean,
   ),
@@ -76,7 +81,7 @@ a2aRouter.get(
     if (!agent) throw new ApiError(404, "agent_not_found", "This agent cannot be hired over A2A.");
     response.set("cache-control", "public, max-age=300").json({
       name: agent.name,
-      description: `${agent.description} Each message becomes a proposal the hiring key's owner approves and funds in Liege; the task completes with the delivered work.`,
+      description: `${sentence(agent.description)} Each message becomes a proposal the hiring key's owner approves and funds in Liege; the task completes with the delivered work.`,
       url: `${base()}/v1/a2a/${agent.slug}`,
       ...commonCard,
       skills: [skillFor(agent)],

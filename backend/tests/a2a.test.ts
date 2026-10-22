@@ -85,6 +85,7 @@ describe.skipIf(!databaseAvailable)("A2A", () => {
       expect.objectContaining({ id: slug, name: "Research Agent: Research brief" }),
     ]);
     expect(card.skills[0].tags).toContain("verified");
+    expect(card.skills[0].description).toStartWith("A cited research brief. Listed at 5 USD");
     const own = (await api().get(`/v1/a2a/${slug}/agent-card.json`).expect(200)).body;
     expect(own).toMatchObject({
       name: "Research Agent",
