@@ -137,6 +137,42 @@ export async function openSuperAgentJob(
  * Funds an open ledger job from the client's available balance, as `POST /v1/jobs/:id/fund`
  * does for ledger escrow. On-chain jobs need the client's wallet and are never funded here.
  */
+/**
+ * After a trigger opens a job: funds it from the client's balance when the trigger allows it and
+ * the job is in ledger escrow; otherwise says why the client funds it from the dashboard.
+ */
+export async function fundTriggeredJob(
+  client: PoolClient,
+  job: { id: string; escrow_mode: string },
+  userId: string,
+  autoFund: boolean,
+  noun: string,
+): Promise<{ outcome: "funded" | "awaiting_funding"; detail: string | null }> {
+  if (!autoFund)
+    return {
+      outcome: "awaiting_funding",
+      detail: `Auto-funding is off. Fund this ${noun} in your dashboard.`,
+    };
+  if (job.escrow_mode !== "ledger")
+    return {
+      outcome: "awaiting_funding",
+      detail: `On-chain escrow needs your wallet. Fund this ${noun} in your dashboard.`,
+    };
+  await client.query("SAVEPOINT trigger_fund");
+  try {
+    await fundLedgerJob(client, job.id, userId);
+    await client.query("RELEASE SAVEPOINT trigger_fund");
+    return { outcome: "funded", detail: null };
+  } catch (error) {
+    if (!(error instanceof ApiError)) throw error;
+    await client.query("ROLLBACK TO SAVEPOINT trigger_fund");
+    return {
+      outcome: "awaiting_funding",
+      detail: `${error.message} Fund this ${noun} in your dashboard.`,
+    };
+  }
+}
+
 export async function fundLedgerJob(client: PoolClient, jobId: string, userId: string) {
   const found = await client.query<{
     client_id: string;

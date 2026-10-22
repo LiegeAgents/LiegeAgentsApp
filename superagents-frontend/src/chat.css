@@ -1373,3 +1373,14 @@
 .hire-key-item header small {
   text-transform: none;
 }
+
+/* Onchain triggers */
+.chain-trigger-item header small {
+  text-transform: none;
+}
+.chain-tx-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}

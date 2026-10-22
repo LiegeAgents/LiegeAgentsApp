@@ -6,6 +6,7 @@ import { ApiError, asyncRoute } from "../http.js";
 import { escrowAccount, transfer, userBalance } from "../ledger.js";
 import { planSettlement, processPendingSettlements } from "../settlement.js";
 import { processDueSchedules } from "../superAgentSchedules.js";
+import { processChainTriggers } from "../chainTriggers.js";
 import { anchorReceipts } from "../jobReceipts.js";
 import { deliverPendingWebhooks, enqueueWebhookEvent } from "../webhooks.js";
 
@@ -155,6 +156,15 @@ cronRouter.post(
   "/run-schedules",
   asyncRoute(async (_request, response) => {
     response.json({ data: { runs: await processDueSchedules() } });
+  }),
+);
+
+// Onchain triggers also poll in-process (CHAIN_TRIGGERS_INTERVAL_MS); each block range is
+// scanned once per trigger, so calling this as well is safe.
+cronRouter.post(
+  "/run-chain-triggers",
+  asyncRoute(async (_request, response) => {
+    response.json({ data: { runs: await processChainTriggers() } });
   }),
 );
 

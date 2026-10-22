@@ -10,7 +10,7 @@ import { db } from "../db/index.js";
 import { ApiError, asyncRoute } from "../http.js";
 import { insertAttachment, LINK_MEDIA_TYPE } from "./jobAttachments.js";
 import {
-  fundLedgerJob,
+  fundTriggeredJob,
   openSuperAgentJob,
   readySuperAgent,
   type SettlementAsset,
@@ -329,22 +329,13 @@ async function runTrigger(
            runs_count = runs_count + 1, updated_at = now() WHERE id = $1`,
         [trigger.id, String(budget)],
       );
-      outcome = "awaiting_funding";
-      if (!trigger.auto_fund) detail = "Auto-funding is off. Fund this review in your dashboard.";
-      else if (job.escrow_mode !== "ledger")
-        detail = "On-chain escrow needs your wallet. Fund this review in your dashboard.";
-      else {
-        await client.query("SAVEPOINT trigger_fund");
-        try {
-          await fundLedgerJob(client, job.id, trigger.user_id);
-          await client.query("RELEASE SAVEPOINT trigger_fund");
-          outcome = "funded";
-        } catch (error) {
-          if (!(error instanceof ApiError)) throw error;
-          await client.query("ROLLBACK TO SAVEPOINT trigger_fund");
-          detail = `${error.message} Fund this review in your dashboard.`;
-        }
-      }
+      ({ outcome, detail } = await fundTriggeredJob(
+        client,
+        job,
+        trigger.user_id,
+        trigger.auto_fund,
+        "review",
+      ));
     } catch (error) {
       if (!(error instanceof ApiError)) throw error;
       await client.query("ROLLBACK TO SAVEPOINT trigger_open");

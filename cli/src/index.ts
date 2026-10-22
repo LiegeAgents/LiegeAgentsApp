@@ -58,6 +58,10 @@ Usage:
   liege superagents triggers list
   liege superagents triggers get <trigger-id>
   liege superagents triggers pause|resume|cancel <trigger-id>
+  liege superagents onchain create --agent-id <id> --token <0x…> --budget <n> --cap <n> [--min <tokens>] [--address <0x…>] [--cooldown <minutes>] [--max-per-day <n>] [--instructions <text>] [--auto-fund] [--asset usdg|liege]
+  liege superagents onchain create --agent-id <id> --contract <0x…> --event "<Event(type indexed name, …)>" --budget <n> --cap <n> [...]
+  liege superagents onchain list
+  liege superagents onchain get|pause|resume|cancel <trigger-id>
   liege superagents squads list
   liege superagents squads get <squad-id>
   liege superagents squads create --request <text> --steps "<agent>:<budget>:<task>; ..." [--name <text>] [--auto-fund] [--asset usdg|liege]
@@ -576,6 +580,47 @@ export async function execute(args: string[]): Promise<unknown> {
             spendCap: Number(flags.cap),
             autoFund: flags["auto-fund"] === "true",
             postComment: flags["no-comment"] !== "true",
+            source: "cli",
+          }),
+        });
+      }
+    }
+    // Onchain triggers: a Robinhood Chain event opens a capped job for the agent.
+    if (action === "onchain") {
+      const target = positional[3];
+      const path = (suffix = "") =>
+        `/v1/super-agents/chain-triggers/${encodeURIComponent(target!)}${suffix}`;
+      if (!id || id === "list") return request("/v1/super-agents/chain-triggers");
+      if (id === "get" && target) return request(path());
+      if (id === "pause" && target) return request(path("/pause"), { method: "POST" });
+      if (id === "resume" && target) return request(path("/resume"), { method: "POST" });
+      if (id === "cancel" && target) return request(path(), { method: "DELETE" });
+      if (id === "create") {
+        const agentId = flags["agent-id"] ?? flags.agentId;
+        const contract = flags.token ?? flags.contract;
+        if (!agentId || !contract || !flags.budget || !flags.cap)
+          throw new Error(
+            "Provide --agent-id, --token (or --contract with --event), --budget and --cap.",
+          );
+        const event = !flags.token && flags.event;
+        if (!flags.token && !event)
+          throw new Error("Use --token for transfers, or --contract with --event.");
+        return request("/v1/super-agents/chain-triggers", {
+          method: "POST",
+          body: JSON.stringify({
+            agentId,
+            kind: event ? "contract_event" : "token_transfer",
+            contract,
+            ...(event ? { eventSignature: event } : {}),
+            ...(flags.min ? { minAmount: Number(flags.min) } : {}),
+            ...(flags.address ? { watchAddress: flags.address } : {}),
+            ...(flags.cooldown ? { cooldownMinutes: Number(flags.cooldown) } : {}),
+            ...(flags["max-per-day"] ? { maxRunsPerDay: Number(flags["max-per-day"]) } : {}),
+            ...(flags.instructions ? { instructions: flags.instructions } : {}),
+            settlementAsset: (flags.asset ?? "usdg").toLowerCase(),
+            budgetAmount: Number(flags.budget),
+            spendCap: Number(flags.cap),
+            autoFund: flags["auto-fund"] === "true",
             source: "cli",
           }),
         });

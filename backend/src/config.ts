@@ -23,6 +23,8 @@ const env = z
     // How often the API looks for due recurring Super Agent jobs; 0 disables the in-process
     // scheduler (POST /v1/cron/run-schedules still works).
     SUPERAGENT_SCHEDULES_INTERVAL_MS: z.coerce.number().int().min(0).default(60_000),
+    // Polls Robinhood Chain for onchain trigger events; 0 disables it. No calls without active triggers.
+    CHAIN_TRIGGERS_INTERVAL_MS: z.coerce.number().int().min(0).default(60_000),
     DATABASE_URL: z.string().url(),
     RHC_ID: z.coerce.number().int().positive().default(4663),
     RHC_RPC_URL: z.string().url(),

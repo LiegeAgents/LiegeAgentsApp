@@ -2523,6 +2523,24 @@ paths:
                   data:
                     type: object
                     properties: { runs: { type: array, items: { type: object } } }
+  /v1/cron/run-chain-triggers:
+    post:
+      operationId: runChainTriggers
+      summary: Scan new Robinhood Chain blocks for active onchain triggers. Each block range is scanned once per trigger.
+      security: [{ cronSecret: [] }]
+      responses:
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
+          description: Triggers scanned in this pass.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    properties: { runs: { type: array, items: { type: object } } }
   /v1/cron/deliver-webhooks:
     post:
       operationId: deliverWebhooks
@@ -3523,6 +3541,129 @@ paths:
     post:
       operationId: resumeSuperAgentTrigger
       summary: Resume a paused trigger. Operator sessions only.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Trigger.
+          content:
+            { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/super-agents/chain-triggers:
+    get:
+      operationId: listSuperAgentChainTriggers
+      summary: Your onchain triggers with their latest runs.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Triggers, active and paused first.
+          content:
+            { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+    post:
+      operationId: createSuperAgentChainTrigger
+      summary: >-
+        Have a Super Agent act on a Robinhood Chain event: a token transfer (optionally only of at
+        least minAmount tokens, and only to or from watchAddress) or any event of a contract, named
+        by its signature. Liege scans new blocks once a minute; the first matching event opens a job
+        at the per-run budget with the transaction attached, within the spending cap, the cooldown,
+        the daily maximum, and at most one job waiting for funding at a time. With autoFund, ledger
+        escrow is funded from your balance; otherwise you are notified to fund the job before its
+        deadline. Only events after creation count. Operator sessions only.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agentId, contract, budgetAmount, spendCap]
+              properties:
+                agentId: { type: string, format: uuid }
+                kind:
+                  { type: string, enum: [token_transfer, contract_event], default: token_transfer }
+                contract: { type: string, pattern: "^0x[0-9a-fA-F]{40}$" }
+                minAmount:
+                  { type: number, exclusiveMinimum: 0, description: Transfers only, in tokens. }
+                watchAddress: { type: string, description: Transfers only; matches from or to. }
+                eventSignature:
+                  {
+                    type: string,
+                    description: "Contract events only, e.g. OwnershipTransferred(address indexed previousOwner, address indexed newOwner).",
+                  }
+                instructions: { type: string, maxLength: 2000 }
+                settlementAsset: { type: string, enum: [usdg, liege], default: usdg }
+                budgetAmount: { type: number, exclusiveMinimum: 0, description: Budget per job. }
+                spendCap: { type: number, exclusiveMinimum: 0 }
+                cooldownMinutes: { type: integer, minimum: 5, maximum: 10080, default: 60 }
+                maxRunsPerDay: { type: integer, minimum: 1, maximum: 48, default: 4 }
+                autoFund: { type: boolean, default: false }
+                source: { type: string, enum: [dashboard, cli], default: dashboard }
+      responses:
+        "201":
+          description: Trigger created.
+          content:
+            { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/InvalidRequest" }
+
+  /v1/super-agents/chain-triggers/{id}:
+    get:
+      operationId: getSuperAgentChainTrigger
+      summary: One of your onchain triggers with its latest runs.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Trigger.
+          content:
+            { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: cancelSuperAgentChainTrigger
+      summary: Cancel an onchain trigger. Jobs already opened are kept.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Trigger.
+          content:
+            { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/super-agents/chain-triggers/{id}/pause:
+    post:
+      operationId: pauseSuperAgentChainTrigger
+      summary: Stop acting on events until resumed.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Trigger.
+          content:
+            { application/json: { schema: { $ref: "#/components/schemas/SuperAgentEnvelope" } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/super-agents/chain-triggers/{id}/resume:
+    post:
+      operationId: resumeSuperAgentChainTrigger
+      summary: Resume a paused trigger. Events from while it was paused are skipped. Operator sessions only.
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }

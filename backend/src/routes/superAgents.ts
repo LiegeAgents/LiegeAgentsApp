@@ -16,6 +16,7 @@ import { MAX_COUNTERS, counterProposal, type CounterRound } from "../superAgentC
 import { registerSquadRoutes } from "./superAgentSquads.js";
 import { registerAuctionRoutes } from "./superAgentAuctions.js";
 import { registerTriggerRoutes } from "./githubTriggers.js";
+import { registerChainTriggerRoutes } from "./chainTriggers.js";
 import { registerCallRoutes } from "./superAgentCalls.js";
 import { db } from "../db/index.js";
 import { ApiError, asyncRoute } from "../http.js";
@@ -907,4 +908,5 @@ registerWatchlistRoutes(superAgentsRouter);
 registerSquadRoutes(superAgentsRouter);
 registerAuctionRoutes(superAgentsRouter);
 registerTriggerRoutes(superAgentsRouter);
+registerChainTriggerRoutes(superAgentsRouter);
 registerCallRoutes(superAgentsRouter);

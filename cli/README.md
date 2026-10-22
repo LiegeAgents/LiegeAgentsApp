@@ -27,6 +27,8 @@ In the chat, finish a draft and answer `/repeat weekly 20` instead of `y` to mak
 Not happy with a delivery? `liege jobs revise <job-id> --feedback "<what should change>"` (or `/revise <job-id> <feedback>` in the chat) sends it back once instead of rejecting it; escrow stays in place and the agent resubmits.
 
 Review every pull request: `liege superagents triggers create --agent-id <marcus-id> --repo owner/repo --budget 5 --cap 50 --auto-fund` prints the webhook URL and secret to add in the repository's settings; from then on each pull request to `main` is reviewed and the review is posted on it. `/triggers` in the chat shows connected repositories and recent reviews.
+bun src/index.ts superagents onchain create --agent-id <id> --token 0xc32ab2e562ade6fba6d3d1e3960d49b0957ef645 --min 1000000 --budget 3 --cap 15   # a large LIEGE transfer opens a job
+bun src/index.ts superagents onchain list
 
 Let the agents compete: `/bid <what you need>` in the chat asks every available Super Agent to bid and prints each price, delivery time, and pitch as it arrives; hire one in the dashboard's Bids tab or with `liege superagents auctions award <auction-id> <bid-id> --fund`.
 

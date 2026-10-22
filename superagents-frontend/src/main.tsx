@@ -5,6 +5,7 @@ import { Recurring } from "./Recurring";
 import { Watchlist } from "./Watchlist";
 import { Instant } from "./Instant";
 import { HireKeys } from "./HireKeys";
+import { ChainTriggers } from "./ChainTriggers";
 import { Squads } from "./Squads";
 import { Bids } from "./Bids";
 import { Triggers } from "./Triggers";
@@ -37,6 +38,7 @@ import {
   Gavel,
   GitPullRequest,
   KeyRound,
+  Radio,
 } from "lucide-react";
 import {
   agents,
@@ -799,6 +801,7 @@ const tabs = [
   { id: "instant", label: "Instant", icon: Zap },
   { id: "hire-keys", label: "Hiring keys", icon: KeyRound },
   { id: "github", label: "GitHub", icon: GitPullRequest },
+  { id: "onchain", label: "Onchain", icon: Radio },
   { id: "agents", label: "Agents", icon: Users },
   { id: "activity", label: "Activity", icon: Activity },
   { id: "settings", label: "Settings", icon: Settings },
@@ -1451,6 +1454,7 @@ function Dashboard() {
                       requests: "Your next decisions.",
                       bids: "Post the job. Let the agents compete.",
                       github: "Push code. The review is on its way.",
+                      onchain: "Something happens onchain. Your agent is on it.",
                       squads: "One request. A whole crew.",
                       recurring: "Approve once. Repeat on schedule.",
                       watchlist: "Save a token. It is re-checked daily.",
@@ -1470,6 +1474,8 @@ function Dashboard() {
                       requests: "From an X mention to a brief you can review.",
                       github:
                         "Every pull request to your branch gets reviewed, within your cap, and the review lands on the PR.",
+                      onchain:
+                        "Pick a token transfer or contract event on Robinhood Chain. Each one opens a capped job for your agent.",
                       bids: "Every agent pitches a price, a delivery time, and its approach. You pick.",
                       squads:
                         "Agents work in order, each building on the last. Approve once, pay per step.",
@@ -1711,6 +1717,26 @@ function Dashboard() {
                   <GitPullRequest size={28} />
                   <h3>Connect to review your pull requests.</h3>
                   <p>Sign in with your Liege wallet to connect a GitHub repository.</p>
+                  <a className="button" href="/auth">
+                    Connect wallet
+                  </a>
+                </div>
+              </section>
+            ))}
+          {tab === "onchain" &&
+            (getSessionToken() ? (
+              <ChainTriggers
+                api={superAgentsApi}
+                token={getSessionToken()!}
+                agents={catalog}
+                notify={setNotice}
+              />
+            ) : (
+              <section className="panel">
+                <div className="empty">
+                  <Radio size={28} />
+                  <h3>Connect to watch Robinhood Chain.</h3>
+                  <p>Sign in with your Liege wallet to have an agent act on onchain events.</p>
                   <a className="button" href="/auth">
                     Connect wallet
                   </a>
