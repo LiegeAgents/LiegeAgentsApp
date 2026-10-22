@@ -2,6 +2,7 @@
 
 from .client import AsyncLiegeClient, LiegeClient, decode_x402_payment_required, encode_x402_json
 from .errors import LiegeAPIError
+from .hire import HireableAgent, HireTask, LiegeHireClient
 from .mcp import McpClient
 from .models import (
     AgentAccount,
@@ -58,6 +59,9 @@ __all__ = [
     "JobEvent",
     "LiegeAPIError",
     "LiegeClient",
+    "LiegeHireClient",
+    "HireableAgent",
+    "HireTask",
     "AsyncLiegeClient",
     "McpClient",
     "McpProposal",

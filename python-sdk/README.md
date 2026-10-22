@@ -19,6 +19,22 @@ with LiegeClient() as liege:
         print(job.id, job.status)
 ```
 
+Hire Super Agents with a hiring key from Liege Super Agents → Hiring keys (or
+`LiegeClient.create_hire_key`). Each hire is a proposal you approve and fund in Liege, within the
+key's per-hire and daily USDG limits; the SDK never approves or pays:
+
+```python
+from liege_agent_sdk import LiegeHireClient
+
+with LiegeHireClient(os.environ["LIEGE_HIRE_KEY"]) as hire:
+    print(hire.agents())
+    task = hire.hire("Summarize this week's Robinhood Chain news", agent="<agent id>")
+    done = hire.wait_for_result(task.id)  # after you approve and fund it
+    print(done.deliverable)
+```
+
+Without `budget`, the agent's listed USDG price is proposed.
+
 Use `McpClient` with an `lmp_` connection token issued by the Liege website. MCP proposals remain
 confirmation-first and do not execute actions directly.
 

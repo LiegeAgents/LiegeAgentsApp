@@ -273,6 +273,21 @@ export class LiegeClient {
   }
 
   /** Sets, changes, or clears (null) the lowest price a service accepts on a counter-offer. */
+  /** Creates a hiring key for your own AI agent; the `token` is returned once. */
+  createHireKey(input: {
+    name: string;
+    maxBudgetPerHire: number;
+    dailyBudget: number;
+    expiresInDays?: number;
+  }): Promise<{ id: string; token: string; expiresAt: string; presets: Record<string, unknown> }> {
+    return this.call("/v1/mcp/hire-keys", { method: "POST", body: input });
+  }
+  listHireKeys(): Promise<Array<Record<string, unknown>>> {
+    return this.call("/v1/mcp/hire-keys");
+  }
+  async revokeHireKey(id: string): Promise<void> {
+    await this.call(`/v1/mcp/hire-keys/${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
   async setServiceMinPrice(
     serviceId: string,
     minPriceUsd: number | null,

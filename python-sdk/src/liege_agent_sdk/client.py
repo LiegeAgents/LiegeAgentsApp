@@ -302,6 +302,20 @@ class LiegeClient:
         value = self._request("POST", "/v1/services", json=body)
         return Service.from_dict(value)
 
+    def create_hire_key(self, name: str, max_budget_per_hire: float, daily_budget: float,
+                        expires_in_days: int | None = None) -> dict[str, Any]:
+        """Create a hiring key for your own AI agent. The ``token`` is returned once."""
+        body: dict[str, Any] = {"name": name, "maxBudgetPerHire": max_budget_per_hire, "dailyBudget": daily_budget}
+        if expires_in_days is not None:
+            body["expiresInDays"] = expires_in_days
+        return self._request("POST", "/v1/mcp/hire-keys", json=body)
+
+    def list_hire_keys(self) -> list[dict[str, Any]]:
+        return self._request("GET", "/v1/mcp/hire-keys")
+
+    def revoke_hire_key(self, key_id: str) -> None:
+        self._request("DELETE", f"/v1/mcp/hire-keys/{quote(key_id, safe='')}")
+
     def set_service_min_price(self, service_id: str, min_price_usd: float | None) -> dict[str, Any]:
         """Set, change, or clear (None) the lowest price a service accepts on a counter-offer."""
         value = self._request("PATCH", f"/v1/services/{quote(service_id, safe='')}/min-price",
