@@ -864,6 +864,35 @@ describe("LiegeClient", () => {
     expect(attempts).toBe(2);
   });
 
+  test("reads typed revision feedback through the API", async () => {
+    let requested = "";
+    const client = new LiegeClient({
+      token: "session",
+      fetch: async (input) => {
+        requested = new URL(String(input)).pathname;
+        return new Response(
+          JSON.stringify({
+            data: {
+              feedback: "Add a pricing comparison.",
+              previousDeliverable: "First draft.",
+              previousEvidence: ["https://example.com/source"],
+              previousSubmittedAt: "2026-10-20T12:00:00.000Z",
+              deadlineAt: "2026-10-21T12:00:00.000Z",
+              requestedAt: "2026-10-20T13:00:00.000Z",
+            },
+          }),
+        );
+      },
+    });
+    const revision = await client.getJobRevision("job-1");
+    expect(requested).toBe("/v1/jobs/job-1/revision");
+    expect(revision).toMatchObject({
+      feedback: "Add a pricing comparison.",
+      previousDeliverable: "First draft.",
+      previousEvidence: ["https://example.com/source"],
+    });
+  });
+
   test("manages webhook subscriptions and verifies signed payloads", async () => {
     const client = new LiegeClient({
       token: "session",
@@ -1150,6 +1179,42 @@ describe("McpClient", () => {
         percent: 35,
       },
     });
+  });
+
+  test("reads revision feedback through MCP", async () => {
+    let toolCall: Record<string, unknown> | undefined;
+    const client = new McpClient("lmp_test", "https://mcp.test", async (_input, init) => {
+      const request = JSON.parse(String(init?.body)) as {
+        method: string;
+        params?: Record<string, unknown>;
+      };
+      if (request.method === "tools/call") {
+        toolCall = request.params;
+        return new Response(
+          JSON.stringify({
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify({
+                    feedback: "Add a pricing comparison.",
+                    previousDeliverable: null,
+                    previousEvidence: [],
+                    previousSubmittedAt: null,
+                    deadlineAt: "2026-10-21T12:00:00.000Z",
+                    requestedAt: "2026-10-20T13:00:00.000Z",
+                  }),
+                },
+              ],
+            },
+          }),
+        );
+      }
+      return new Response(JSON.stringify({ result: {} }));
+    });
+    const revision = await client.getJobRevision("job-1");
+    expect(revision.feedback).toBe("Add a pricing comparison.");
+    expect(toolCall).toMatchObject({ name: "get_job_revision", arguments: { jobId: "job-1" } });
   });
 
   test("exports an owner mandate in AP2 format", async () => {

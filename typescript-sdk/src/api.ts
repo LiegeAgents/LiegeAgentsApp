@@ -24,6 +24,7 @@ import {
   type McpHarnessPresetsResponse,
   type McpHarnessTarget,
   type Job,
+  type JobRevision,
   type JobEvent,
   type Session,
   type SuperAgentDashboard,
@@ -107,6 +108,9 @@ export class LiegeClient {
   }
   getJob(id: string): Promise<Record<string, unknown>> {
     return this.call(`/v1/jobs/${encodeURIComponent(id)}`);
+  }
+  getJobRevision(id: string): Promise<JobRevision> {
+    return this.call(`/v1/jobs/${encodeURIComponent(id)}/revision`);
   }
   getPrivatePayload(
     id: string,

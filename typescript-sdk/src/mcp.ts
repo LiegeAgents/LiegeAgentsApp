@@ -3,6 +3,7 @@ import {
   type McpProposal,
   type McpExecutionGrant,
   type Job,
+  type JobRevision,
   type McpHarnessPreset,
   type McpHarnessTarget,
   type McpEvent,
@@ -33,6 +34,9 @@ export class McpClient {
   }
   async getJobStatus(jobId: string): Promise<McpJobStatus> {
     return this.tool("get_job_status", { jobId }) as Promise<McpJobStatus>;
+  }
+  async getJobRevision(jobId: string): Promise<JobRevision> {
+    return this.tool("get_job_revision", { jobId }) as Promise<JobRevision>;
   }
   async reportJobProgress(input: {
     jobId: string;
