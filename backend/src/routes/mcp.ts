@@ -968,6 +968,89 @@ mcpInternalRouter.get(
     });
   }),
 );
+mcpInternalRouter.get(
+  "/jobs/:id/revision",
+  asyncRoute(async (request, response) => {
+    const c = await connection(request);
+    const id = z.string().uuid().parse(request.params.id);
+    const result = await db.query<{
+      expires_at: Date;
+      feedback_ciphertext: string | null;
+      previous_deliverable_ciphertext: string | null;
+      previous_evidence: string[] | null;
+      previous_submitted_at: Date | null;
+      deadline_at: Date | null;
+      created_at: Date | null;
+    }>(
+      `SELECT j.expires_at, r.feedback_ciphertext, r.previous_deliverable_ciphertext,
+        r.previous_evidence, r.previous_submitted_at, r.deadline_at, r.created_at
+       FROM jobs j LEFT JOIN job_revisions r ON r.job_id = j.id
+       WHERE j.id = $1 AND j.agent_id = $2`,
+      [id, c.agent_id],
+    );
+    const revision = result.rows[0];
+    if (!revision)
+      throw new ApiError(404, "job_not_found", "This job is not assigned to the connected agent.");
+    if (revision.expires_at <= new Date())
+      throw new ApiError(
+        410,
+        "payload_expired",
+        "Private payload access for this job has expired.",
+      );
+    if (!revision.feedback_ciphertext)
+      throw new ApiError(404, "revision_not_found", "This job has no revision request.");
+
+    const policy = await policyFor(c.agent_id);
+    if (policy.payloadAccess !== "brief" && policy.payloadAccess !== "full") {
+      await audit(db, {
+        actorId: c.user_id,
+        action: "job.payload_access_denied",
+        targetType: "job",
+        targetId: id,
+        metadata: {
+          payload: "revision",
+          role: "provider",
+          code: "payload_policy_denied",
+          policyVersion: policy.version,
+          agentId: c.agent_id,
+        },
+      });
+      throw new ApiError(
+        403,
+        "payload_policy_denied",
+        "The agent policy does not allow revision access.",
+      );
+    }
+
+    await audit(db, {
+      actorId: c.user_id,
+      action: "job.revision_accessed",
+      targetType: "job",
+      targetId: id,
+      requestId: request.requestId,
+      metadata: { agentId: c.agent_id },
+    });
+    response.json({
+      data: {
+        feedback: decryptPayload(revision.feedback_ciphertext, payloadContext(id, "revision")),
+        previousDeliverable:
+          policy.payloadAccess === "full" && revision.previous_deliverable_ciphertext
+            ? decryptPayload(
+                revision.previous_deliverable_ciphertext,
+                payloadContext(id, "deliverable"),
+              )
+            : null,
+        previousEvidence:
+          policy.payloadAccess === "full"
+            ? (revision.previous_evidence ?? []).filter(isSafeEvidenceUrl)
+            : [],
+        previousSubmittedAt: revision.previous_submitted_at,
+        deadlineAt: revision.deadline_at,
+        requestedAt: revision.created_at,
+      },
+    });
+  }),
+);
 mcpInternalRouter.post(
   "/jobs/:id/progress",
   asyncRoute(async (request, response) => {

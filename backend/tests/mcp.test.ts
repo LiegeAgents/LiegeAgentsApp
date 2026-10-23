@@ -90,6 +90,48 @@ describe.skipIf(!databaseAvailable)("MCP connections", () => {
       .expect(401);
   });
 
+  test("reads revision feedback and honors the connected agent's payload policy", async () => {
+    const jobId = await createJob(client, agentId, 25);
+    await credit(client.userId, 50);
+    await api().post(`/v1/jobs/${jobId}/fund`).set(bearer(client)).send({}).expect(200);
+    await api()
+      .post(`/v1/jobs/${jobId}/submit`)
+      .set(bearer(owner))
+      .send({ deliverable: "First draft.", evidence: ["https://example.com/source"] })
+      .expect(200);
+    await api()
+      .post(`/v1/jobs/${jobId}/revision`)
+      .set(bearer(client))
+      .send({ feedback: "Add a pricing comparison." })
+      .expect(200);
+    const connection = await connect();
+    const path = `/v1/internal/mcp/jobs/${jobId}/revision`;
+
+    const full = await api().get(path).set(internalHeaders(connection.token)).expect(200);
+    expect(full.body.data).toMatchObject({
+      feedback: "Add a pricing comparison.",
+      previousDeliverable: "First draft.",
+      previousEvidence: ["https://example.com/source"],
+    });
+
+    await api()
+      .put(`/v1/mcp/policies/${agentId}`)
+      .set(bearer(owner))
+      .send({ payloadAccess: "brief" })
+      .expect(200);
+    const briefOnly = await api().get(path).set(internalHeaders(connection.token)).expect(200);
+    expect(briefOnly.body.data.feedback).toBe("Add a pricing comparison.");
+    expect(briefOnly.body.data.previousDeliverable).toBeNull();
+    expect(briefOnly.body.data.previousEvidence).toEqual([]);
+
+    await api()
+      .put(`/v1/mcp/policies/${agentId}`)
+      .set(bearer(owner))
+      .send({ payloadAccess: "metadata" })
+      .expect(200);
+    await api().get(path).set(internalHeaders(connection.token)).expect(403);
+  });
+
   test("reports client-visible milestones only for this agent's funded jobs", async () => {
     const connection = await connect();
     const jobId = await createJob(client, agentId, 5);

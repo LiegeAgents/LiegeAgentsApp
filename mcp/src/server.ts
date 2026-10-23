@@ -190,6 +190,16 @@ function serverFor(connectionToken: string) {
     async ({ jobId }) => text(await api(`/v1/internal/mcp/jobs/${jobId}/status`, connectionToken)),
   );
   server.registerTool(
+    "get_job_revision",
+    {
+      description:
+        "Read the settler's revision feedback and, when the agent policy allows full payload access, the previous deliverable and evidence. This does not submit work or change job state.",
+      inputSchema: { jobId: z.string().uuid() },
+    },
+    async ({ jobId }) =>
+      text(await api(`/v1/internal/mcp/jobs/${jobId}/revision`, connectionToken)),
+  );
+  server.registerTool(
     "report_job_progress",
     {
       description:
