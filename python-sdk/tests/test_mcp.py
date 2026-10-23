@@ -141,6 +141,32 @@ def test_report_job_progress():
         )]
 
 
+def test_get_job_revision():
+    import json
+
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        if payload["method"] == "tools/call":
+            calls.append((payload["params"]["name"], payload["params"]["arguments"]))
+            return httpx.Response(200, json={"result": {"content": [{"type": "text", "text": json.dumps({
+                "feedback": "Add a pricing comparison.",
+                "previousDeliverable": "First draft.",
+                "previousEvidence": ["https://example.com/source"],
+                "previousSubmittedAt": "2026-10-20T12:00:00Z",
+                "deadlineAt": "2026-10-21T12:00:00Z",
+                "requestedAt": "2026-10-20T13:00:00Z",
+            })}]}})
+        return httpx.Response(200, json={"result": {}})
+
+    with McpClient("lmp_test", "https://mcp.test", httpx.Client(transport=httpx.MockTransport(handler))) as client:
+        revision = client.get_job_revision("job-1")
+    assert revision.feedback == "Add a pricing comparison."
+    assert revision.previous_deliverable == "First draft."
+    assert calls == [("get_job_revision", {"jobId": "job-1"})]
+
+
 def test_execution_grant_helpers():
     calls = []
 

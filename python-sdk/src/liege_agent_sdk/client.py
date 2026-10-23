@@ -19,7 +19,7 @@ from .models import (
     AgentReputationAudit,
     AgentMandate, AgentPolicyInput, Invoice, InvoiceRefund, Job, JobEvent, Receipt, Service, ServiceType, Session,
     RunnerInput, RunnerResult, RunnerArtifact, McpHarnessPreset, McpHarnessPresetsResponse, WebhookCreateInput, WebhookSubscription, Page,
-    SettlementAsset, SuperAgentSchedule, SuperAgentScheduleCadence, SuperAgentScheduleSource,
+    JobRevision, SettlementAsset, SuperAgentSchedule, SuperAgentScheduleCadence, SuperAgentScheduleSource,
     SuperAgentWatch, SuperAgentWatchChain,
 )
 
@@ -109,6 +109,10 @@ class LiegeClient:
 
     def get_job(self, job_id: str) -> dict[str, Any]:
         return self._request("GET", f"/v1/jobs/{job_id}")
+
+    def get_job_revision(self, job_id: str) -> JobRevision:
+        """Read the settler's revision feedback and policy-permitted prior delivery context."""
+        return JobRevision.from_dict(self._request("GET", f"/v1/jobs/{job_id}/revision"))
 
     def get_private_payload(self, job_id: str, payload: str) -> dict[str, Any]:
         if payload not in {"brief", "deliverable"}:
@@ -618,6 +622,10 @@ class AsyncLiegeClient:
 
     async def get_job(self, job_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/v1/jobs/{job_id}")
+
+    async def get_job_revision(self, job_id: str) -> JobRevision:
+        """Read revision feedback and policy-permitted prior delivery context."""
+        return JobRevision.from_dict(await self._request("GET", f"/v1/jobs/{job_id}/revision"))
 
     async def decline_job(self, job_id: str, reason: str) -> Job:
         """Decline a funded job and request the client escrow refund."""

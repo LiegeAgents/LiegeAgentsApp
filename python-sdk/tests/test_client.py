@@ -63,6 +63,26 @@ def test_list_jobs_filters_by_settlement_asset():
         assert client.list_jobs(settlement_asset="liege") == []
 
 
+def test_get_job_revision_maps_policy_limited_response():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == "/v1/jobs/job-1/revision"
+        return httpx.Response(200, json={"data": {
+            "feedback": "Add a pricing comparison.",
+            "previousDeliverable": None,
+            "previousEvidence": [],
+            "previousSubmittedAt": "2026-10-20T12:00:00Z",
+            "deadlineAt": "2026-10-21T12:00:00Z",
+            "requestedAt": "2026-10-20T13:00:00Z",
+        }})
+
+    with LiegeClient("https://api.test", client=httpx.Client(transport=httpx.MockTransport(handler))) as client:
+        revision = client.get_job_revision("job-1")
+    assert revision.feedback == "Add a pricing comparison."
+    assert revision.previous_deliverable is None
+    assert revision.previous_evidence == []
+
+
 def test_x402_challenge_retries_with_application_signature():
     challenge = {"x402Version": 2, "accepts": [{"scheme": "exact", "network": "eip155:4663"}]}
     calls = 0

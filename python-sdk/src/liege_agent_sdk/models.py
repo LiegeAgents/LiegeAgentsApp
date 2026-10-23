@@ -348,6 +348,29 @@ class InvoiceRefund:
 
 
 @dataclass(frozen=True)
+class JobRevision:
+    feedback: str
+    previous_deliverable: str | None
+    previous_evidence: list[str]
+    previous_submitted_at: str | None
+    deadline_at: str | None
+    requested_at: str | None
+    raw: dict[str, Any]
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "JobRevision":
+        return cls(
+            feedback=str(value.get("feedback", "")),
+            previous_deliverable=value.get("previousDeliverable", value.get("previous_deliverable")),
+            previous_evidence=list(value.get("previousEvidence", value.get("previous_evidence", []))),
+            previous_submitted_at=value.get("previousSubmittedAt", value.get("previous_submitted_at")),
+            deadline_at=value.get("deadlineAt", value.get("deadline_at")),
+            requested_at=value.get("requestedAt", value.get("requested_at")),
+            raw=value,
+        )
+
+
+@dataclass(frozen=True)
 class McpJobStatus:
     id: str
     public_id: str
