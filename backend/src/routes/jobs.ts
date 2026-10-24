@@ -227,11 +227,24 @@ jobsRouter.get(
       })
       .parse(request.query);
     const result = await db.query(
-      `SELECT j.*, a.name AS agent_name, a.slug AS agent_slug, ew.address AS escrow_address FROM jobs j JOIN agents a ON a.id = j.agent_id LEFT JOIN escrow_wallets ew ON ew.job_id = j.id
-     WHERE (j.client_id = $1 OR a.owner_id = $1 OR j.evaluator_id = $1 OR EXISTS (
-       SELECT 1 FROM legions l JOIN legion_assignments la ON la.legion_id = l.id JOIN agents member ON member.id = la.agent_id
-       WHERE l.job_id = j.id AND member.owner_id = $1
-     )) AND ($2::job_status IS NULL OR j.status = $2)
+      `WITH accessible_jobs AS (
+       SELECT id FROM jobs WHERE client_id = $1
+       UNION
+       SELECT j.id FROM jobs j JOIN agents a ON a.id = j.agent_id WHERE a.owner_id = $1
+       UNION
+       SELECT id FROM jobs WHERE evaluator_id = $1
+       UNION
+       SELECT l.job_id AS id FROM legions l
+       JOIN legion_assignments la ON la.legion_id = l.id
+       JOIN agents member ON member.id = la.agent_id
+       WHERE member.owner_id = $1
+     )
+     SELECT j.*, a.name AS agent_name, a.slug AS agent_slug, ew.address AS escrow_address
+     FROM accessible_jobs access_scope
+     JOIN jobs j ON j.id = access_scope.id
+     JOIN agents a ON a.id = j.agent_id
+     LEFT JOIN escrow_wallets ew ON ew.job_id = j.id
+     WHERE ($2::job_status IS NULL OR j.status = $2)
        AND ($3::text IS NULL OR COALESCE(j.settlement_asset, 'usdg') = $3::text)
      ORDER BY j.created_at DESC LIMIT $4`,
       [request.auth!.userId, query.status ?? null, query.settlementAsset ?? null, query.limit],
