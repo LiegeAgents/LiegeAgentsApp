@@ -86,22 +86,43 @@ export async function agentStanding(agentIds: string[]) {
     disputes_lost: number;
     verified_at: Date | null;
   }>(
-    `SELECT a.id,
-       COUNT(j.id) FILTER (WHERE j.status = 'completed')::int AS completed,
-       COUNT(j.id) FILTER (WHERE j.status = 'rejected')::int AS rejected,
-       COUNT(j.id) FILTER (WHERE j.status = 'expired' AND j.funded_at IS NOT NULL AND j.submitted_at IS NULL)::int AS undelivered,
-       COUNT(j.id) FILTER (WHERE j.status = 'completed' AND j.submitted_at IS NOT NULL AND j.submitted_at <= j.deadline_at)::int AS on_time,
-       COUNT(j.id) FILTER (WHERE j.status = 'completed' AND EXISTS (
-         SELECT 1 FROM job_events e WHERE e.job_id = j.id AND e.event_type = 'job.revision_requested'))::int AS completed_with_revision,
-       (SELECT COUNT(*) FROM disputes d JOIN jobs dj ON dj.id = d.job_id
-          WHERE dj.agent_id = a.id AND d.status = 'resolved_client')::int AS disputes_lost,
-       (SELECT e.verified_at FROM superagent_enrollments e
-          LEFT JOIN agent_accounts acc ON acc.agent_id = e.agent_id
-          WHERE e.agent_id = a.id AND e.enabled AND e.verified_at IS NOT NULL
-            AND COALESCE(acc.status, 'active') = 'active') AS verified_at
-     FROM agents a LEFT JOIN jobs j ON j.agent_id = a.id
-     WHERE a.id = ANY($1::uuid[]) AND a.active
-     GROUP BY a.id`,
+    `WITH selected_agents AS (
+       SELECT id FROM agents WHERE id = ANY($1::uuid[]) AND active
+     ), revision_jobs AS (
+       SELECT DISTINCT e.job_id FROM selected_agents a
+       JOIN jobs j ON j.agent_id = a.id
+       JOIN job_events e ON e.job_id = j.id AND e.event_type = 'job.revision_requested'
+     ), job_counts AS (
+       SELECT j.agent_id,
+         COUNT(*) FILTER (WHERE j.status = 'completed')::int AS completed,
+         COUNT(*) FILTER (WHERE j.status = 'rejected')::int AS rejected,
+         COUNT(*) FILTER (WHERE j.status = 'expired' AND j.funded_at IS NOT NULL AND j.submitted_at IS NULL)::int AS undelivered,
+         COUNT(*) FILTER (WHERE j.status = 'completed' AND j.submitted_at IS NOT NULL AND j.submitted_at <= j.deadline_at)::int AS on_time,
+         COUNT(*) FILTER (WHERE j.status = 'completed' AND r.job_id IS NOT NULL)::int AS completed_with_revision
+       FROM jobs j JOIN selected_agents a ON a.id = j.agent_id
+       LEFT JOIN revision_jobs r ON r.job_id = j.id
+       GROUP BY j.agent_id
+     ), dispute_counts AS (
+       SELECT j.agent_id, COUNT(*)::int AS disputes_lost
+       FROM disputes d JOIN jobs j ON j.id = d.job_id
+       JOIN selected_agents a ON a.id = j.agent_id
+       WHERE d.status = 'resolved_client'
+       GROUP BY j.agent_id
+     )
+     SELECT a.id,
+       COALESCE(j.completed, 0)::int AS completed,
+       COALESCE(j.rejected, 0)::int AS rejected,
+       COALESCE(j.undelivered, 0)::int AS undelivered,
+       COALESCE(j.on_time, 0)::int AS on_time,
+       COALESCE(j.completed_with_revision, 0)::int AS completed_with_revision,
+       COALESCE(d.disputes_lost, 0)::int AS disputes_lost,
+       CASE WHEN e.enabled AND e.verified_at IS NOT NULL AND COALESCE(acc.status, 'active') = 'active'
+         THEN e.verified_at ELSE NULL END AS verified_at
+     FROM selected_agents a
+     LEFT JOIN job_counts j ON j.agent_id = a.id
+     LEFT JOIN dispute_counts d ON d.agent_id = a.id
+     LEFT JOIN superagent_enrollments e ON e.agent_id = a.id
+     LEFT JOIN agent_accounts acc ON acc.agent_id = a.id`,
     [agentIds],
   );
   for (const row of result.rows) {
