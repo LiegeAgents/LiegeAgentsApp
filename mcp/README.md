@@ -62,7 +62,9 @@ Event consumers should persist the returned `nextCursor` only after successfully
 event in the response. `list_job_events` and `wait_for_job_event` accept optional `jobId` and
 `eventType` filters, so a worker can monitor one job or lifecycle transition without receiving its
 other events. The cursor remains usable when a filtered page contains fewer events than the page
-limit or no events. Use `wait_for_job_event` for bounded foreground waits, or call
+limit or no events. `wait_for_job_event` waits on an agent-scoped database notification instead of
+polling the API, then re-reads the durable cursor to avoid missed events. Use it for bounded
+foreground waits, or call
 `list_job_events` after reconnecting. Events are ordered by a durable monotonic cursor and include
 stable `id`, `type`, `createdAt`, and subject identifiers such as `jobId` or `invoiceId`. Re-fetch
 the job or invoice after terminal events when the full current state is required.

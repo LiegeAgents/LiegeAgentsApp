@@ -668,6 +668,85 @@ mcpInternalRouter.get(
   }),
 );
 mcpInternalRouter.get(
+  "/events/wait",
+  asyncRoute(async (request, response) => {
+    const c = await connection(request);
+    const query = z
+      .object({
+        after: z.string().optional(),
+        timeoutMs: z.coerce.number().int().min(500).max(120_000).default(30_000),
+        jobId: z.string().uuid().optional(),
+        eventType: z.string().trim().min(1).max(120).optional(),
+      })
+      .parse(request.query);
+    let after = 0n;
+    try {
+      if (query.after !== undefined) after = parseWebhookCursor(query.after);
+    } catch (error) {
+      throw new ApiError(
+        400,
+        "invalid_event_cursor",
+        error instanceof Error ? error.message : "The event cursor is invalid.",
+      );
+    }
+
+    const client = await db.connect();
+    const channel = `liege_webhook_events_${c.agent_id}`;
+    let wake: (() => void) | null = null;
+    const onNotification = (event: { channel?: string }) => {
+      if (event.channel === channel) wake?.();
+    };
+    const onClose = () => wake?.();
+    try {
+      client.on("notification", onNotification);
+      response.once("close", onClose);
+      await client.query(`LISTEN "${channel}"`);
+      const deadline = Date.now() + query.timeoutMs;
+      for (;;) {
+        if (response.destroyed) return;
+        // LISTEN is active before reading, so an event arriving between reads cannot be lost.
+        const events = await replayWebhookEvents(client, c.agent_id, after, 1, {
+          jobId: query.jobId,
+          eventType: query.eventType,
+        });
+        const event = events[0] ?? null;
+        const remaining = deadline - Date.now();
+        if (event || remaining <= 0) {
+          const cursor = event?.cursor ?? after.toString();
+          await audit(db, {
+            actorId: c.user_id,
+            action: "mcp.events_waited",
+            targetType: "agent_events",
+            targetId: c.agent_id,
+            requestId: request.requestId,
+            metadata: { agentId: c.agent_id, after: after.toString(), found: Boolean(event) },
+          });
+          response.json({ data: { event, cursor, timedOut: !event } });
+          return;
+        }
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(() => finish(), remaining);
+          let finished = false;
+          const finish = () => {
+            if (finished) return;
+            finished = true;
+            clearTimeout(timer);
+            wake = null;
+            resolve();
+          };
+          wake = finish;
+        });
+      }
+    } finally {
+      wake = null;
+      client.off("notification", onNotification);
+      response.off("close", onClose);
+      await client.query(`UNLISTEN "${channel}"`).catch(() => undefined);
+      client.release();
+    }
+  }),
+);
+mcpInternalRouter.get(
   "/events",
   asyncRoute(async (request, response) => {
     const c = await connection(request);

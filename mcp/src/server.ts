@@ -145,21 +145,13 @@ function serverFor(connectionToken: string) {
         eventType: z.string().min(1).max(120).optional(),
       },
     },
-    async ({ after, timeoutMs = 30_000, pollMs = 2_000, jobId, eventType }) => {
-      const deadline = Date.now() + timeoutMs;
-      let cursor = after;
-      for (;;) {
-        const result = (await api(
-          `/v1/internal/mcp/events?${new URLSearchParams({ after: cursor, limit: "1", ...(jobId ? { jobId } : {}), ...(eventType ? { eventType } : {}) })}`,
+    async ({ after, timeoutMs = 30_000, jobId, eventType }) =>
+      text(
+        await api(
+          `/v1/internal/mcp/events/wait?${new URLSearchParams({ after, timeoutMs: String(timeoutMs), ...(jobId ? { jobId } : {}), ...(eventType ? { eventType } : {}) })}`,
           connectionToken,
-        )) as { items?: Array<Record<string, unknown>>; nextCursor?: string | null };
-        const event = result.items?.[0];
-        if (event) return text({ event, timedOut: false });
-        const remaining = deadline - Date.now();
-        if (remaining <= 0) return text({ event: null, cursor, timedOut: true });
-        await new Promise((resolve) => setTimeout(resolve, Math.min(pollMs, remaining)));
-      }
-    },
+        ),
+      ),
   );
   server.registerTool(
     "list_agent_jobs",
