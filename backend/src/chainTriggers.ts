@@ -331,26 +331,36 @@ async function scan(trigger: ChainTriggerRow, head: bigint) {
   const from = BigInt(trigger.last_block) + 1n;
   if (from > head) return null;
   let to = head < from + MAX_RANGE - 1n ? head : from + MAX_RANGE - 1n;
-  let logs: ChainLog[];
-  for (;;) {
-    try {
-      logs = (await chainRpc.call("eth_getLogs", [
-        {
-          address: getAddress(trigger.contract_address),
-          topics: [trigger.topic0],
-          fromBlock: hex(from),
-          toBlock: hex(to),
-        },
-      ])) as ChainLog[];
-      break;
-    } catch (error) {
-      // A busy contract can match more logs than the RPC returns at once: scan half the range.
-      if (to === from || !/limit|too many|exceed|range/i.test(String(error))) throw error;
-      to = from + (to - from) / 2n;
-    }
-  }
   const client = await db.connect();
+  let advisoryLock = false;
   try {
+    // Claim before the RPC call so separate API instances do not fetch the same block range.
+    const claim = await client.query<{ locked: boolean }>(
+      "SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS locked",
+      [trigger.id],
+    );
+    advisoryLock = claim.rows[0]?.locked === true;
+    if (!advisoryLock) return null;
+
+    let logs: ChainLog[];
+    for (;;) {
+      try {
+        logs = (await chainRpc.call("eth_getLogs", [
+          {
+            address: getAddress(trigger.contract_address),
+            topics: [trigger.topic0],
+            fromBlock: hex(from),
+            toBlock: hex(to),
+          },
+        ])) as ChainLog[];
+        break;
+      } catch (error) {
+        // A busy contract can match more logs than the RPC returns at once: scan half the range.
+        if (to === from || !/limit|too many|exceed|range/i.test(String(error))) throw error;
+        to = from + (to - from) / 2n;
+      }
+    }
+
     await client.query("BEGIN");
     const locked = await client.query<ChainTriggerRow>(
       "SELECT * FROM superagent_chain_triggers WHERE id = $1 FOR UPDATE",
@@ -374,6 +384,10 @@ async function scan(trigger: ChainTriggerRow, head: bigint) {
     await client.query("ROLLBACK").catch(() => undefined);
     throw error;
   } finally {
+    if (advisoryLock)
+      await client
+        .query("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [trigger.id])
+        .catch(() => undefined);
     client.release();
   }
 }
