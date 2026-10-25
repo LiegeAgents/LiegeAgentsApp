@@ -39,6 +39,7 @@ import SocialLinks from "./SocialLinks";
 import JobAttachments from "./JobAttachments";
 import JobReceipt from "./JobReceipt";
 import JobChallenge from "./JobChallenge";
+import DisputePanels from "./DisputePanels";
 import { api, agentForDisplay, jobForDisplay } from "./api";
 import "./live-jobs.css";
 
@@ -4197,6 +4198,7 @@ function EvaluationCenter({ token, address, accountId, agents, signMessage, onNo
         Create review tasks or sign decisions assigned to your wallet. These records do not settle
         marketplace escrow.
       </SectionHeading>
+      <DisputePanels token={token} />
       <div className="settings-panel">
         <h2>Create an evaluation task</h2>
         {!ownedAgents.length && (

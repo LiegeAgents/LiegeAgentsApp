@@ -133,6 +133,14 @@ export const api = {
   jobAttachments: (token, id) => request(`/v1/jobs/${id}/attachments`, { token }),
   jobReceipt: (token, id) => request(`/v1/jobs/${id}/receipt`, { token }),
   jobChallenge: (token, id) => request(`/v1/jobs/${id}/challenge`, { token }),
+  panelDisputes: (token) => request("/v1/disputes", { token }),
+  panelDispute: (token, id) => request(`/v1/disputes/${id}`, { token }),
+  votePanelDispute: (token, id, decision, rationale) =>
+    request(`/v1/disputes/${id}/vote`, {
+      token,
+      method: "POST",
+      body: JSON.stringify({ decision, rationale }),
+    }),
   challengeJob: (token, id, reason) =>
     request(`/v1/jobs/${id}/challenge`, {
       token,

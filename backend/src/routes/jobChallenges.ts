@@ -17,6 +17,8 @@ type DisputeRow = {
   status: string;
   resolution: string | null;
   resolution_rationale_ciphertext: string | null;
+  mode: "arbitrator" | "panel";
+  panel_deadline_at: Date | null;
   created_at: Date;
   resolved_at: Date | null;
 };
@@ -37,13 +39,17 @@ const presentDispute = (row: DisputeRow) => ({
         payloadContext(row.job_id, "challenge-resolution"),
       )
     : null,
+  // Who decides: a panel of independent evaluators until its deadline, else a Liege arbitrator.
+  decidedBy: row.mode,
+  panelDeadlineAt: row.panel_deadline_at,
   createdAt: row.created_at,
   resolvedAt: row.resolved_at,
 });
 
 const disputeColumns = `d.id, d.job_id, d.challenger_id, d.reason_ciphertext,
   trim_scale(d.challenge_bond_usdg)::text AS challenge_bond_usdg, d.asset, d.decided_outcome,
-  d.status, d.resolution, d.resolution_rationale_ciphertext, d.created_at, d.resolved_at`;
+  d.status, d.resolution, d.resolution_rationale_ciphertext, d.mode, d.panel_deadline_at,
+  d.created_at, d.resolved_at`;
 
 export function registerChallengeRoutes(router: Router) {
   router.get(

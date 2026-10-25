@@ -37,4 +37,27 @@ describe("challenging a decision from the CLI", () => {
       body: { reason: "Two criteria were not met." },
     });
   });
+
+  test("panel evaluators list, read, and vote on disputes", async () => {
+    await execute(["disputes"]);
+    await execute(["disputes", "get", "d-1"]);
+    await execute([
+      "disputes",
+      "vote",
+      "d-1",
+      "--decision",
+      "denied",
+      "--rationale",
+      "Every criterion was met.",
+    ]);
+    expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      "GET /v1/disputes",
+      "GET /v1/disputes/d-1",
+      "POST /v1/disputes/d-1/vote",
+    ]);
+    expect(calls[2].body).toEqual({ decision: "denied", rationale: "Every criterion was met." });
+    await expect(execute(["disputes", "vote", "d-1", "--decision", "maybe"])).rejects.toThrow(
+      "--decision must be",
+    );
+  });
 });

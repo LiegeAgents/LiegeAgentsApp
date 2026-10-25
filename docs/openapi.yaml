@@ -2284,6 +2284,61 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "500": { $ref: "#/components/responses/InternalError" }
 
+  /v1/disputes:
+    get:
+      operationId: listPanelDisputes
+      summary: >-
+        Disputes you were drawn to decide as a panel evaluator, those awaiting your vote first. The
+        tally appears only once a dispute is resolved.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Your panel disputes.
+          content: { application/json: { schema: { type: object } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+  /v1/disputes/{id}:
+    get:
+      operationId: getPanelDispute
+      summary: >-
+        The case for a panelist: the original decision, the challenger's reason, the brief, the
+        acceptance criteria, and the delivery. Only for members of the dispute's panel.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The dispute.
+          content: { application/json: { schema: { type: object } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/disputes/{id}/vote:
+    post:
+      operationId: votePanelDispute
+      summary: >-
+        Vote to uphold or deny the challenge, once, before the panel's deadline. When a majority
+        agrees the dispute resolves on it, the job settles, and each vote counts toward the
+        voter's accuracy (completed and correct counts).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, rationale]
+              properties:
+                decision: { type: string, enum: [upheld, denied] }
+                rationale: { type: string, minLength: 10, maxLength: 4000 }
+      responses:
+        "200":
+          description: The vote, and the resolution once a majority agrees.
+          content: { application/json: { schema: { type: object } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /v1/admin/disputes:
     get:
       operationId: listDisputes
@@ -2307,7 +2362,8 @@ paths:
       summary: >-
         Uphold a challenge, which reverses the evaluator's decision and returns the challenger's
         bond, or deny it, which keeps the decision and pays the bond to the other side. The job
-        settles either way. A party to the job cannot arbitrate it. Administrators only.
+        settles either way. A party to the job cannot arbitrate it, and a dispute with an evaluator
+        panel can be arbitrated only after the panel's deadline. Administrators only.
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }

@@ -134,7 +134,8 @@ export const payloadContext = (
     | "call-input"
     | "call-output"
     | "challenge"
-    | "challenge-resolution",
+    | "challenge-resolution"
+    | "panel-vote",
 ) => `job:${jobId}:${field}`;
 export const encryptPayload = (value: string, context: string) =>
   keyring.encrypt(value, "payload", context);

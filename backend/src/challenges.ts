@@ -7,6 +7,7 @@ import { db } from "./db/index.js";
 import { ApiError } from "./http.js";
 import { releaseLedgerOutcome, type LedgerJob } from "./jobPayouts.js";
 import { heldAccounts, transfer } from "./ledger.js";
+import { minimumEvaluatorStake } from "./capacity.js";
 import { enqueueWebhookEvent } from "./webhooks.js";
 
 /**
@@ -146,11 +147,16 @@ export async function openChallenge(input: {
     await client.query("UPDATE jobs SET status = 'challenged', updated_at = now() WHERE id = $1", [
       job.id,
     ]);
-    await client.query("INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,$3)", [
-      job.id,
-      input.userId,
-      "job.challenged",
-    ]);
+    const event = await client.query<{ id: string; created_at: Date }>(
+      "INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,$3) RETURNING id, created_at",
+      [job.id, input.userId, "job.challenged"],
+    );
+    await drawPanel(client, {
+      disputeId: dispute.rows[0].id,
+      job,
+      excluded: [job.client_id, job.provider_id, decision.evaluator_id, input.userId],
+      event: event.rows[0],
+    });
     await audit(client, {
       actorId: input.userId,
       action: "job.challenged",
@@ -169,6 +175,100 @@ export async function openChallenge(input: {
   }
 }
 
+type DisputeRow = {
+  id: string;
+  job_id: string;
+  challenger_id: string;
+  original_evaluator_id: string;
+  challenge_bond_usdg: string;
+  asset: SettlementAsset;
+  decided_outcome: "accepted" | "rejected";
+  status: string;
+  mode: "arbitrator" | "panel";
+  panel_deadline_at: Date | null;
+  panel_deciding: boolean;
+};
+
+async function lockDispute(client: PoolClient, disputeId: string) {
+  const found = await client.query<DisputeRow>(
+    `SELECT *, (mode = 'panel' AND panel_deadline_at > now()) AS panel_deciding
+     FROM disputes WHERE id = $1 FOR UPDATE`,
+    [disputeId],
+  );
+  const dispute = found.rows[0];
+  if (!dispute) throw new ApiError(404, "dispute_not_found", "Dispute not found.");
+  if (dispute.status !== "open")
+    throw new ApiError(409, "dispute_resolved", "This dispute is already resolved.");
+  return dispute;
+}
+
+/**
+ * Settles a dispute on its resolution: the bond goes back to an upheld challenger or to the other
+ * side of a denied one, and the job settles on its final outcome.
+ */
+async function applyResolution(
+  client: PoolClient,
+  dispute: DisputeRow,
+  input: {
+    resolution: "upheld" | "denied";
+    rationale: string;
+    actorId: string;
+    // The arbitrator, or null when the panel decided.
+    resolverId: string | null;
+    requestId?: string;
+  },
+) {
+  const job = (await lockDecided(client, dispute.job_id))!;
+  const upheld = input.resolution === "upheld";
+  const finalOutcome = upheld
+    ? dispute.decided_outcome === "accepted"
+      ? "rejected"
+      : "accepted"
+    : dispute.decided_outcome;
+  const counterparty = dispute.challenger_id === job.client_id ? job.provider_id : job.client_id;
+  const challenger = await heldAccounts(client, dispute.challenger_id, dispute.asset);
+  const bondTo = upheld
+    ? challenger.available
+    : (await heldAccounts(client, counterparty, dispute.asset)).available;
+  await transfer(client, {
+    reference: `challenge-bond-${upheld ? "return" : "forfeit"}:${job.id}`,
+    type: upheld ? "challenge_bond_return" : "challenge_bond_forfeit",
+    from: challenger.held,
+    to: bondTo,
+    amount: dispute.challenge_bond_usdg,
+    asset: dispute.asset,
+    createdBy: input.actorId,
+    metadata: { jobId: job.id, disputeId: dispute.id },
+  });
+  await settle(client, job, finalOutcome, dispute.original_evaluator_id, input.actorId);
+  await client.query(
+    `UPDATE disputes SET status = $2, resolution = $3, resolver_id = $4,
+       resolution_rationale_ciphertext = $5, resolved_at = now() WHERE id = $1`,
+    [
+      dispute.id,
+      finalOutcome === "accepted" ? "resolved_provider" : "resolved_client",
+      input.resolution,
+      input.resolverId,
+      encryptPayload(input.rationale, payloadContext(job.id, "challenge-resolution")),
+    ],
+  );
+  await client.query("INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,$3)", [
+    job.id,
+    input.actorId,
+    `job.challenge_${input.resolution}`,
+  ]);
+  await audit(client, {
+    actorId: input.actorId,
+    action: `dispute.${input.resolution}`,
+    targetType: "dispute",
+    targetId: dispute.id,
+    requestId: input.requestId,
+    metadata: { jobId: job.id, finalOutcome, by: input.resolverId ? "arbitrator" : "panel" },
+  });
+  return { disputeId: dispute.id, jobId: job.id, resolution: input.resolution, finalOutcome };
+}
+
+/** A Liege arbitrator's decision: for disputes without a panel, or whose panel ran out of time. */
 export async function resolveChallenge(input: {
   disputeId: string;
   resolverId: string;
@@ -179,20 +279,13 @@ export async function resolveChallenge(input: {
   const client = await db.connect();
   try {
     await client.query("BEGIN");
-    const found = await client.query<{
-      id: string;
-      job_id: string;
-      challenger_id: string;
-      original_evaluator_id: string;
-      challenge_bond_usdg: string;
-      asset: SettlementAsset;
-      decided_outcome: "accepted" | "rejected";
-      status: string;
-    }>("SELECT * FROM disputes WHERE id = $1 FOR UPDATE", [input.disputeId]);
-    const dispute = found.rows[0];
-    if (!dispute) throw new ApiError(404, "dispute_not_found", "Dispute not found.");
-    if (dispute.status !== "open")
-      throw new ApiError(409, "dispute_resolved", "This dispute is already resolved.");
+    const dispute = await lockDispute(client, input.disputeId);
+    if (dispute.panel_deciding)
+      throw new ApiError(
+        409,
+        "panel_deciding",
+        "An evaluator panel is deciding this dispute; an arbitrator steps in only after its deadline.",
+      );
     const job = (await lockDecided(client, dispute.job_id))!;
     if ([job.client_id, job.provider_id, dispute.original_evaluator_id].includes(input.resolverId))
       throw new ApiError(
@@ -200,55 +293,151 @@ export async function resolveChallenge(input: {
         "arbitrator_conflict",
         "A party to the job cannot arbitrate its dispute.",
       );
-    const upheld = input.resolution === "upheld";
-    const finalOutcome = upheld
-      ? dispute.decided_outcome === "accepted"
-        ? "rejected"
-        : "accepted"
-      : dispute.decided_outcome;
-    // The bond goes back to an upheld challenger, or to the other side of a denied one.
-    const counterparty = dispute.challenger_id === job.client_id ? job.provider_id : job.client_id;
-    const challenger = await heldAccounts(client, dispute.challenger_id, dispute.asset);
-    const bondTo = upheld
-      ? challenger.available
-      : (await heldAccounts(client, counterparty, dispute.asset)).available;
-    await transfer(client, {
-      reference: `challenge-bond-${upheld ? "return" : "forfeit"}:${job.id}`,
-      type: upheld ? "challenge_bond_return" : "challenge_bond_forfeit",
-      from: challenger.held,
-      to: bondTo,
-      amount: dispute.challenge_bond_usdg,
-      asset: dispute.asset,
-      createdBy: input.resolverId,
-      metadata: { jobId: job.id, disputeId: dispute.id },
-    });
-    await settle(client, job, finalOutcome, dispute.original_evaluator_id, input.resolverId);
-    await client.query(
-      `UPDATE disputes SET status = $2, resolution = $3, resolver_id = $4,
-         resolution_rationale_ciphertext = $5, resolved_at = now() WHERE id = $1`,
-      [
-        dispute.id,
-        finalOutcome === "accepted" ? "resolved_provider" : "resolved_client",
-        input.resolution,
-        input.resolverId,
-        encryptPayload(input.rationale, payloadContext(job.id, "challenge-resolution")),
-      ],
-    );
-    await client.query("INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,$3)", [
-      job.id,
-      input.resolverId,
-      `job.challenge_${input.resolution}`,
-    ]);
-    await audit(client, {
+    const result = await applyResolution(client, dispute, {
+      ...input,
       actorId: input.resolverId,
-      action: `dispute.${input.resolution}`,
-      targetType: "dispute",
-      targetId: dispute.id,
-      requestId: input.requestId,
-      metadata: { jobId: job.id, finalOutcome },
     });
     await client.query("COMMIT");
-    return { disputeId: dispute.id, jobId: job.id, resolution: input.resolution, finalOutcome };
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Draws the panel for a new dispute: independent, active evaluators with at least the minimum
+ * stake in the job's asset, chosen at random. Too few eligible evaluators leaves it to a Liege
+ * arbitrator.
+ */
+async function drawPanel(
+  client: PoolClient,
+  input: {
+    disputeId: string;
+    job: DecidedJob;
+    excluded: string[];
+    event: { id: string; created_at: Date };
+  },
+) {
+  const size = env.DISPUTE_PANEL_SIZE;
+  if (!size) return;
+  const drawn = await client.query<{ user_id: string }>(
+    `SELECT p.user_id FROM evaluator_profiles p
+     WHERE p.active AND NOT (p.user_id = ANY($1::uuid[]))
+       AND COALESCE((SELECT sum(lp.amount) FROM ledger_accounts la
+                     JOIN ledger_postings lp ON lp.account_id = la.id
+                     WHERE la.user_id = p.user_id AND la.kind = 'stake' AND la.asset = $2), 0) >= $3
+     ORDER BY random() LIMIT $4`,
+    [
+      input.excluded,
+      input.job.settlement_asset,
+      minimumEvaluatorStake(input.job.settlement_asset),
+      size,
+    ],
+  );
+  if (drawn.rows.length < size) return;
+  await client.query(
+    `UPDATE disputes SET mode = 'panel',
+       panel_deadline_at = now() + ($2::int * interval '1 hour') WHERE id = $1`,
+    [input.disputeId, env.DISPUTE_PANEL_HOURS],
+  );
+  for (const member of drawn.rows) {
+    await client.query(
+      "INSERT INTO dispute_panel_members (dispute_id, evaluator_id) VALUES ($1,$2)",
+      [input.disputeId, member.user_id],
+    );
+    await client.query(
+      `INSERT INTO notifications (user_id, job_id, event_id, event_type, title, message, created_at)
+       VALUES ($1,$2,$3,'dispute.panel_drawn',$4,$5,$6) ON CONFLICT (user_id, event_id) DO NOTHING`,
+      [
+        member.user_id,
+        input.job.id,
+        input.event.id,
+        "You were drawn for a dispute panel",
+        `A decision was challenged. Review the job and vote within ${env.DISPUTE_PANEL_HOURS} hours; the majority decides.`,
+        input.event.created_at,
+      ],
+    );
+  }
+}
+
+/**
+ * Records a panelist's vote. Once a majority agrees, the dispute is resolved on it and every vote
+ * cast so far counts toward the voters' accuracy.
+ */
+export async function castPanelVote(input: {
+  disputeId: string;
+  evaluatorId: string;
+  decision: "upheld" | "denied";
+  rationale: string;
+  requestId?: string;
+}) {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const dispute = await lockDispute(client, input.disputeId);
+    const members = await client.query<{
+      id: string;
+      evaluator_id: string;
+      decision: string | null;
+    }>(
+      "SELECT id, evaluator_id, decision FROM dispute_panel_members WHERE dispute_id = $1 ORDER BY created_at, evaluator_id",
+      [dispute.id],
+    );
+    const me = members.rows.find((row) => row.evaluator_id === input.evaluatorId);
+    if (!me) throw new ApiError(404, "dispute_not_found", "Dispute not found.");
+    if (me.decision) throw new ApiError(409, "already_voted", "You already voted on this dispute.");
+    if (!dispute.panel_deciding)
+      throw new ApiError(
+        409,
+        "panel_closed",
+        "The panel's deadline has passed; a Liege arbitrator will decide.",
+      );
+    await client.query(
+      `UPDATE dispute_panel_members SET decision = $3, rationale_ciphertext = $4, decided_at = now()
+       WHERE dispute_id = $1 AND evaluator_id = $2`,
+      [
+        dispute.id,
+        input.evaluatorId,
+        input.decision,
+        encryptPayload(input.rationale, payloadContext(me.id, "panel-vote")),
+      ],
+    );
+    const votes = members.rows.map((row) =>
+      row.evaluator_id === input.evaluatorId ? input.decision : row.decision,
+    );
+    const majority = Math.floor(members.rows.length / 2) + 1;
+    const count = (decision: string) => votes.filter((vote) => vote === decision).length;
+    const decided =
+      count("upheld") >= majority ? "upheld" : count("denied") >= majority ? "denied" : null;
+    let result: Awaited<ReturnType<typeof applyResolution>> | null = null;
+    if (decided) {
+      result = await applyResolution(client, dispute, {
+        resolution: decided,
+        rationale: `Evaluator panel: ${count("upheld")} upheld, ${count("denied")} denied of ${members.rows.length}.`,
+        actorId: input.evaluatorId,
+        resolverId: null,
+        requestId: input.requestId,
+      });
+      for (const [index, row] of members.rows.entries()) {
+        const vote = votes[index];
+        if (!vote) continue;
+        await client.query(
+          `UPDATE evaluator_profiles SET completed_count = completed_count + 1,
+             correct_count = correct_count + $2, updated_at = now() WHERE user_id = $1`,
+          [row.evaluator_id, vote === decided ? 1 : 0],
+        );
+      }
+    }
+    await client.query("COMMIT");
+    return {
+      disputeId: dispute.id,
+      vote: input.decision,
+      votes: { upheld: count("upheld"), denied: count("denied"), of: members.rows.length },
+      resolved: result,
+    };
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;

@@ -49,8 +49,11 @@ export default function JobChallenge({ jobId, token, status }) {
         dispute.status === "open" ? (
           <p className="muted">
             The {dispute.decidedOutcome === "accepted" ? "acceptance" : "rejection"} was challenged
-            on {when(dispute.createdAt)} with a {dispute.bond} {asset} bond. A Liege arbitrator is
-            reviewing it; the payout waits until then.
+            on {when(dispute.createdAt)} with a {dispute.bond} {asset} bond.{" "}
+            {dispute.decidedBy === "panel"
+              ? `A panel of independent staked evaluators is deciding it by majority, by ${when(dispute.panelDeadlineAt)}.`
+              : "A Liege arbitrator is reviewing it."}{" "}
+            The payout waits until then.
           </p>
         ) : (
           <p className="muted">

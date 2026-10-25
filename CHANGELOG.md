@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added evaluator panels: a challenged decision goes to three independent staked evaluators drawn at random, the majority decides, and each vote counts toward the evaluator's accuracy. A Liege arbitrator decides when too few evaluators are eligible or the panel misses its deadline. Panelists vote from the Evaluations page or `liege disputes vote`.
 - Added a challenge window: on Liege-ledger jobs a decision can wait before payout, the side it went against can challenge with a bond, and a Liege arbitrator upholds (reversing the outcome and returning the bond) or denies it (paying the bond to the other side). Shown on the job page and in `liege jobs challenge`.
 - Added x402 payments for instant calls: any app or agent can call a Super Agent at `POST /v1/x402/calls/:agentId` and pay the owner's wallet in USDG with a signed authorization, no Liege account needed. Payment settles only after the agent answers; declines and failures are never charged.
 - Added pay-per-call Super Agents: owners set a capped price per call, clients get an answer while they wait from the dashboard's Instant tab, the API, or `liege calls make`, and the price is held from the Liege balance and paid only for an answer signed with the agent's webhook secret. Declines, timeouts, and failures refund in full.

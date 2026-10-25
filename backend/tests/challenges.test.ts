@@ -198,4 +198,120 @@ describe.skipIf(!databaseAvailable)("challenge window", () => {
       .send({ resolution: "upheld", rationale: "I think I was right here." })
       .expect(403);
   });
+
+  describe("evaluator panels", () => {
+    /** Independent evaluators with the minimum USDG stake, active. */
+    async function evaluators(count: number) {
+      const users = await Promise.all(Array.from({ length: count }, () => signIn()));
+      for (const user of users) {
+        await credit(user.userId, 5000);
+        await api()
+          .post("/v1/admin/evaluators/stake")
+          .set(bearer(admin))
+          .send({ userId: user.userId, stakeUsdg: 5000, reference: `stake-${crypto.randomUUID()}` })
+          .expect(200);
+        await api().put("/v1/evaluators/me").set(bearer(user)).send({ active: true }).expect(200);
+      }
+      return users;
+    }
+    const vote = (user: User, disputeId: string, decision: "upheld" | "denied") =>
+      api()
+        .post(`/v1/disputes/${disputeId}/vote`)
+        .set(bearer(user))
+        .send({ decision, rationale: "Compared the delivery with each criterion." });
+
+    test("too few eligible evaluators leaves the dispute to an arbitrator", async () => {
+      await evaluators(2);
+      const jobId = await decided("accepted");
+      const opened = (await challenge(client, jobId).expect(201)).body.data;
+      expect(opened).toMatchObject({ decidedBy: "arbitrator", panelDeadlineAt: null });
+    });
+
+    test("a drawn panel decides by majority, and its votes count toward accuracy", async () => {
+      const pool = await evaluators(4);
+      const jobId = await decided("accepted");
+      const opened = (await challenge(client, jobId).expect(201)).body.data;
+      expect(opened.decidedBy).toBe("panel");
+      const members = (
+        await db.query("SELECT evaluator_id FROM dispute_panel_members WHERE dispute_id = $1", [
+          opened.id,
+        ])
+      ).rows.map((row) => row.evaluator_id);
+      expect(members).toHaveLength(3);
+      // Never the job's parties or its original evaluator.
+      expect(members).not.toContain(client.userId);
+      expect(members).not.toContain(provider.userId);
+      const panel = pool.filter((user) => members.includes(user.userId));
+      const outsider = pool.find((user) => !members.includes(user.userId))!;
+
+      // Each panelist is notified and sees the case, but not how others voted.
+      const inbox = await db.query(
+        "SELECT user_id FROM notifications WHERE event_type = 'dispute.panel_drawn'",
+      );
+      expect(inbox.rows.map((row) => row.user_id).sort()).toEqual([...members].sort());
+      const view = (await api().get(`/v1/disputes/${opened.id}`).set(bearer(panel[0])).expect(200))
+        .body.data;
+      expect(view).toMatchObject({
+        decidedOutcome: "accepted",
+        reason: "The report misses two of the criteria.",
+        brief: "Summarize this week's market moves.",
+        deliverable: "Report attached.",
+        tally: null,
+        myVote: null,
+      });
+      await api().get(`/v1/disputes/${opened.id}`).set(bearer(outsider)).expect(404);
+      await vote(outsider, opened.id, "upheld").expect(404);
+
+      // The arbitrator waits for the panel.
+      expect((await resolve(opened.id, "denied").expect(409)).body.error.code).toBe(
+        "panel_deciding",
+      );
+      const first = (await vote(panel[0], opened.id, "upheld").expect(200)).body.data;
+      expect(first.resolved).toBeNull();
+      expect((await vote(panel[0], opened.id, "denied").expect(409)).body.error.code).toBe(
+        "already_voted",
+      );
+      await vote(panel[1], opened.id, "denied").expect(200);
+      const third = (await vote(panel[2], opened.id, "upheld").expect(200)).body.data;
+      expect(third.resolved).toMatchObject({ resolution: "upheld", finalOutcome: "rejected" });
+
+      // Upheld: the client is refunded and gets the bond back.
+      expect(await availableBalance(client.userId)).toBe(100);
+      expect(await job(jobId)).toMatchObject({ status: "rejected" });
+      const resolved = (
+        await api().get(`/v1/disputes/${opened.id}`).set(bearer(panel[1])).expect(200)
+      ).body.data;
+      expect(resolved).toMatchObject({
+        status: "resolved_client",
+        tally: { upheld: 2, denied: 1, of: 3 },
+        myVote: "denied",
+      });
+      const accuracy = await db.query(
+        "SELECT user_id, completed_count, correct_count FROM evaluator_profiles WHERE user_id = ANY($1::uuid[])",
+        [members],
+      );
+      const byUser = Object.fromEntries(accuracy.rows.map((row) => [row.user_id, row]));
+      expect(byUser[panel[0].userId]).toMatchObject({ completed_count: 1, correct_count: 1 });
+      expect(byUser[panel[1].userId]).toMatchObject({ completed_count: 1, correct_count: 0 });
+      expect((await vote(panel[2], opened.id, "upheld").expect(409)).body.error.code).toBe(
+        "dispute_resolved",
+      );
+    });
+
+    test("after the panel's deadline an arbitrator decides and late votes are refused", async () => {
+      const pool = await evaluators(3);
+      const jobId = await decided("rejected");
+      const opened = (await challenge(provider, jobId).expect(201)).body.data;
+      expect(opened.decidedBy).toBe("panel");
+      await db.query(
+        "UPDATE disputes SET panel_deadline_at = now() - interval '1 second' WHERE id = $1",
+        [opened.id],
+      );
+      expect((await vote(pool[0], opened.id, "upheld").expect(409)).body.error.code).toBe(
+        "panel_closed",
+      );
+      await resolve(opened.id, "upheld").expect(200);
+      expect(await job(jobId)).toMatchObject({ status: "completed" });
+    });
+  });
 });

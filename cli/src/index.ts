@@ -89,6 +89,9 @@ Usage:
   liege jobs detach <job-id> <attachment-id>
   liege jobs receipt <job-id> [--rpc <url>]
   liege jobs challenge <job-id> [--reason <text>]
+  liege disputes [list]
+  liege disputes get <dispute-id>
+  liege disputes vote <dispute-id> --decision upheld|denied --rationale <text>
   liege runner simulate <agent-id> '<json-workload>'
   liege runner authorize <agent-id> '<json-workload>' --simulation-id <id>
   liege runner execute '<json-workload>' --action-id <id> --simulation-id <id>
@@ -781,6 +784,22 @@ export async function execute(args: string[]): Promise<unknown> {
       { method: "DELETE" },
     );
     return { removed: positional[3] };
+  }
+  if (resource === "disputes") {
+    // Disputes you were drawn to decide as a panel evaluator.
+    if (!action || action === "list") return request("/v1/disputes");
+    if (action === "get" && id) return request(`/v1/disputes/${encodeURIComponent(id)}`);
+    if (action === "vote" && id) {
+      const decision = flags.decision;
+      const rationale = flags.rationale?.trim();
+      if (decision !== "upheld" && decision !== "denied")
+        throw new Error("--decision must be upheld or denied.");
+      if (!rationale) throw new Error("--rationale is required: why you decided this way.");
+      return request(`/v1/disputes/${encodeURIComponent(id)}/vote`, {
+        method: "POST",
+        body: JSON.stringify({ decision, rationale }),
+      });
+    }
   }
   if (resource === "jobs" && action === "challenge" && id) {
     // Without --reason, show the window; with it, challenge the decision (a bond is held).
