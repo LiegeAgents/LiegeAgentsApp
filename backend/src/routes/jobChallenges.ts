@@ -19,6 +19,7 @@ type DisputeRow = {
   resolution_rationale_ciphertext: string | null;
   mode: "arbitrator" | "panel";
   panel_deadline_at: Date | null;
+  slashed_amount: string | null;
   created_at: Date;
   resolved_at: Date | null;
 };
@@ -41,6 +42,8 @@ const presentDispute = (row: DisputeRow) => ({
     : null,
   // Who decides: a panel of independent evaluators until its deadline, else a Liege arbitrator.
   decidedBy: row.mode,
+  // Stake taken from an overturned evaluator and paid to the challenger.
+  slashedAmount: row.slashed_amount,
   panelDeadlineAt: row.panel_deadline_at,
   createdAt: row.created_at,
   resolvedAt: row.resolved_at,
@@ -49,6 +52,7 @@ const presentDispute = (row: DisputeRow) => ({
 const disputeColumns = `d.id, d.job_id, d.challenger_id, d.reason_ciphertext,
   trim_scale(d.challenge_bond_usdg)::text AS challenge_bond_usdg, d.asset, d.decided_outcome,
   d.status, d.resolution, d.resolution_rationale_ciphertext, d.mode, d.panel_deadline_at,
+  trim_scale(d.slashed_amount)::text AS slashed_amount,
   d.created_at, d.resolved_at`;
 
 export function registerChallengeRoutes(router: Router) {

@@ -59,7 +59,7 @@ export default function JobChallenge({ jobId, token, status }) {
           <p className="muted">
             The challenge was {dispute.resolution}:{" "}
             {dispute.resolution === "upheld"
-              ? "the decision was reversed and the bond returned."
+              ? `the decision was reversed and the bond returned.${dispute.slashedAmount ? ` The evaluator lost ${dispute.slashedAmount} ${asset} of stake, paid to the challenger, and forfeited their fee.` : ""}`
               : "the decision stands and the bond went to the other side."}{" "}
             {dispute.rationale && <q>{dispute.rationale}</q>}
           </p>

@@ -16,7 +16,10 @@ export const selfSettlementLimit = (asset: SettlementAsset) =>
 
 // Jobs whose budget still counts against the evaluator's stake. Exposure is released when a job
 // completes, is rejected, expires, or is cancelled. Nothing is slashed yet: that needs disputes.
+// A decision still inside its challenge window can be overturned and slashed, so its job keeps
+// counting against the evaluator's stake until the payout is released.
 const ACTIVE_STATUSES = "('open', 'funded', 'submitted', 'challenged')";
+const EXPOSED = `(status IN ${ACTIVE_STATUSES} OR (payout_due_at IS NOT NULL AND payout_released_at IS NULL))`;
 
 // Locks the evaluator's profile so concurrent job assignments and stake changes serialize.
 export async function lockEvaluator(client: PoolClient, userId: string) {
@@ -52,7 +55,7 @@ export async function evaluatorPosition(
               -- Evaluator stake is protocol capacity collateral for the selected rail. USDG and
               -- LIEGE balances are independent and are never converted or combined.
               COALESCE((SELECT sum(COALESCE(budget_amount, budget_usdg)) FROM jobs
-                        WHERE evaluator_id = $1 AND settlement_asset = $2 AND status IN ${ACTIVE_STATUSES}), 0) AS exposure_amount
+                        WHERE evaluator_id = $1 AND settlement_asset = $2 AND ${EXPOSED}), 0) AS exposure_amount
      )
      SELECT stake_amount, exposure_amount,
        (exposure_amount + $3::numeric) * $5 <= COALESCE($4::numeric, stake_amount) AS covered

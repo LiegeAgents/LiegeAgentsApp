@@ -314,4 +314,113 @@ describe.skipIf(!databaseAvailable)("challenge window", () => {
       expect(await job(jobId)).toMatchObject({ status: "completed" });
     });
   });
+
+  describe("evaluator slashing", () => {
+    let evaluator: User;
+    const stakeOf = async (userId: string) =>
+      Number(
+        (
+          await db.query(
+            `SELECT COALESCE(sum(p.amount), 0) AS amount FROM ledger_postings p
+             JOIN ledger_accounts a ON a.id = p.account_id
+             WHERE a.user_id = $1 AND a.kind = 'stake' AND a.asset = 'usdg'`,
+            [userId],
+          )
+        ).rows[0].amount,
+      );
+
+    beforeEach(async () => {
+      evaluator = await signIn();
+      await credit(evaluator.userId, 5000);
+      await api()
+        .post("/v1/admin/evaluators/stake")
+        .set(bearer(admin))
+        .send({
+          userId: evaluator.userId,
+          stakeUsdg: 5000,
+          reference: `stake-${crypto.randomUUID()}`,
+        })
+        .expect(200);
+      await api()
+        .put("/v1/evaluators/me")
+        .set(bearer(evaluator))
+        .send({ active: true })
+        .expect(200);
+    });
+
+    /** A 10 USDG job with a 2 USDG evaluator fee, decided by the independent evaluator. */
+    async function judged(outcome: "accepted" | "rejected") {
+      const jobId = await createJob(client, agentId, 10, {
+        evaluatorId: evaluator.userId,
+        evaluatorFeeUsdg: "2",
+        challengeWindowHours: 24,
+      });
+      await fund(jobId).expect(200);
+      await submit(jobId).expect(200);
+      await api()
+        .post(`/v1/jobs/${jobId}/evaluate`)
+        .set(bearer(evaluator))
+        .send({ outcome, rationale: "Checked against the criteria." })
+        .expect(200);
+      return jobId;
+    }
+
+    test("an overturned acceptance costs the evaluator stake and fee, paid to the client", async () => {
+      const jobId = await judged("accepted");
+      const disputeId = (await challenge(client, jobId).expect(201)).body.data.id;
+      const resolved = (await resolve(disputeId, "upheld").expect(200)).body.data;
+      expect(resolved.slashed).toEqual({ evaluatorId: evaluator.userId, amount: "1" });
+      // 10% of the budget left the evaluator's stake.
+      expect(await stakeOf(evaluator.userId)).toBe(4999);
+      // Refund of budget and fee, bond back, and the slashed stake: 100 - 12 - 1 + 12 + 1 + 1.
+      expect(await availableBalance(client.userId)).toBe(101);
+      expect(await availableBalance(evaluator.userId)).toBe(0);
+      const note = await db.query(
+        "SELECT message FROM notifications WHERE user_id = $1 AND event_type = 'evaluator.slashed'",
+        [evaluator.userId],
+      );
+      expect(note.rows[0].message).toContain("1 USDG of your stake went to the challenger");
+    });
+
+    test("an overturned rejection pays the agent, and the slashed stake goes to its owner", async () => {
+      const jobId = await judged("rejected");
+      const disputeId = (
+        await challenge(provider, jobId, "Every criterion was met; see the report.").expect(201)
+      ).body.data.id;
+      await resolve(disputeId, "upheld").expect(200);
+      expect(await stakeOf(evaluator.userId)).toBe(4999);
+      // 5 - 1 bond + 1 bond back + 10 budget + 1 slashed stake.
+      expect(await availableBalance(provider.userId)).toBe(16);
+      // The overturned evaluator's 2 USDG fee goes back to the client.
+      expect(await availableBalance(client.userId)).toBe(90);
+      expect(await availableBalance(evaluator.userId)).toBe(0);
+    });
+
+    test("a denied challenge slashes no one, and the evaluator keeps the fee", async () => {
+      const jobId = await judged("accepted");
+      const disputeId = (await challenge(client, jobId).expect(201)).body.data.id;
+      const resolved = (await resolve(disputeId, "denied").expect(200)).body.data;
+      expect(resolved.slashed).toBeNull();
+      expect(await stakeOf(evaluator.userId)).toBe(5000);
+      expect(await availableBalance(evaluator.userId)).toBe(2);
+    });
+
+    test("stake backing an open decision cannot be withdrawn before the window closes", async () => {
+      const jobId = await judged("accepted");
+      const lower = () =>
+        api()
+          .post("/v1/admin/evaluators/stake")
+          .set(bearer(admin))
+          .send({
+            userId: evaluator.userId,
+            stakeUsdg: 0.4,
+            reference: `stake-${crypto.randomUUID()}`,
+          });
+      // Five times the 10 USDG budget stays locked while the decision can be challenged.
+      expect((await lower().expect(409)).body.error.code).toBe("stake_backs_open_jobs");
+      await closeWindow(jobId);
+      expect(await releaseDuePayouts()).toEqual([jobId]);
+      await lower().expect(200);
+    });
+  });
 });

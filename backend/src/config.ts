@@ -85,6 +85,8 @@ const env = z
       // A tie cannot decide anything, so an even size drops to the odd size below it.
       .transform((value) => (value % 2 || value === 0 ? value : value - 1)),
     DISPUTE_PANEL_HOURS: z.coerce.number().int().min(1).max(336).catch(48),
+    // Share of the budget taken from an overturned evaluator's stake for the challenger (0 = off).
+    SLASH_BPS: z.coerce.number().int().min(0).max(10_000).catch(1_000),
     // Pay-per-call: the highest price an agent may set per call, and how long a call may run.
     INSTANT_CALL_MAX_USDG: z.coerce.number().positive().default(5),
     INSTANT_CALL_MAX_LIEGE: z.coerce.number().positive().default(25_000),

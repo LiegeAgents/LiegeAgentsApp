@@ -2360,8 +2360,10 @@ paths:
     post:
       operationId: resolveDispute
       summary: >-
-        Uphold a challenge, which reverses the evaluator's decision and returns the challenger's
-        bond, or deny it, which keeps the decision and pays the bond to the other side. The job
+        Uphold a challenge, which reverses the evaluator's decision, returns the challenger's bond,
+        and slashes an independent evaluator (SLASH_BPS of the budget from their stake, paid to the
+        challenger, plus their fee), or deny it, which keeps the decision and pays the bond to the
+        other side. The job
         settles either way. A party to the job cannot arbitrate it, and a dispute with an evaluator
         panel can be arbitrated only after the panel's deadline. Administrators only.
       security: [{ bearerAuth: [] }]

@@ -6,8 +6,8 @@ import { encryptPayload, payloadContext, payloadDigest } from "./crypto.js";
 import { db } from "./db/index.js";
 import { ApiError } from "./http.js";
 import { releaseLedgerOutcome, type LedgerJob } from "./jobPayouts.js";
-import { heldAccounts, transfer } from "./ledger.js";
-import { minimumEvaluatorStake } from "./capacity.js";
+import { heldAccounts, transfer, userBalance } from "./ledger.js";
+import { lockEvaluator, minimumEvaluatorStake } from "./capacity.js";
 import { enqueueWebhookEvent } from "./webhooks.js";
 
 /**
@@ -240,16 +240,27 @@ async function applyResolution(
     createdBy: input.actorId,
     metadata: { jobId: job.id, disputeId: dispute.id },
   });
-  await settle(client, job, finalOutcome, dispute.original_evaluator_id, input.actorId);
+  // An overturned evaluator forfeits their fee: on a reversed rejection it goes back to the client.
+  await settle(
+    client,
+    job,
+    finalOutcome,
+    upheld ? job.client_id : dispute.original_evaluator_id,
+    input.actorId,
+  );
+  const slashed = upheld ? await slashEvaluator(client, job, dispute, input.actorId) : null;
   await client.query(
     `UPDATE disputes SET status = $2, resolution = $3, resolver_id = $4,
-       resolution_rationale_ciphertext = $5, resolved_at = now() WHERE id = $1`,
+       resolution_rationale_ciphertext = $5, resolved_at = now(),
+       slashed_evaluator_id = $6, slashed_amount = $7 WHERE id = $1`,
     [
       dispute.id,
       finalOutcome === "accepted" ? "resolved_provider" : "resolved_client",
       input.resolution,
       input.resolverId,
       encryptPayload(input.rationale, payloadContext(job.id, "challenge-resolution")),
+      slashed?.evaluatorId ?? null,
+      slashed?.amount ?? null,
     ],
   );
   await client.query("INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,$3)", [
@@ -263,9 +274,75 @@ async function applyResolution(
     targetType: "dispute",
     targetId: dispute.id,
     requestId: input.requestId,
-    metadata: { jobId: job.id, finalOutcome, by: input.resolverId ? "arbitrator" : "panel" },
+    metadata: {
+      jobId: job.id,
+      finalOutcome,
+      by: input.resolverId ? "arbitrator" : "panel",
+      slashed: slashed?.amount ?? null,
+    },
   });
-  return { disputeId: dispute.id, jobId: job.id, resolution: input.resolution, finalOutcome };
+  return {
+    disputeId: dispute.id,
+    jobId: job.id,
+    resolution: input.resolution,
+    finalOutcome,
+    slashed,
+  };
+}
+
+/**
+ * Slashes the independent evaluator whose decision was overturned: SLASH_BPS of the budget, up
+ * to the stake they hold in the job's asset, moves from their stake to the challenger. Clients
+ * who decided their own job hold no evaluator stake and are not slashed. Ledger only: no wallet
+ * or contract is touched.
+ */
+async function slashEvaluator(
+  client: PoolClient,
+  job: DecidedJob,
+  dispute: DisputeRow,
+  actorId: string,
+) {
+  const evaluatorId = job.evaluator_id;
+  if (!evaluatorId || evaluatorId === job.client_id || !env.SLASH_BPS) return null;
+  await lockEvaluator(client, evaluatorId);
+  const stake = await userBalance(client, evaluatorId, "stake", job.settlement_asset);
+  const decimals = job.settlement_asset === "liege" ? 18 : 6;
+  const target = (Number(job.budget_amount) * env.SLASH_BPS) / 10_000;
+  const amount = Number(Math.min(target, stake.amount).toFixed(decimals));
+  if (amount <= 0) return null;
+  const challenger = await userBalance(
+    client,
+    dispute.challenger_id,
+    "available",
+    job.settlement_asset,
+  );
+  await transfer(client, {
+    reference: `evaluator-slash:${job.id}`,
+    type: "evaluator_slash",
+    from: stake.accountId,
+    to: challenger.accountId,
+    amount,
+    asset: job.settlement_asset,
+    createdBy: actorId,
+    metadata: { jobId: job.id, disputeId: dispute.id, evaluatorId },
+  });
+  const event = await client.query<{ id: string; created_at: Date }>(
+    "INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,'evaluator.slashed') RETURNING id, created_at",
+    [job.id, actorId],
+  );
+  await client.query(
+    `INSERT INTO notifications (user_id, job_id, event_id, event_type, title, message, created_at)
+     VALUES ($1,$2,$3,'evaluator.slashed',$4,$5,$6) ON CONFLICT (user_id, event_id) DO NOTHING`,
+    [
+      evaluatorId,
+      job.id,
+      event.rows[0].id,
+      "Your decision was overturned",
+      `A challenge to your decision was upheld, so ${amount} ${assetLabel(job.settlement_asset)} of your stake went to the challenger.`,
+      event.rows[0].created_at,
+    ],
+  );
+  return { evaluatorId, amount: String(amount) };
 }
 
 /** A Liege arbitrator's decision: for disputes without a panel, or whose panel ran out of time. */
