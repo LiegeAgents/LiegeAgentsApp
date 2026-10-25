@@ -194,8 +194,11 @@ export async function escrowAccount(
   return account(client, "escrow", { jobId, asset });
 }
 
-/** A user's available and held accounts; held carries the price of their open instant calls. */
-export async function callAccounts(client: PoolClient, userId: string, asset: SettlementAsset) {
+/**
+ * A user's available and held accounts. Held carries money set aside until something ends: the
+ * price of an open instant call, or a challenge bond.
+ */
+export async function heldAccounts(client: PoolClient, userId: string, asset: SettlementAsset) {
   return {
     available: await account(client, "available", { userId, asset }),
     held: await account(client, "held", { userId, asset }),

@@ -132,7 +132,9 @@ export const payloadContext = (
     | "refresh-token"
     | "watch-snapshot"
     | "call-input"
-    | "call-output",
+    | "call-output"
+    | "challenge"
+    | "challenge-resolution",
 ) => `job:${jobId}:${field}`;
 export const encryptPayload = (value: string, context: string) =>
   keyring.encrypt(value, "payload", context);

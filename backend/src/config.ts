@@ -70,6 +70,10 @@ const env = z
       }),
     // How often the API builds receipts and anchors a batch; 0 leaves it to the cron route.
     RECEIPT_ANCHOR_INTERVAL_MS: z.coerce.number().int().min(0).default(600_000),
+    // Challenge window for Liege-ledger jobs: hours between an evaluator's decision and payout
+    // (0 pays out at once), and the challenger's bond as basis points of the job budget.
+    CHALLENGE_WINDOW_HOURS: z.coerce.number().int().min(0).max(168).default(0),
+    CHALLENGE_BOND_BPS: z.coerce.number().int().min(0).max(10_000).default(1_000),
     // Pay-per-call: the highest price an agent may set per call, and how long a call may run.
     INSTANT_CALL_MAX_USDG: z.coerce.number().positive().default(5),
     INSTANT_CALL_MAX_LIEGE: z.coerce.number().positive().default(25_000),

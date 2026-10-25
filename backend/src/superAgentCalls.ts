@@ -5,7 +5,7 @@ import { env } from "./config.js";
 import { decryptPayload, encryptPayload, payloadContext } from "./crypto.js";
 import { db } from "./db/index.js";
 import { ApiError } from "./http.js";
-import { callAccounts, transfer } from "./ledger.js";
+import { heldAccounts, transfer } from "./ledger.js";
 import { readyEnrollment } from "./superAgentEnrollment.js";
 import { callTransport } from "./superAgentProbe.js";
 
@@ -173,7 +173,7 @@ async function openCall(input: {
         encryptPayload(input.request, payloadContext(id, "call-input")),
       ],
     );
-    const accounts = await callAccounts(client, input.clientId, input.asset);
+    const accounts = await heldAccounts(client, input.clientId, input.asset);
     await transfer(client, {
       reference: `call-hold:${id}`,
       type: "call_hold",
@@ -232,10 +232,10 @@ export async function finishCall(
 }
 
 async function moveHeldPrice(client: PoolClient, call: CallRow, status: CallRow["status"]) {
-  const held = await callAccounts(client, call.client_id!, call.settlement_asset);
+  const held = await heldAccounts(client, call.client_id!, call.settlement_asset);
   const payee =
     status === "succeeded"
-      ? (await callAccounts(client, call.owner_id, call.settlement_asset)).available
+      ? (await heldAccounts(client, call.owner_id, call.settlement_asset)).available
       : held.available;
   await transfer(client, {
     reference: `call-${status === "succeeded" ? "payout" : "refund"}:${call.id}`,

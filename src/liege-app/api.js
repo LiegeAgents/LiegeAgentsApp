@@ -132,6 +132,13 @@ export const api = {
   jobRevision: (token, id) => request(`/v1/jobs/${id}/revision`, { token }),
   jobAttachments: (token, id) => request(`/v1/jobs/${id}/attachments`, { token }),
   jobReceipt: (token, id) => request(`/v1/jobs/${id}/receipt`, { token }),
+  jobChallenge: (token, id) => request(`/v1/jobs/${id}/challenge`, { token }),
+  challengeJob: (token, id, reason) =>
+    request(`/v1/jobs/${id}/challenge`, {
+      token,
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
   jobAttachment: (token, id, attachmentId) =>
     request(`/v1/jobs/${id}/attachments/${attachmentId}`, { token }),
   attachLink: (token, id, input) =>

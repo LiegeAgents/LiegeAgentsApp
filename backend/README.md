@@ -130,11 +130,15 @@ Liege is the off-chain escrow and stake authority. An allowlisted admin wallet c
 
 ### Evaluators
 
-An evaluator needs an active profile and at least 5,000 USDG or 10,000,000 LIEGE staked, and their stake must be at least five times the combined budgets of all their open, funded, submitted, or challenged jobs, including a new one. Exposure is released when a job completes, is rejected, expires, or is cancelled, and stake cannot be lowered below what open jobs need. A client may settle their own job only below the asset-specific cap: 5,000 USDG or 25,000,000 LIEGE by default (`SELF_SETTLEMENT_LIMIT_LIEGE` can override the LIEGE cap). Nothing is slashed yet; that requires the dispute flow.
+An evaluator needs an active profile and at least 5,000 USDG or 10,000,000 LIEGE staked, and their stake must be at least five times the combined budgets of all their open, funded, submitted, or challenged jobs, including a new one. Exposure is released when a job completes, is rejected, expires, or is cancelled, and stake cannot be lowered below what open jobs need. A client may settle their own job only below the asset-specific cap: 5,000 USDG or 25,000,000 LIEGE by default (`SELF_SETTLEMENT_LIMIT_LIEGE` can override the LIEGE cap). Nothing is slashed yet.
+
+### Challenge window
+
+On Liege-ledger jobs, an evaluator's decision can wait out a challenge window before any money moves. The window is set per job (`challengeWindowHours`, 0 to 168) or by the platform default `CHALLENGE_WINDOW_HOURS` (0, which pays out at once as before). During the window the job shows its decided status (`completed` or `rejected`) with `payout_due_at`, but `settled_at` stays empty and the escrow stays put, so no receipt is anchored yet. The side the decision went against (the client for an acceptance, the agent owner for a rejection) may challenge it with `POST /v1/jobs/:id/challenge` and a reason; a bond of `CHALLENGE_BOND_BPS` of the budget (10% by default, in the job's asset) moves from their available balance to their held account, and the job becomes `challenged`. A Liege arbitrator (an admin wallet that is not a party to the job) resolves it with `POST /v1/admin/disputes/:id/resolve`: upheld reverses the decision and returns the bond; denied keeps it and pays the bond to the other side. The job then settles on its final outcome. Unchallenged decisions are paid out by an in-process loop every minute (and `POST /v1/cron/release-payouts`). Reasons and rationales are encrypted (`challenge`, `challenge-resolution`). On-chain and Veilora escrow settle on decision as before; their contracts would need changes to hold a decision.
 
 ### Not implemented yet
 
-The schema has a `challenged` job status, `disputes` and `dispute_panel_members` tables, agent `reputation_score`, and evaluator `completed_count`/`correct_count`, but no API opens or resolves disputes and nothing updates those scores; the database comments say so. Until disputes exist there is no challenge path after settlement, no slashing, and evaluator accuracy is always null.
+Disputes are decided by a Liege arbitrator; evaluator panels (`dispute_panel_members`) are not implemented. Nothing is slashed yet, `agents.reputation_score` and evaluator `completed_count`/`correct_count` are not updated, and evaluator accuracy is always null.
 
 ### On-chain settlement
 

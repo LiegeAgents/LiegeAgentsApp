@@ -34,10 +34,12 @@ import { registerProgressRoutes } from "./jobProgress.js";
 import { registerRevisionRoutes } from "./jobRevisions.js";
 import { registerAttachmentRoutes } from "./jobAttachments.js";
 import { registerReceiptRoutes } from "./jobReceipts.js";
+import { registerChallengeRoutes } from "./jobChallenges.js";
 import { advanceSquad } from "../superAgentSquads.js";
 import { recordWatchRun, watchSnapshot } from "../constantineWatch.js";
 import { SIGNATURE_PATTERN, verifyDeliverableSignature } from "../deliverableSignatures.js";
 import { resolveJobEscrowMode } from "../jobEscrowMode.js";
+import { releaseLedgerOutcome } from "../jobPayouts.js";
 
 const decimalAmount = (positive = false) =>
   z
@@ -80,6 +82,9 @@ const jobInput = z
     deadlineAt: z.coerce.date(),
     expiresAt: z.coerce.date(),
     strategyPolicy: z.record(z.unknown()).optional(),
+    // Hours after the evaluator decides during which the losing side may challenge, on Liege
+    // ledger escrow only. Omitted: the platform default.
+    challengeWindowHours: z.number().int().min(0).max(168).optional(),
   })
   .superRefine((value, ctx) => {
     const budget = value.settlementAsset === "liege" ? value.budgetLiege : value.budgetUsdg;
@@ -629,8 +634,8 @@ jobsRouter.post(
           );
       }
       const result = await client.query(
-        `INSERT INTO jobs (id, client_id, agent_id, evaluator_id, kind, title, brief_ciphertext, brief_hash, acceptance_criteria, settlement_asset, budget_amount, evaluator_fee_amount, budget_usdg, evaluator_fee_usdg, deadline_at, expires_at, strategy_policy, escrow_mode)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+        `INSERT INTO jobs (id, client_id, agent_id, evaluator_id, kind, title, brief_ciphertext, brief_hash, acceptance_criteria, settlement_asset, budget_amount, evaluator_fee_amount, budget_usdg, evaluator_fee_usdg, deadline_at, expires_at, strategy_policy, escrow_mode, challenge_window_hours)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
         [
           jobId,
           request.auth!.userId,
@@ -650,6 +655,7 @@ jobsRouter.post(
           input.expiresAt,
           input.strategyPolicy ? JSON.stringify(input.strategyPolicy) : null,
           resolveJobEscrowMode(Boolean(input.evaluatorId)),
+          input.challengeWindowHours ?? null,
         ],
       );
       const job = result.rows[0];
@@ -1493,6 +1499,7 @@ jobsRouter.post(
     try {
       await client.query("BEGIN");
       const job = await transition(client, request, target);
+      let windowHours = 0;
       const jobEvaluatorFee =
         job.settlement_asset === "usdg"
           ? String(job.evaluator_fee_usdg ?? job.evaluator_fee_amount ?? 0)
@@ -1533,90 +1540,16 @@ jobsRouter.post(
             "The signed Veilora outcome was not submitted.",
           );
       } else {
-        const escrow = await escrowAccount(client, job.id, job.settlement_asset);
-        const total = Number(job.budget_amount) + Number(jobEvaluatorFee);
-        if (target === "completed") {
-          const decimals = job.settlement_asset === "liege" ? 18 : 6;
-          const budgetRaw = parseUnits(String(job.budget_amount), decimals);
-          const members = await client.query<{ owner_id: string; allocation_bps: number }>(
-            `SELECT a.owner_id, la.allocation_bps FROM legion_assignments la
-             JOIN legions l ON l.id = la.legion_id JOIN agents a ON a.id = la.agent_id
-             WHERE l.job_id = $1 AND la.status = 'submitted' ORDER BY la.created_at`,
-            [job.id],
-          );
-          let delegatedRaw = 0n;
-          for (const member of members.rows) {
-            const shareRaw = (budgetRaw * BigInt(member.allocation_bps)) / 10_000n;
-            if (shareRaw === 0n) continue;
-            delegatedRaw += shareRaw;
-            const memberBalance = await userBalance(
-              client,
-              member.owner_id,
-              "available",
-              job.settlement_asset,
-            );
-            await transfer(client, {
-              reference: `job-settle-legion:${job.id}:${member.owner_id}`,
-              type: "legion_settlement",
-              from: escrow,
-              to: memberBalance.accountId,
-              amount: formatUnits(shareRaw, decimals),
-              asset: job.settlement_asset,
-              createdBy: request.auth!.userId,
-              metadata: { jobId: job.id, allocationBps: member.allocation_bps },
-            });
-          }
-          const provider = await userBalance(
+        // Ledger escrow waits out the challenge window, if any, before paying out.
+        windowHours = job.challenge_window_hours ?? env.CHALLENGE_WINDOW_HOURS;
+        if (!windowHours)
+          await releaseLedgerOutcome(
             client,
-            job.provider_id,
-            "available",
-            job.settlement_asset,
-          );
-          const evaluator = await userBalance(
-            client,
+            job,
+            input.outcome,
             request.auth!.userId,
-            "available",
-            job.settlement_asset,
+            request.auth!.userId,
           );
-          await transfer(client, {
-            reference: `job-settle-provider:${job.id}`,
-            type: "job_settlement",
-            from: escrow,
-            to: provider.accountId,
-            amount: formatUnits(budgetRaw - delegatedRaw, decimals),
-            asset: job.settlement_asset,
-            createdBy: request.auth!.userId,
-            metadata: { jobId: job.id },
-          });
-          if (Number(jobEvaluatorFee) > 0)
-            await transfer(client, {
-              reference: `job-settle-evaluator:${job.id}`,
-              type: "evaluator_fee",
-              from: escrow,
-              to: evaluator.accountId,
-              amount: Number(jobEvaluatorFee),
-              asset: job.settlement_asset,
-              createdBy: request.auth!.userId,
-              metadata: { jobId: job.id },
-            });
-        } else {
-          const clientBalance = await userBalance(
-            client,
-            job.client_id,
-            "available",
-            job.settlement_asset,
-          );
-          await transfer(client, {
-            reference: `job-refund:${job.id}`,
-            type: "job_refund",
-            from: escrow,
-            to: clientBalance.accountId,
-            amount: total,
-            asset: job.settlement_asset,
-            createdBy: request.auth!.userId,
-            metadata: { jobId: job.id },
-          });
-        }
       }
       await client.query(
         "INSERT INTO evaluations (job_id, evaluator_id, outcome, rationale_ciphertext, rationale_hash) VALUES ($1,$2,$3,$4,$5)",
@@ -1633,10 +1566,18 @@ jobsRouter.post(
             `UPDATE jobs SET status = '${target}', settled_at = now(), veilora_settlement_tx_hash = $2, updated_at = now() WHERE id = $1 RETURNING *`,
             [job.id, veiloraSettlement.txHash],
           )
-        : await client.query(
-            `UPDATE jobs SET status = '${target}', settled_at = now(), updated_at = now() WHERE id = $1 RETURNING *`,
-            [job.id],
-          );
+        : windowHours
+          ? // Decided but not settled: the receipt and payout wait for the window to close.
+            await client.query(
+              `UPDATE jobs SET status = '${target}', challenge_window_hours = $2,
+                 payout_due_at = now() + ($2::int * interval '1 hour'), updated_at = now()
+               WHERE id = $1 RETURNING *`,
+              [job.id, windowHours],
+            )
+          : await client.query(
+              `UPDATE jobs SET status = '${target}', settled_at = now(), updated_at = now() WHERE id = $1 RETURNING *`,
+              [job.id],
+            );
       await client.query(
         "INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,$3)",
         [job.id, request.auth!.userId, `job.${target}`],
@@ -1671,3 +1612,4 @@ registerProgressRoutes(jobsRouter, assertRuntimeAgentScope);
 registerRevisionRoutes(jobsRouter);
 registerAttachmentRoutes(jobsRouter);
 registerReceiptRoutes(jobsRouter);
+registerChallengeRoutes(jobsRouter);

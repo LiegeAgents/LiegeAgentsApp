@@ -10,6 +10,7 @@ import { audit } from "../audit.js";
 import { env } from "../config.js";
 import { ensureEscrowWallet } from "../escrow.js";
 import { processSettlement } from "../settlement.js";
+import { registerDisputeAdminRoutes } from "./jobChallenges.js";
 import { evaluatorPosition, lockEvaluator, STAKE_COVERAGE } from "../capacity.js";
 
 const transferInput = z.object({
@@ -19,6 +20,7 @@ const transferInput = z.object({
 });
 export const adminRouter = Router();
 adminRouter.use(requireAuth, requireAdmin);
+registerDisputeAdminRoutes(adminRouter);
 
 adminRouter.post(
   "/ledger/credit",

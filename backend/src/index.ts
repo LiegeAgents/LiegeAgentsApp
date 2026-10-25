@@ -8,6 +8,7 @@ import { startLiegeStakingPayoutExecutor } from "./stakingExecutor.js";
 import { startSuperAgentScheduler, stopSuperAgentScheduler } from "./superAgentSchedules.js";
 import { startReceiptAnchoring, stopReceiptAnchoring } from "./jobReceipts.js";
 import { startCallSweeper, stopCallSweeper } from "./superAgentCalls.js";
+import { startPayoutReleases, stopPayoutReleases } from "./challenges.js";
 import { startChainTriggers, stopChainTriggers } from "./chainTriggers.js";
 
 await migrate();
@@ -18,6 +19,7 @@ startLiegeStakingPayoutExecutor();
 startSuperAgentScheduler();
 startReceiptAnchoring();
 startCallSweeper();
+startPayoutReleases();
 startChainTriggers();
 
 // Let in-flight requests finish and close the pool before the platform stops the container.
@@ -29,6 +31,7 @@ const shutdown = () =>
         stopSuperAgentScheduler();
         stopReceiptAnchoring();
         stopCallSweeper();
+        stopPayoutReleases();
         stopChainTriggers();
         void db.end();
       }),

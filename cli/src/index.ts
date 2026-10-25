@@ -88,6 +88,7 @@ Usage:
   liege jobs attachment <job-id> <attachment-id> [--out <path>]
   liege jobs detach <job-id> <attachment-id>
   liege jobs receipt <job-id> [--rpc <url>]
+  liege jobs challenge <job-id> [--reason <text>]
   liege runner simulate <agent-id> '<json-workload>'
   liege runner authorize <agent-id> '<json-workload>' --simulation-id <id>
   liege runner execute '<json-workload>' --action-id <id> --simulation-id <id>
@@ -780,6 +781,13 @@ export async function execute(args: string[]): Promise<unknown> {
       { method: "DELETE" },
     );
     return { removed: positional[3] };
+  }
+  if (resource === "jobs" && action === "challenge" && id) {
+    // Without --reason, show the window; with it, challenge the decision (a bond is held).
+    const path = `/v1/jobs/${encodeURIComponent(id)}/challenge`;
+    const reason = flags.reason?.trim();
+    if (!reason) return request(path);
+    return request(path, { method: "POST", body: JSON.stringify({ reason }) });
   }
   if (resource === "jobs" && action === "receipt" && id) {
     // Fetch the receipt, then check it against the chain ourselves instead of trusting the API.

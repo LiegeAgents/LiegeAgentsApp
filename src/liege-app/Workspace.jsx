@@ -38,6 +38,7 @@ import { WalletButton, useWallet } from "./wallet/Wallet";
 import SocialLinks from "./SocialLinks";
 import JobAttachments from "./JobAttachments";
 import JobReceipt from "./JobReceipt";
+import JobChallenge from "./JobChallenge";
 import { api, agentForDisplay, jobForDisplay } from "./api";
 import "./live-jobs.css";
 
@@ -3702,6 +3703,7 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
             editable={isClient && String(detail.status).toLowerCase() === "open"}
           />
         )}
+        {detail && <JobChallenge jobId={job.id} token={token} status={detail.status} />}
         {detail && <JobReceipt jobId={job.id} token={token} status={detail.status} />}
         <h3>Acceptance criteria</h3>
         <ul className="job-criteria">

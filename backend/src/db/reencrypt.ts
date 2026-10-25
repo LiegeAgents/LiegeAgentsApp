@@ -37,7 +37,9 @@ const payload = (
     | "artifact"
     | "watch-snapshot"
     | "call-input"
-    | "call-output",
+    | "call-output"
+    | "challenge"
+    | "challenge-resolution",
   id = table === "jobs" ? "id" : "job_id",
 ) => ({
   table,
@@ -64,6 +66,9 @@ const targets: Target[] = [
   payload("superagent_triggers", "secret_ciphertext", "github-trigger", "id"),
   payload("superagent_watch_runs", "snapshot_ciphertext", "watch-snapshot"),
   payload("superagent_calls", "input_ciphertext", "call-input", "id"),
+  // One dispute per job, so job_id identifies the row.
+  payload("disputes", "reason_ciphertext", "challenge"),
+  payload("disputes", "resolution_rationale_ciphertext", "challenge-resolution"),
   payload("superagent_calls", "output_ciphertext", "call-output", "id"),
   {
     table: "escrow_wallets",

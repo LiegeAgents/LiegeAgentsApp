@@ -1082,6 +1082,13 @@ paths:
                 deadlineAt: { type: string, format: date-time }
                 expiresAt: { type: string, format: date-time }
                 strategyPolicy: { type: object }
+                challengeWindowHours:
+                  {
+                    type: integer,
+                    minimum: 0,
+                    maximum: 168,
+                    description: Hours between the evaluator's decision and payout during which the losing side may challenge (Liege ledger escrow only). Defaults to the platform's CHALLENGE_WINDOW_HOURS.,
+                  }
       responses:
         "413": { $ref: "#/components/responses/PayloadTooLarge" }
         "429": { $ref: "#/components/responses/RateLimited" }
@@ -2277,6 +2284,52 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "500": { $ref: "#/components/responses/InternalError" }
 
+  /v1/admin/disputes:
+    get:
+      operationId: listDisputes
+      summary: Challenged decisions waiting for (or resolved by) a Liege arbitrator. Administrators only.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            name: status,
+            in: query,
+            schema: { type: string, enum: [open, resolved], default: open },
+          }
+      responses:
+        "200":
+          description: Disputes, oldest first, with the challenger's reason.
+          content: { application/json: { schema: { type: object } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /v1/admin/disputes/{id}/resolve:
+    post:
+      operationId: resolveDispute
+      summary: >-
+        Uphold a challenge, which reverses the evaluator's decision and returns the challenger's
+        bond, or deny it, which keeps the decision and pays the bond to the other side. The job
+        settles either way. A party to the job cannot arbitrate it. Administrators only.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [resolution, rationale]
+              properties:
+                resolution: { type: string, enum: [upheld, denied] }
+                rationale: { type: string, minLength: 10, maxLength: 4000 }
+      responses:
+        "200":
+          description: The resolution and the job's final outcome.
+          content: { application/json: { schema: { type: object } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /v1/admin/settlements:
     get:
       operationId: listSettlements
@@ -2418,6 +2471,52 @@ paths:
                   data: { $ref: "#/components/schemas/SettlementRunSummary" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
 
+  /v1/jobs/{id}/challenge:
+    get:
+      operationId: getJobChallenge
+      summary: >-
+        The job's challenge window (open or not, when the payout is due, and the bond a challenge
+        needs) and its dispute, if any. For the client, agent owner, and evaluator.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Challenge window and dispute.
+          content: { application/json: { schema: { type: object } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      operationId: challengeJob
+      summary: >-
+        Challenge an evaluator's decision before its payout. On Liege-ledger jobs with a challenge
+        window, the escrow stays put until the window closes; the client may challenge an
+        acceptance and the agent owner a rejection. The challenger's bond (CHALLENGE_BOND_BPS of the
+        budget, 10% by default) is held from their available balance until a Liege arbitrator
+        resolves the dispute.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties: { reason: { type: string, minLength: 10, maxLength: 4000 } }
+      responses:
+        "201":
+          description: Dispute opened; the job is challenged.
+          content: { application/json: { schema: { type: object } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "402":
+          description: The available balance cannot cover the bond (insufficient_bond).
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /v1/jobs/{id}/receipt:
     get:
       operationId: getJobReceipt
@@ -2477,6 +2576,19 @@ paths:
                       createdAt: { type: string, format: date-time }
                       confirmedAt: { type: [string, "null"], format: date-time }
         "404": { $ref: "#/components/responses/NotFound" }
+  /v1/cron/release-payouts:
+    post:
+      operationId: releasePayouts
+      summary: >-
+        Pay out Liege-ledger decisions whose challenge window closed without a challenge. Also runs
+        in-process every minute; each job pays out once.
+      security: [{ cronSecret: [] }]
+      responses:
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
+          description: Jobs paid out in this pass.
+          content: { application/json: { schema: { type: object } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
   /v1/cron/anchor-receipts:
     post:
       operationId: anchorReceipts
