@@ -71,4 +71,13 @@ describe("challenging a decision from the CLI", () => {
     expect(calls[1].body).toEqual({ txHash: "0xabc", asset: "liege" });
     await expect(execute(["topup", "--tx", "0xabc"])).rejects.toThrow("--asset must be");
   });
+
+  test("shows or requests a second opinion", async () => {
+    await execute(["jobs", "second-opinion", "job-1"]);
+    await execute(["jobs", "second-opinion", "job-1", "--request"]);
+    expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      "GET /v1/jobs/job-1/second-opinion",
+      "POST /v1/jobs/job-1/second-opinion",
+    ]);
+  });
 });

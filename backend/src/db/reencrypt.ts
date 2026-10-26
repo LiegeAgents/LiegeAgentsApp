@@ -40,7 +40,8 @@ const payload = (
     | "call-output"
     | "challenge"
     | "challenge-resolution"
-    | "panel-vote",
+    | "panel-vote"
+    | "second-opinion",
   id = table === "jobs" ? "id" : "job_id",
 ) => ({
   table,
@@ -71,6 +72,7 @@ const targets: Target[] = [
   payload("disputes", "reason_ciphertext", "challenge"),
   payload("disputes", "resolution_rationale_ciphertext", "challenge-resolution"),
   payload("dispute_panel_members", "rationale_ciphertext", "panel-vote", "id"),
+  payload("job_second_opinions", "result_ciphertext", "second-opinion", "id"),
   payload("superagent_calls", "output_ciphertext", "call-output", "id"),
   {
     table: "escrow_wallets",

@@ -133,6 +133,9 @@ export const api = {
   jobAttachments: (token, id) => request(`/v1/jobs/${id}/attachments`, { token }),
   jobReceipt: (token, id) => request(`/v1/jobs/${id}/receipt`, { token }),
   jobChallenge: (token, id) => request(`/v1/jobs/${id}/challenge`, { token }),
+  secondOpinion: (token, id) => request(`/v1/jobs/${id}/second-opinion`, { token }),
+  requestSecondOpinion: (token, id) =>
+    request(`/v1/jobs/${id}/second-opinion`, { token, method: "POST" }),
   topups: (token) => request("/v1/me/topups", { token }),
   claimTopup: (token, txHash, asset) =>
     request("/v1/me/topups", {

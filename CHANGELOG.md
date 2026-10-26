@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added second-opinion grading: before deciding, the client or evaluator can have an AI grader check the delivery against each acceptance criterion, with a score Liege computes from the findings. It only advises and never settles a job.
 - Added rule-based approval: clients can set objective checks (word counts, required headings and text, valid JSON, source links); a delivery that passes all of them is accepted and paid without manual review, and the results show on the job page.
 - Extended the challenge window, evaluator panels, and slashing to jobs held in Liege onchain escrow wallets, not only ledger jobs.
 - Added workspace top-ups: users add USDG or LIEGE to their Liege balance by sending it from their wallet on Robinhood Chain, from the workspace Settings page or `liege topup`. Each transfer is verified onchain and credited once.

@@ -89,6 +89,7 @@ Usage:
   liege jobs detach <job-id> <attachment-id>
   liege jobs receipt <job-id> [--rpc <url>]
   liege jobs challenge <job-id> [--reason <text>]
+  liege jobs second-opinion <job-id> [--request]
   liege topup [--tx <hash> --asset usdg|liege]
   liege disputes [list]
   liege disputes get <dispute-id>
@@ -811,6 +812,11 @@ export async function execute(args: string[]): Promise<unknown> {
         body: JSON.stringify({ decision, rationale }),
       });
     }
+  }
+  if (resource === "jobs" && action === "second-opinion" && id) {
+    // --request asks the grading model; without it, show the existing grade.
+    const path = `/v1/jobs/${encodeURIComponent(id)}/second-opinion`;
+    return request(path, flags.request === "true" ? { method: "POST" } : {});
   }
   if (resource === "jobs" && action === "challenge" && id) {
     // Without --reason, show the window; with it, challenge the decision (a bond is held).

@@ -42,6 +42,7 @@ import JobReceipt from "./JobReceipt";
 import JobChallenge from "./JobChallenge";
 import DisputePanels from "./DisputePanels";
 import TopUp from "./TopUp";
+import SecondOpinion from "./SecondOpinion";
 import { api, agentForDisplay, jobForDisplay } from "./api";
 import "./live-jobs.css";
 
@@ -3918,6 +3919,14 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
               </div>
             )}
           </>
+        )}
+        {detail && current.submission && (
+          <SecondOpinion
+            jobId={job.id}
+            token={token}
+            status={detail.status}
+            canRequest={isClient || isEvaluator}
+          />
         )}
         {current.evaluation && (
           <>
