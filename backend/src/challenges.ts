@@ -5,13 +5,14 @@ import { env } from "./config.js";
 import { encryptPayload, payloadContext, payloadDigest } from "./crypto.js";
 import { db } from "./db/index.js";
 import { ApiError } from "./http.js";
-import { releaseLedgerOutcome, type LedgerJob } from "./jobPayouts.js";
+import { settleOutcome, startOnchainSettlement, type LedgerJob } from "./jobPayouts.js";
 import { heldAccounts, transfer, userBalance } from "./ledger.js";
 import { lockEvaluator, minimumEvaluatorStake } from "./capacity.js";
 import { enqueueWebhookEvent } from "./webhooks.js";
 
 /**
- * The challenge window. On a Liege-ledger job with a window, the evaluator's decision is recorded
+ * The challenge window. On a ledger or Liege onchain escrow job with a window, the evaluator's
+ * decision is recorded
  * but the escrow stays put until payout_due_at. Before then the side the decision went against
  * (the client for an acceptance, the agent owner for a rejection) may challenge it by posting a
  * bond. A Liege arbitrator then upholds the challenge, which reverses the outcome, or denies it,
@@ -60,7 +61,7 @@ async function settle(
   evaluatorId: string,
   actorId: string,
 ) {
-  await releaseLedgerOutcome(client, job, outcome, evaluatorId, actorId);
+  const onchain = await settleOutcome(client, job, outcome, evaluatorId, actorId);
   const status = outcome === "accepted" ? "completed" : "rejected";
   await client.query(
     `UPDATE jobs SET status = '${status}', settled_at = now(), payout_released_at = now(),
@@ -73,6 +74,7 @@ async function settle(
     "job.settled",
   ]);
   await enqueueWebhookEvent(client, { jobId: job.id, eventType: "job.settled", actorId });
+  return onchain;
 }
 
 export async function openChallenge(input: {
@@ -241,7 +243,7 @@ async function applyResolution(
     metadata: { jobId: job.id, disputeId: dispute.id },
   });
   // An overturned evaluator forfeits their fee: on a reversed rejection it goes back to the client.
-  await settle(
+  const onchain = await settle(
     client,
     job,
     finalOutcome,
@@ -287,6 +289,8 @@ async function applyResolution(
     resolution: input.resolution,
     finalOutcome,
     slashed,
+    // Liege onchain escrow: its transfers start once the transaction commits.
+    settlesOnchain: onchain,
   };
 }
 
@@ -375,6 +379,7 @@ export async function resolveChallenge(input: {
       actorId: input.resolverId,
     });
     await client.query("COMMIT");
+    if (result.settlesOnchain) startOnchainSettlement(result.jobId);
     return result;
   } catch (error) {
     await client.query("ROLLBACK");
@@ -509,6 +514,7 @@ export async function castPanelVote(input: {
       }
     }
     await client.query("COMMIT");
+    if (result?.settlesOnchain) startOnchainSettlement(result.jobId);
     return {
       disputeId: dispute.id,
       vote: input.decision,
@@ -541,8 +547,15 @@ export async function releaseDuePayouts(limit = 50) {
       }
       const job = (await lockDecided(client, due.rows[0].id))!;
       const decision = await decidedBy(client, job.id);
-      await settle(client, job, decision.outcome, decision.evaluator_id, decision.evaluator_id);
+      const onchain = await settle(
+        client,
+        job,
+        decision.outcome,
+        decision.evaluator_id,
+        decision.evaluator_id,
+      );
       await client.query("COMMIT");
+      if (onchain) startOnchainSettlement(job.id);
       released.push(job.id);
     } catch (error) {
       await client.query("ROLLBACK");

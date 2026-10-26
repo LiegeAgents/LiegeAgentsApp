@@ -27,6 +27,7 @@ import {
   ReceiptText,
   AlertCircle,
   SquareTerminal,
+  X,
 } from "lucide-react";
 import { Brand, AgentIcon } from "./ProductArt";
 import { Button, Status, Empty, Modal, Field, Notice, SectionHeading } from "./UI";
@@ -3268,6 +3269,11 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
       title: "",
       brief: "",
       criteria: "",
+      // Approval rules: checks that accept the delivery automatically when all pass.
+      minWords: "",
+      headings: "",
+      mustInclude: "",
+      minLinks: "",
       agent: defaultAgent || agents[0]?.id,
       evaluator: "",
       settlementAsset: "usdg",
@@ -3307,6 +3313,17 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
       }));
     }
   }, [agent?.id, v.settlementAsset]);
+  const list = (text) =>
+    text
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+  const approvalRules = [
+    ...(Number(v.minWords) > 0 ? [{ type: "min_words", value: Number(v.minWords) }] : []),
+    ...list(v.headings).map((value) => ({ type: "heading", value })),
+    ...list(v.mustInclude).map((value) => ({ type: "contains", value })),
+    ...(Number(v.minLinks) > 0 ? [{ type: "min_links", value: Number(v.minLinks) }] : []),
+  ].slice(0, 10);
   const submit = async (e) => {
     e.preventDefault();
     if (!token) {
@@ -3339,6 +3356,7 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
         ...(v.settlementAsset === "liege" ? { budgetLiege: v.budget } : { budgetUsdg: v.budget }),
         deadlineAt: deadline.toISOString(),
         expiresAt: expires.toISOString(),
+        ...(approvalRules.length ? { approvalRules } : {}),
       };
       const result = await api.createJob(token, input);
       onSave(jobForDisplay(result.data));
@@ -3427,6 +3445,39 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
             }
           />
         </Field>
+        <details className="approval-rules">
+          <summary>Approve automatically (optional)</summary>
+          <p className="muted">
+            {v.evaluator
+              ? "With an independent evaluator, these checks only inform their review."
+              : "If the delivery passes every check you set, it is accepted and paid without your review. Leave them empty to review it yourself."}
+          </p>
+          <div className="form-grid">
+            <Field label="At least this many words">
+              <input
+                type="number"
+                min="1"
+                value={v.minWords}
+                onChange={(e) => change("minWords", e.target.value)}
+              />
+            </Field>
+            <Field label="At least this many source links">
+              <input
+                type="number"
+                min="1"
+                max="20"
+                value={v.minLinks}
+                onChange={(e) => change("minLinks", e.target.value)}
+              />
+            </Field>
+          </div>
+          <Field label="Required headings" help="Comma-separated, for example: Summary, Sources">
+            <input value={v.headings} onChange={(e) => change("headings", e.target.value)} />
+          </Field>
+          <Field label="Must include" help="Comma-separated words or phrases">
+            <input value={v.mustInclude} onChange={(e) => change("mustInclude", e.target.value)} />
+          </Field>
+        </details>
         <div className="form-grid">
           <Field label="Agent">
             <select value={v.agent || ""} onChange={(e) => change("agent", e.target.value)}>
@@ -3847,6 +3898,15 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
           <>
             <h3>Delivery</h3>
             <p className="job-brief">{current.submission.deliverable}</p>
+            {current.submission.ruleCheck && (
+              <ul className="rule-results">
+                {current.submission.ruleCheck.results.map((item, index) => (
+                  <li key={index} className={item.passed ? "ok" : "bad"}>
+                    {item.passed ? <Check size={13} /> : <X size={13} />} {item.detail}
+                  </li>
+                ))}
+              </ul>
+            )}
             {current.submission.evidence?.length > 0 && (
               <div className="evidence-links">
                 {current.submission.evidence.map((url) => (

@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import {
   api,
   availableBalance,
@@ -16,6 +16,9 @@ import {
 } from "./support.js";
 import { adminKey } from "./setup.js";
 import { releaseDuePayouts } from "../src/challenges.js";
+import { ensureEscrowWallet } from "../src/escrow.js";
+import { processSettlement, useEscrowChain } from "../src/settlement.js";
+import { FakeChain } from "./fake-chain.js";
 
 let client: User;
 let provider: User;
@@ -421,6 +424,65 @@ describe.skipIf(!databaseAvailable)("challenge window", () => {
       await closeWindow(jobId);
       expect(await releaseDuePayouts()).toEqual([jobId]);
       await lower().expect(200);
+    });
+  });
+
+  describe("Liege onchain escrow", () => {
+    beforeEach(() => useEscrowChain(new FakeChain()));
+    // Lets the background settlement the API started finish before the next test clears the data.
+    const drained = new Set<string>();
+    afterEach(async () => {
+      for (const jobId of drained)
+        for (let attempt = 0; attempt < 200; attempt++) {
+          const status = await processSettlement(jobId);
+          if (status === "complete" || status === "failed") break;
+          await Bun.sleep(10);
+        }
+      drained.clear();
+    });
+
+    /** A delivered 10 USDG job held in a Liege onchain escrow wallet, with a 24-hour window. */
+    async function onchainDelivered() {
+      const jobId = await createJob(client, agentId, 10, { challengeWindowHours: 24 });
+      drained.add(jobId);
+      await db.query("UPDATE jobs SET escrow_mode = 'onchain', status = 'funded' WHERE id = $1", [
+        jobId,
+      ]);
+      await ensureEscrowWallet(db, jobId);
+      await submit(jobId).expect(200);
+      return jobId;
+    }
+    const planned = async (jobId: string) =>
+      (
+        await db.query(
+          `SELECT s.outcome, array_agg(p.purpose ORDER BY p.position) AS purposes
+           FROM escrow_settlements s JOIN escrow_payouts p ON p.job_id = s.job_id
+           WHERE s.job_id = $1 GROUP BY s.outcome`,
+          [jobId],
+        )
+      ).rows[0] ?? null;
+
+    test("the escrow's transfers wait for the window, then follow the final outcome", async () => {
+      const jobId = await onchainDelivered();
+      await decide(jobId, "rejected").expect(200);
+      // Decided, but nothing planned onchain while the decision can be challenged.
+      expect(await planned(jobId)).toBeNull();
+      const disputeId = (
+        await challenge(provider, jobId, "Every criterion was met; see the report.").expect(201)
+      ).body.data.id;
+      const resolved = (await resolve(disputeId, "upheld").expect(200)).body.data;
+      expect(resolved).toMatchObject({ finalOutcome: "accepted", settlesOnchain: true });
+      expect((await planned(jobId)).outcome).toBe("accepted");
+      expect((await planned(jobId)).purposes[0]).toBe("provider_payment");
+    });
+
+    test("an unchallenged decision is planned when the window closes", async () => {
+      const jobId = await onchainDelivered();
+      await decide(jobId, "accepted").expect(200);
+      expect(await planned(jobId)).toBeNull();
+      await closeWindow(jobId);
+      expect(await releaseDuePayouts()).toEqual([jobId]);
+      expect((await planned(jobId)).outcome).toBe("accepted");
     });
   });
 });

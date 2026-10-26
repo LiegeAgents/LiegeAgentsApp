@@ -1126,6 +1126,27 @@ paths:
                 deadlineAt: { type: string, format: date-time }
                 expiresAt: { type: string, format: date-time }
                 strategyPolicy: { type: object }
+                approvalRules:
+                  type: array
+                  minItems: 1
+                  maxItems: 10
+                  description: >-
+                    Objective checks run on every delivery: min_words and max_words (value),
+                    contains and heading (value text), json (optional keys), and min_links (value,
+                    counted from evidence). On Liege ledger escrow with no independent evaluator, a
+                    delivery that passes all of them is accepted automatically, subject to any
+                    challenge window; otherwise the results only inform the decision.
+                  items:
+                    type: object
+                    required: [type]
+                    properties:
+                      type:
+                        {
+                          type: string,
+                          enum: [min_words, max_words, contains, heading, json, min_links],
+                        }
+                      value: { type: [integer, string] }
+                      keys: { type: array, items: { type: string } }
                 challengeWindowHours:
                   {
                     type: integer,

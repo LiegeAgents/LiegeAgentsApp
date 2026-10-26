@@ -39,7 +39,8 @@ import { advanceSquad } from "../superAgentSquads.js";
 import { recordWatchRun, watchSnapshot } from "../constantineWatch.js";
 import { SIGNATURE_PATTERN, verifyDeliverableSignature } from "../deliverableSignatures.js";
 import { resolveJobEscrowMode } from "../jobEscrowMode.js";
-import { releaseLedgerOutcome } from "../jobPayouts.js";
+import { recordDecision, releaseLedgerOutcome, startOnchainSettlement } from "../jobPayouts.js";
+import { approvalRules, checkRules, type ApprovalRule } from "../approvalRules.js";
 
 const decimalAmount = (positive = false) =>
   z
@@ -85,6 +86,9 @@ const jobInput = z
     // Hours after the evaluator decides during which the losing side may challenge, on Liege
     // ledger escrow only. Omitted: the platform default.
     challengeWindowHours: z.number().int().min(0).max(168).optional(),
+    // Objective checks run on every delivery. With no independent evaluator, on Liege ledger
+    // escrow, a delivery that passes all of them is accepted without manual review.
+    approvalRules: approvalRules.optional(),
   })
   .superRefine((value, ctx) => {
     const budget = value.settlementAsset === "liege" ? value.budgetLiege : value.budgetUsdg;
@@ -266,6 +270,7 @@ jobsRouter.get(
     const result = await db.query(
       `SELECT j.*, a.owner_id AS provider_id, a.name AS agent_name, a.slug AS agent_slug,
       s.deliverable_ciphertext, s.evidence AS submission_evidence, s.created_at AS delivery_created_at,
+      s.rule_results,
       e.outcome AS evaluation_outcome, e.rationale_ciphertext, e.created_at AS evaluation_created_at,
       es.status AS settlement_status
     FROM jobs j JOIN agents a ON a.id = j.agent_id
@@ -309,6 +314,8 @@ jobsRouter.get(
               // Rows written before https-only validation may hold other schemes.
               evidence: (job.submission_evidence ?? []).filter(isSafeEvidenceUrl),
               createdAt: job.delivery_created_at,
+              // How the delivery did against the job's approval rules, when it has any.
+              ruleCheck: job.rule_results ?? null,
             }
           : null,
         evaluation: job.rationale_ciphertext
@@ -322,6 +329,7 @@ jobsRouter.get(
         rationale_ciphertext: undefined,
         submission_evidence: undefined,
         delivery_created_at: undefined,
+        rule_results: undefined,
         evaluation_outcome: undefined,
         evaluation_created_at: undefined,
       },
@@ -634,8 +642,8 @@ jobsRouter.post(
           );
       }
       const result = await client.query(
-        `INSERT INTO jobs (id, client_id, agent_id, evaluator_id, kind, title, brief_ciphertext, brief_hash, acceptance_criteria, settlement_asset, budget_amount, evaluator_fee_amount, budget_usdg, evaluator_fee_usdg, deadline_at, expires_at, strategy_policy, escrow_mode, challenge_window_hours)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+        `INSERT INTO jobs (id, client_id, agent_id, evaluator_id, kind, title, brief_ciphertext, brief_hash, acceptance_criteria, settlement_asset, budget_amount, evaluator_fee_amount, budget_usdg, evaluator_fee_usdg, deadline_at, expires_at, strategy_policy, escrow_mode, challenge_window_hours, approval_rules)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
         [
           jobId,
           request.auth!.userId,
@@ -656,6 +664,7 @@ jobsRouter.post(
           input.strategyPolicy ? JSON.stringify(input.strategyPolicy) : null,
           resolveJobEscrowMode(Boolean(input.evaluatorId)),
           input.challengeWindowHours ?? null,
+          input.approvalRules ? JSON.stringify(input.approvalRules) : null,
         ],
       );
       const job = result.rows[0];
@@ -1252,8 +1261,13 @@ jobsRouter.post(
             "The signature does not match this deliverable and the agent's published key.",
           );
       }
+      // Approval rules need the delivery's text; a client-encrypted delivery cannot be checked.
+      const ruleCheck =
+        job.approval_rules && input.deliverable
+          ? checkRules(job.approval_rules as ApprovalRule[], input.deliverable, input.evidence)
+          : null;
       await client.query(
-        "INSERT INTO submissions (job_id, provider_id, deliverable_ciphertext, deliverable_hash, evidence, veilora_deliverable_commit, veilora_deliverable_salt, signature, signing_public_key) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+        "INSERT INTO submissions (job_id, provider_id, deliverable_ciphertext, deliverable_hash, evidence, veilora_deliverable_commit, veilora_deliverable_salt, signature, signing_public_key, rule_results) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
         [
           job.id,
           request.auth!.userId,
@@ -1264,9 +1278,10 @@ jobsRouter.post(
           input.deliverableSalt?.toLowerCase() ?? null,
           input.signature ?? null,
           signingKey,
+          ruleCheck ? JSON.stringify(ruleCheck) : null,
         ],
       );
-      const result = await client.query(
+      let result = await client.query(
         "UPDATE jobs SET status = 'submitted', submitted_at = now(), updated_at = now() WHERE id = $1 RETURNING *",
         [job.id],
       );
@@ -1282,8 +1297,28 @@ jobsRouter.post(
       // A squad step hands its deliverable to the next agent as soon as it is delivered.
       await advanceSquad(client, job.id, payload);
       await recordWatchRun(client, job, request.auth!.userId, input.watch);
+      // The client chose these rules as their acceptance test, so passing them accepts the job
+      // on their behalf. Jobs with an independent evaluator (Veilora escrow) still need a person:
+      // there the results only inform the decision.
+      let settleOnchain = false;
+      if (
+        ruleCheck?.passed &&
+        ["ledger", "onchain"].includes(job.escrow_mode) &&
+        !job.evaluator_id
+      ) {
+        const decided = await recordDecision(client, job, {
+          outcome: "accepted",
+          evaluatorId: job.client_id,
+          rationale: `Accepted automatically: all ${ruleCheck.results.length} approval rules passed.\n${ruleCheck.results.map((item) => `- ${item.detail}`).join("\n")}`,
+        });
+        result = { ...result, rows: [decided.job] };
+        settleOnchain = decided.onchain;
+      }
       await client.query("COMMIT");
-      response.json({ data: publicJob(result.rows[0]) });
+      if (settleOnchain) startOnchainSettlement(job.id);
+      response.json({
+        data: { ...publicJob(result.rows[0]), ...(ruleCheck ? { ruleCheck } : {}) },
+      });
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
@@ -1504,7 +1539,13 @@ jobsRouter.post(
         job.settlement_asset === "usdg"
           ? String(job.evaluator_fee_usdg ?? job.evaluator_fee_amount ?? 0)
           : String(job.evaluator_fee_amount ?? 0);
-      if (job.escrow_mode === "onchain") {
+      // Ledger and Liege onchain escrow both wait out the challenge window, if any, before paying
+      // out: Liege sends the onchain escrow's transfers itself, so holding them needs no contract.
+      if (job.escrow_mode === "ledger" || job.escrow_mode === "onchain")
+        windowHours = job.challenge_window_hours ?? env.CHALLENGE_WINDOW_HOURS;
+      if (job.escrow_mode === "onchain" && windowHours) {
+        // Planned when the window closes, or on the challenge's final outcome.
+      } else if (job.escrow_mode === "onchain") {
         const addresses = await client.query<{
           client_address: string;
           provider_address: string;
@@ -1540,8 +1581,6 @@ jobsRouter.post(
             "The signed Veilora outcome was not submitted.",
           );
       } else {
-        // Ledger escrow waits out the challenge window, if any, before paying out.
-        windowHours = job.challenge_window_hours ?? env.CHALLENGE_WINDOW_HOURS;
         if (!windowHours)
           await releaseLedgerOutcome(
             client,
@@ -1595,7 +1634,7 @@ jobsRouter.post(
         },
       });
       // Failures are recorded on the payout rows; the settle-escrows cron retries them.
-      if (job.escrow_mode === "onchain")
+      if (job.escrow_mode === "onchain" && !windowHours)
         void processSettlement(job.id).catch((error) =>
           console.error(`Escrow settlement for job ${job.id} could not start:`, error),
         );
