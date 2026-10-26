@@ -19,6 +19,7 @@ import {
   http,
   keccak256,
   parseAbi,
+  parseUnits,
   stringToHex,
 } from "viem";
 import { Wallet, LoaderCircle } from "lucide-react";
@@ -232,6 +233,36 @@ function LiegeWalletProvider({ children }) {
       );
     }
   };
+  /**
+   * Sends a top-up from the connected wallet to Liege's top-up address, then waits for Liege to
+   * credit it. The transaction hash is kept until it is credited, so a reload never sends twice.
+   */
+  const topUp = async ({ asset, amount, address, token }) => {
+    if (!ready || !apiSession) throw new Error("Connect and sign in before topping up.");
+    const key = `liege.pending-topup.${asset}`;
+    let txHash = localStorage.getItem(key);
+    if (!txHash) {
+      txHash = await writeContractAsync({
+        address: token.address,
+        abi: erc20Abi,
+        functionName: "transfer",
+        args: [address, parseUnits(String(amount), token.decimals)],
+      });
+      localStorage.setItem(key, txHash);
+    }
+    for (let attempt = 0; attempt < 60; attempt++) {
+      const result = await api.claimTopup("cookie", txHash, asset);
+      if (result.data) {
+        localStorage.removeItem(key);
+        return result.data;
+      }
+      // 202: not indexed or not confirmed yet.
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+    throw new Error(
+      "Your transfer was sent and is still confirming. Reopen this page to finish; do not send it again.",
+    );
+  };
   const submitVeiloraDelivery = async (
     jobId,
     escrowAddress,
@@ -357,6 +388,7 @@ function LiegeWalletProvider({ children }) {
       signIn,
       disconnect,
       fundEscrow,
+      topUp,
       submitVeiloraDelivery,
       signMessage,
       signTypedData,

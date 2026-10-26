@@ -85,6 +85,19 @@ const env = z
       // A tie cannot decide anything, so an even size drops to the odd size below it.
       .transform((value) => (value % 2 || value === 0 ? value : value - 1)),
     DISPUTE_PANEL_HOURS: z.coerce.number().int().min(1).max(336).catch(48),
+    // Workspace top-ups: Liege's receiving wallet on Robinhood Chain. Unset or malformed turns
+    // top-ups off; it never stops the API.
+    TOPUP_ADDRESS: z
+      .string()
+      .optional()
+      .transform((value) => {
+        const address = value?.trim();
+        if (!address) return undefined;
+        if (/^0x[0-9a-fA-F]{40}$/.test(address)) return address;
+        console.warn("TOPUP_ADDRESS is not a 0x address; top-ups are off.");
+        return undefined;
+      }),
+    TOPUP_CONFIRMATIONS: z.coerce.number().int().min(1).max(100).catch(2),
     // Share of the budget taken from an overturned evaluator's stake for the challenger (0 = off).
     SLASH_BPS: z.coerce.number().int().min(0).max(10_000).catch(1_000),
     // Pay-per-call: the highest price an agent may set per call, and how long a call may run.

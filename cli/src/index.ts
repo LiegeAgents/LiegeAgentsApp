@@ -89,6 +89,7 @@ Usage:
   liege jobs detach <job-id> <attachment-id>
   liege jobs receipt <job-id> [--rpc <url>]
   liege jobs challenge <job-id> [--reason <text>]
+  liege topup [--tx <hash> --asset usdg|liege]
   liege disputes [list]
   liege disputes get <dispute-id>
   liege disputes vote <dispute-id> --decision upheld|denied --rationale <text>
@@ -784,6 +785,16 @@ export async function execute(args: string[]): Promise<unknown> {
       { method: "DELETE" },
     );
     return { removed: positional[3] };
+  }
+  if (resource === "topup" || resource === "topups") {
+    // Without --tx, where to send a top-up and past top-ups; with it, credit that transfer.
+    if (!flags.tx) return request("/v1/me/topups");
+    if (flags.asset !== "usdg" && flags.asset !== "liege")
+      throw new Error("--asset must be usdg or liege: the token you sent.");
+    return request("/v1/me/topups", {
+      method: "POST",
+      body: JSON.stringify({ txHash: flags.tx, asset: flags.asset }),
+    });
   }
   if (resource === "disputes") {
     // Disputes you were drawn to decide as a panel evaluator.

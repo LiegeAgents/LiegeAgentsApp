@@ -4,6 +4,8 @@ import { requireAuth } from "../auth.js";
 import { db } from "../db/index.js";
 import { userBalance } from "../ledger.js";
 import { asyncRoute } from "../http.js";
+import { env } from "../config.js";
+import { claimTopup, topupTokens } from "../topups.js";
 
 export const accountRouter = Router();
 
@@ -54,5 +56,48 @@ accountRouter.get(
       [request.auth!.userId, query.limit],
     );
     response.json({ data: result.rows });
+  }),
+);
+
+// Where to send a top-up, which tokens count, and the account's past top-ups.
+accountRouter.get(
+  "/me/topups",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const history = await db.query(
+      `SELECT tx_hash, asset, trim_scale(amount)::text AS amount, block_number::text, created_at
+       FROM ledger_topups WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50`,
+      [request.auth!.userId],
+    );
+    response.json({
+      data: {
+        enabled: Boolean(env.TOPUP_ADDRESS),
+        address: env.TOPUP_ADDRESS ?? null,
+        chainId: env.RHC_ID,
+        confirmations: env.TOPUP_CONFIRMATIONS,
+        tokens: topupTokens(),
+        topups: history.rows,
+      },
+    });
+  }),
+);
+
+accountRouter.post(
+  "/me/topups",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const input = z
+      .object({
+        txHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
+        asset: z.enum(["usdg", "liege"]),
+      })
+      .parse(request.body);
+    const topup = await claimTopup({
+      userId: request.auth!.userId,
+      wallet: request.auth!.walletAddress,
+      txHash: input.txHash,
+      asset: input.asset,
+    });
+    response.status(topup.alreadyCredited ? 200 : 201).json({ data: topup });
   }),
 );

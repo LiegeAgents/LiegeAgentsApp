@@ -204,3 +204,25 @@ export async function heldAccounts(client: PoolClient, userId: string, asset: Se
     held: await account(client, "held", { userId, asset }),
   };
 }
+
+/** Credits an onchain top-up, once per transaction hash. */
+export async function creditTopup(
+  client: PoolClient,
+  input: { userId: string; amount: string; asset: SettlementAsset; txHash: string },
+) {
+  const platform = await account(client, "platform_clearing", { asset: input.asset });
+  const available = await account(client, "available", {
+    userId: input.userId,
+    asset: input.asset,
+  });
+  return transfer(client, {
+    reference: `topup:${input.txHash}`,
+    type: "topup",
+    from: platform,
+    to: available,
+    amount: input.amount,
+    createdBy: input.userId,
+    metadata: { txHash: input.txHash },
+    asset: input.asset,
+  });
+}

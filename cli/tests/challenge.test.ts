@@ -60,4 +60,15 @@ describe("challenging a decision from the CLI", () => {
       "--decision must be",
     );
   });
+
+  test("shows top-up details, and credits a sent transfer", async () => {
+    await execute(["topup"]);
+    await execute(["topup", "--tx", "0xabc", "--asset", "liege"]);
+    expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      "GET /v1/me/topups",
+      "POST /v1/me/topups",
+    ]);
+    expect(calls[1].body).toEqual({ txHash: "0xabc", asset: "liege" });
+    await expect(execute(["topup", "--tx", "0xabc"])).rejects.toThrow("--asset must be");
+  });
 });

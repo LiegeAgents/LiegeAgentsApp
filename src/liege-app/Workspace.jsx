@@ -40,6 +40,7 @@ import JobAttachments from "./JobAttachments";
 import JobReceipt from "./JobReceipt";
 import JobChallenge from "./JobChallenge";
 import DisputePanels from "./DisputePanels";
+import TopUp from "./TopUp";
 import { api, agentForDisplay, jobForDisplay } from "./api";
 import "./live-jobs.css";
 
@@ -831,6 +832,7 @@ export default function Workspace() {
                   onNotice={notify}
                 />
               )}
+              {wallet.apiSession && <TopUp token="cookie" onNotice={notify} />}
               {wallet.apiSession && <WebhookDeliveryCenter token="cookie" onNotice={notify} />}
               {wallet.apiSession && (
                 <AgentKillSwitch
