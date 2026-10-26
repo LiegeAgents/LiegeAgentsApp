@@ -80,4 +80,14 @@ describe("challenging a decision from the CLI", () => {
       "POST /v1/jobs/job-1/second-opinion",
     ]);
   });
+
+  test("adds a bonus", async () => {
+    await execute(["jobs", "bonus", "job-1", "--amount", "2.5"]);
+    expect(calls[0]).toMatchObject({
+      path: "/v1/jobs/job-1/bonus",
+      method: "POST",
+      body: { amount: "2.5" },
+    });
+    await expect(execute(["jobs", "bonus", "job-1"])).rejects.toThrow("--amount is required");
+  });
 });

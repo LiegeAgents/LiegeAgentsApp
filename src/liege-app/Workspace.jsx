@@ -43,6 +43,7 @@ import JobChallenge from "./JobChallenge";
 import DisputePanels from "./DisputePanels";
 import TopUp from "./TopUp";
 import SecondOpinion from "./SecondOpinion";
+import JobBonus from "./JobBonus";
 import { api, agentForDisplay, jobForDisplay } from "./api";
 import "./live-jobs.css";
 
@@ -3933,6 +3934,18 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
             <h3>Evaluation · {current.evaluation.outcome}</h3>
             <p className="job-brief">{current.evaluation.rationale}</p>
           </>
+        )}
+        {detail && (
+          <JobBonus
+            jobId={job.id}
+            token={token}
+            status={detail.status}
+            isClient={isClient}
+            bonus={detail.bonus}
+            asset={detail.settlement_asset}
+            budget={Number(detail.budget_amount ?? detail.budget_usdg ?? 0)}
+            onAdded={load}
+          />
         )}
         <details className="payload-access-history">
           <summary>Private payload access history</summary>

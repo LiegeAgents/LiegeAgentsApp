@@ -239,6 +239,7 @@ agentsRouter.get(
       disputeStatsResult,
       serviceStatsResult,
       mandateStatsResult,
+      bonusStatsResult,
     ] = await Promise.all([
       db.query(
         `SELECT
@@ -291,6 +292,14 @@ agentsRouter.get(
             COUNT(*) FILTER (WHERE status = 'active' AND expires_at > now())::int AS active_mandates
           FROM agent_mandates
           WHERE agent_id = $1`,
+        [agent.id],
+      ),
+      db.query(
+        `SELECT COUNT(*)::int AS bonuses,
+            COUNT(DISTINCT client_id)::int AS clients,
+            COALESCE(trim_scale(SUM(amount) FILTER (WHERE asset = 'usdg')), 0)::text AS usdg,
+            COALESCE(trim_scale(SUM(amount) FILTER (WHERE asset = 'liege')), 0)::text AS liege
+          FROM job_bonuses WHERE agent_id = $1`,
         [agent.id],
       ),
     ]);
@@ -346,6 +355,13 @@ agentsRouter.get(
           weights: REPUTATION_WEIGHTS,
           smoothing: "laplace",
         },
+      },
+      // Bonuses clients chose to add after accepting work: paid from their own balance.
+      bonuses: {
+        count: Number(bonusStatsResult.rows[0].bonuses),
+        fromClients: Number(bonusStatsResult.rows[0].clients),
+        totalUsdg: bonusStatsResult.rows[0].usdg,
+        totalLiege: bonusStatsResult.rows[0].liege,
       },
       settlement: {
         currency: "USDG",

@@ -90,6 +90,7 @@ Usage:
   liege jobs receipt <job-id> [--rpc <url>]
   liege jobs challenge <job-id> [--reason <text>]
   liege jobs second-opinion <job-id> [--request]
+  liege jobs bonus <job-id> --amount <n>
   liege topup [--tx <hash> --asset usdg|liege]
   liege disputes [list]
   liege disputes get <dispute-id>
@@ -812,6 +813,13 @@ export async function execute(args: string[]): Promise<unknown> {
         body: JSON.stringify({ decision, rationale }),
       });
     }
+  }
+  if (resource === "jobs" && action === "bonus" && id) {
+    if (!flags.amount) throw new Error("--amount is required: the bonus in the job's asset.");
+    return request(`/v1/jobs/${encodeURIComponent(id)}/bonus`, {
+      method: "POST",
+      body: JSON.stringify({ amount: flags.amount }),
+    });
   }
   if (resource === "jobs" && action === "second-opinion" && id) {
     // --request asks the grading model; without it, show the existing grade.

@@ -36,6 +36,7 @@ import { registerAttachmentRoutes } from "./jobAttachments.js";
 import { registerReceiptRoutes } from "./jobReceipts.js";
 import { registerChallengeRoutes } from "./jobChallenges.js";
 import { registerSecondOpinionRoutes } from "./jobSecondOpinions.js";
+import { registerBonusRoutes } from "./jobBonuses.js";
 import { advanceSquad } from "../superAgentSquads.js";
 import { recordWatchRun, watchSnapshot } from "../constantineWatch.js";
 import { SIGNATURE_PATTERN, verifyDeliverableSignature } from "../deliverableSignatures.js";
@@ -272,6 +273,8 @@ jobsRouter.get(
       `SELECT j.*, a.owner_id AS provider_id, a.name AS agent_name, a.slug AS agent_slug,
       s.deliverable_ciphertext, s.evidence AS submission_evidence, s.created_at AS delivery_created_at,
       s.rule_results,
+      (SELECT json_build_object('amount', trim_scale(b.amount)::text, 'asset', b.asset, 'createdAt', b.created_at)
+       FROM job_bonuses b WHERE b.job_id = j.id) AS bonus,
       e.outcome AS evaluation_outcome, e.rationale_ciphertext, e.created_at AS evaluation_created_at,
       es.status AS settlement_status
     FROM jobs j JOIN agents a ON a.id = j.agent_id
@@ -1654,3 +1657,4 @@ registerAttachmentRoutes(jobsRouter);
 registerReceiptRoutes(jobsRouter);
 registerChallengeRoutes(jobsRouter);
 registerSecondOpinionRoutes(jobsRouter);
+registerBonusRoutes(jobsRouter);
