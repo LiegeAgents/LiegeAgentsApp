@@ -21,6 +21,7 @@ import { registerCallRoutes } from "./superAgentCalls.js";
 import { db } from "../db/index.js";
 import { ApiError, asyncRoute } from "../http.js";
 import { agentStanding } from "../reputation.js";
+import { routeRequest } from "../superAgentRouter.js";
 
 export const superAgentsRouter = Router();
 
@@ -82,6 +83,19 @@ export function fallbackSuperAgentIntent(text: string) {
       confidence: budget || hire ? 0.65 : 0.35,
     }),
   );
+}
+
+/**
+ * Fills in the agent when the request names none: the router picks the enrolled agent whose
+ * service fits best. The proposal still waits for the client's approval.
+ */
+async function routeIntent(parsed: Awaited<ReturnType<typeof parseSuperAgentIntent>>) {
+  if (parsed.agentName) return { parsed, routed: null };
+  const routed = await routeRequest(parsed.request, parsed.settlementAsset);
+  return routed
+    ? // The reason is kept with the proposal so Requests can show why this agent was chosen.
+      { parsed: { ...parsed, agentName: routed.agentSlug, routedReason: routed.reason }, routed }
+    : { parsed, routed: null };
 }
 
 export async function parseSuperAgentIntent(text: string) {
@@ -637,9 +651,10 @@ export async function createIntent(
   },
 ) {
   const parsedRequest = await parseSuperAgentIntent(input.text);
-  const parsedText = input.agentName
-    ? { ...parsedRequest, agentName: input.agentName }
-    : parsedRequest;
+  // An agent named by the caller or in the text wins; otherwise the router picks one.
+  const { parsed: parsedText, routed } = input.agentName
+    ? { parsed: { ...parsedRequest, agentName: input.agentName }, routed: null }
+    : await routeIntent(parsedRequest);
   let parsed =
     input.budgetAmount === undefined
       ? parsedText
@@ -657,7 +672,7 @@ export async function createIntent(
       "agent_unavailable",
       parsed.agentName
         ? `${parsed.agentName} is not currently enrolled and discoverable as a Super Agent.`
-        : "Include the name of an enrolled Super Agent.",
+        : "No enrolled Super Agent's service fits this request. Describe the work in more detail, or name an agent.",
     );
   const suggested =
     !budget && input.suggestBudget ? (await quoteIntent(parsed))?.suggestedBudget : null;
@@ -682,9 +697,9 @@ export async function createIntent(
     targetType: "superagent_intent",
     targetId: result.rows[0].id,
     requestId,
-    metadata: { source: input.source, matched: true },
+    metadata: { source: input.source, matched: true, routed: routed?.method ?? null },
   });
-  return { ...result.rows[0], agent, quote: await quoteIntent(parsed) };
+  return { ...result.rows[0], agent, routed, quote: await quoteIntent(parsed) };
 }
 
 superAgentsRouter.post(
@@ -692,8 +707,8 @@ superAgentsRouter.post(
   requireSessionOrMobileAuth("mobile:read"),
   asyncRoute(async (request, response) => {
     const input = textInput.parse(request.body);
-    const parsed = await parseSuperAgentIntent(input.text);
-    response.json({ data: { ...parsed, quote: await quoteIntent(parsed) } });
+    const { parsed, routed } = await routeIntent(await parseSuperAgentIntent(input.text));
+    response.json({ data: { ...parsed, routed, quote: await quoteIntent(parsed) } });
   }),
 );
 

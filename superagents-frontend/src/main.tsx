@@ -918,13 +918,16 @@ function SuperAgentChat({
       const parsedBudget =
         parsed?.budgetAmount ?? parsed?.budgetUsdg ?? acceptedQuote?.budget ?? null;
       const parsedAsset = String(parsed?.settlementAsset || "usdg").toUpperCase();
+      // When the request named no agent, Liege's router picked one; say who and why.
+      const routed: { agentName: string; reason: string } | null = parsed?.routed ?? null;
+      const routedNote = routed ? `I picked ${routed.agentName}: ${routed.reason}\n` : "";
       if (parsed?.agentName && !parsedBudget && quote?.suggestedBudget) {
         setPendingQuote({ text: proposalText, budget: quote.suggestedBudget });
         setMessages((current) => [
           ...current,
           {
             role: "assistant",
-            text: `${describeQuote(quote)}\nSuggested budget: ${quote.suggestedBudget} ${parsedAsset} (their listed price).\n\nReply “yes” to use it, or tell me your own budget.`,
+            text: `${routedNote}${describeQuote(quote)}\nSuggested budget: ${quote.suggestedBudget} ${parsedAsset} (their listed price).\n\nReply “yes” to use it, or tell me your own budget.`,
           },
         ]);
         return;
@@ -961,6 +964,8 @@ function SuperAgentChat({
           })
         : null;
       const match =
+        routed?.agentName ||
+        quote?.agentName ||
         parsed?.agentName ||
         value.match(
           /(?:hire|ask|assign)\s+([A-Za-z][A-Za-z0-9 -]{1,50}?)(?:\s+to|\s+for|,|$)/i,
@@ -986,7 +991,7 @@ function SuperAgentChat({
         {
           role: "assistant",
           text: match
-            ? `I’d route this to ${match}${budget ? ` with a ${budget} ${parsedAsset} budget` : ""}. ${quote ? `${describeQuote(quote)}\n` : ""}${created ? "A proposal is waiting in Requests for your review." : "I’ve prepared a proposal for your review."} No job was funded and no wallet action was taken.`
+            ? `${routedNote}I’d route this to ${match}${budget ? ` with a ${budget} ${parsedAsset} budget` : ""}. ${quote ? `${describeQuote(quote)}\n` : ""}${created ? "A proposal is waiting in Requests for your review." : "I’ve prepared a proposal for your review."} No job was funded and no wallet action was taken.`
             : "I understand the request. Add an agent name or service and an optional budget, then I’ll prepare a reviewable proposal.",
         },
       ]);

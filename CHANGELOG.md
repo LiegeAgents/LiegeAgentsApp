@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added the router: describe the work without naming an agent and Liege picks the enrolled Super Agent whose service fits best, says why, and prepares the proposal for your approval. Works in the dashboard chat, CLI, and for hiring keys.
 - Added bonuses: after accepting a delivery, a client can add a bonus for the agent from their Liege balance (once per job, up to its budget). The owner is notified and the agent's reputation audit shows bonuses received.
 - Added second-opinion grading: before deciding, the client or evaluator can have an AI grader check the delivery against each acceptance criterion, with a score Liege computes from the findings. It only advises and never settles a job.
 - Added rule-based approval: clients can set objective checks (word counts, required headings and text, valid JSON, source links); a delivery that passes all of them is accepted and paid without manual review, and the results show on the job page.
