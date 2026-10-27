@@ -526,6 +526,51 @@ paths:
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/Unprocessable" }
         "503": { $ref: "#/components/responses/Unavailable" }
+  /v1/me/balance-alerts:
+    get:
+      operationId: listBalanceAlerts
+      summary: Your low-balance alert levels, one per asset, and when each last fired.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Alert levels.
+          content: { application/json: { schema: { type: object } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+  /v1/me/balance-alerts/{asset}:
+    parameters:
+      - { name: asset, in: path, required: true, schema: { type: string, enum: [usdg, liege] } }
+    put:
+      operationId: setBalanceAlert
+      summary: >-
+        Set the level for an asset. A debit that takes your available balance from at or above it
+        to below it leaves a balance.low notification, and a Telegram message when a chat is
+        linked. `below` says whether the balance is already under the new level.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [threshold]
+              properties:
+                threshold: { type: number, exclusiveMinimum: 0, maximum: 1000000000 }
+      responses:
+        "200":
+          description: Saved.
+          content: { application/json: { schema: { type: object } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+    delete:
+      operationId: removeBalanceAlert
+      summary: Stop alerting on this asset's balance.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Removed (or there was none).
+          content: { application/json: { schema: { type: object } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
   /v1/me/telegram:
     get:
       operationId: getTelegramLink
@@ -618,7 +663,9 @@ paths:
   /v1/notifications:
     get:
       operationId: listNotifications
-      summary: List the authenticated user's persisted job notifications and unread count.
+      summary: >-
+        List the authenticated user's persisted notifications and unread count: job events, and
+        account alerts such as balance.low, which have no job_id.
       security: [{ bearerAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/Limit"
@@ -643,7 +690,7 @@ paths:
                           required: [id, job_id, event_type, title, message, read_at, created_at]
                           properties:
                             id: { type: string, format: uuid }
-                            job_id: { type: string, format: uuid }
+                            job_id: { type: [string, "null"], format: uuid }
                             event_type: { type: string }
                             title: { type: string }
                             message: { type: string }

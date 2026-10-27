@@ -91,7 +91,8 @@ export async function transfer(
   const amountPattern = new RegExp(`^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,${decimals}})?$`);
   if (!amountPattern.test(amount) || Number(amount) <= 0)
     throw new ApiError(422, "invalid_amount", "A ledger transfer amount must be positive.");
-  if ((await lockAccount(client, input.from)) !== "platform_clearing") {
+  const fromKind = await lockAccount(client, input.from);
+  if (fromKind !== "platform_clearing") {
     const funded = await client.query<{ covered: boolean }>(
       "SELECT COALESCE(sum(amount), 0) >= $2::numeric AS covered FROM ledger_postings WHERE account_id = $1",
       [input.from, amount],
@@ -119,7 +120,37 @@ export async function transfer(
     "INSERT INTO ledger_postings (transaction_id, account_id, amount, amount_usdg) VALUES ($1,$2,$3::numeric,CASE WHEN $6::text = 'usdg' THEN $3::numeric ELSE NULL END),($1,$4,$5::numeric,CASE WHEN $6::text = 'usdg' THEN $5::numeric ELSE NULL END)",
     [transaction.rows[0].id, input.from, `-${amount}`, input.to, amount, asset],
   );
+  if (fromKind === "available") await alertOnLowBalance(client, input.from, amount);
   return transaction.rows[0].id;
+}
+
+/**
+ * A debit that takes an available balance from at or above its owner's alert level to below it
+ * leaves a notification, and marks the alert for a Telegram message. Judging each debit by the
+ * level it crossed needs no other state: the next alert comes after the balance is topped back up
+ * and falls again. The caller holds the account's lock, so the balance read here is final.
+ */
+async function alertOnLowBalance(client: PoolClient, accountId: string, amount: string) {
+  await client.query(
+    `WITH current AS (
+       SELECT a.user_id, a.asset, COALESCE(sum(p.amount), 0) AS balance
+       FROM ledger_accounts a LEFT JOIN ledger_postings p ON p.account_id = a.id
+       WHERE a.id = $1 AND a.user_id IS NOT NULL GROUP BY a.user_id, a.asset
+     ), crossed AS (
+       UPDATE balance_alerts b SET triggered_at = now()
+       FROM current c
+       WHERE b.user_id = c.user_id AND b.asset = c.asset
+         AND c.balance < b.threshold AND c.balance + $2::numeric >= b.threshold
+       RETURNING b.user_id, b.asset, trim_scale(b.threshold)::text AS threshold,
+         trim_scale(c.balance)::text AS balance
+     )
+     INSERT INTO notifications (user_id, event_type, title, message)
+     SELECT user_id, 'balance.low', 'Low balance',
+       format('Your available %s is %s, below the %s alert you set. Top up in Settings to keep paying for calls and jobs.',
+         upper(asset), balance, threshold)
+     FROM crossed`,
+    [accountId, amount],
+  );
 }
 
 export async function creditUser(

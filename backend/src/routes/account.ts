@@ -103,4 +103,58 @@ accountRouter.post(
   }),
 );
 
+// Low-balance alerts: one level per asset, checked on every debit of the available balance.
+const alertAsset = z.enum(["usdg", "liege"]);
+const alertColumns = "asset, trim_scale(threshold)::text AS threshold, triggered_at, created_at";
+
+accountRouter.get(
+  "/me/balance-alerts",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const alerts = await db.query(
+      `SELECT ${alertColumns} FROM balance_alerts WHERE user_id = $1 ORDER BY asset`,
+      [request.auth!.userId],
+    );
+    response.json({ data: alerts.rows });
+  }),
+);
+
+accountRouter.put(
+  "/me/balance-alerts/:asset",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const asset = alertAsset.parse(request.params.asset);
+    const { threshold } = z
+      .object({ threshold: z.number().finite().positive().max(1_000_000_000) })
+      .parse(request.body);
+    const saved = await db.query(
+      `INSERT INTO balance_alerts (user_id, asset, threshold) VALUES ($1,$2,$3)
+       ON CONFLICT (user_id, asset) DO UPDATE SET threshold = EXCLUDED.threshold
+       RETURNING ${alertColumns}`,
+      [request.auth!.userId, asset, threshold],
+    );
+    const client = await db.connect();
+    try {
+      const available = await userBalance(client, request.auth!.userId, "available", asset);
+      // Already below the new level: the alert fires on the next drop after a top-up.
+      response.json({ data: { ...saved.rows[0], below: available.amount < threshold } });
+    } finally {
+      client.release();
+    }
+  }),
+);
+
+accountRouter.delete(
+  "/me/balance-alerts/:asset",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const asset = alertAsset.parse(request.params.asset);
+    const removed = await db.query("DELETE FROM balance_alerts WHERE user_id = $1 AND asset = $2", [
+      request.auth!.userId,
+      asset,
+    ]);
+    response.json({ data: { asset, removed: Boolean(removed.rowCount) } });
+  }),
+);
+
 registerTelegramAccountRoutes(accountRouter);

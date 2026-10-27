@@ -92,6 +92,9 @@ Usage:
   liege jobs second-opinion <job-id> [--request]
   liege jobs bonus <job-id> --amount <n>
   liege topup [--tx <hash> --asset usdg|liege]
+  liege alerts [list]
+  liege alerts set usdg|liege <level>
+  liege alerts off usdg|liege
   liege disputes [list]
   liege disputes get <dispute-id>
   liege disputes vote <dispute-id> --decision upheld|denied --rationale <text>
@@ -796,6 +799,19 @@ export async function execute(args: string[]): Promise<unknown> {
     return request("/v1/me/topups", {
       method: "POST",
       body: JSON.stringify({ txHash: flags.tx, asset: flags.asset }),
+    });
+  }
+  if (resource === "alerts") {
+    // Low-balance alerts: a notification when the available balance falls below the level.
+    if (!action || action === "list") return request("/v1/me/balance-alerts");
+    if (id !== "usdg" && id !== "liege") throw new Error("Name the asset: usdg or liege.");
+    if (action === "off") return request(`/v1/me/balance-alerts/${id}`, { method: "DELETE" });
+    const threshold = Number(positional[3]);
+    if (action !== "set" || !(threshold > 0))
+      throw new Error("Usage: liege alerts set usdg|liege <level>");
+    return request(`/v1/me/balance-alerts/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ threshold }),
     });
   }
   if (resource === "disputes") {

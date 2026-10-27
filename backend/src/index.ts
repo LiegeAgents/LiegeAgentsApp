@@ -10,6 +10,7 @@ import { startReceiptAnchoring, stopReceiptAnchoring } from "./jobReceipts.js";
 import { startCallSweeper, stopCallSweeper } from "./superAgentCalls.js";
 import { startPayoutReleases, stopPayoutReleases } from "./challenges.js";
 import { startChainTriggers, stopChainTriggers } from "./chainTriggers.js";
+import { startBalanceAlertPush, stopBalanceAlertPush } from "./telegram.js";
 
 await migrate();
 const server = app.listen(env.PORT, () => console.log(`Liege API listening on :${env.PORT}`));
@@ -21,6 +22,7 @@ startReceiptAnchoring();
 startCallSweeper();
 startPayoutReleases();
 startChainTriggers();
+startBalanceAlertPush();
 
 // Let in-flight requests finish and close the pool before the platform stops the container.
 const shutdown = () =>
@@ -33,6 +35,7 @@ const shutdown = () =>
         stopCallSweeper();
         stopPayoutReleases();
         stopChainTriggers();
+        stopBalanceAlertPush();
         void db.end();
       }),
   );

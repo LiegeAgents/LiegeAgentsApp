@@ -227,3 +227,50 @@ export async function handleUpdate(update: Update) {
       return reply(chatId, HELP);
   }
 }
+
+/**
+ * Sends each low-balance alert that fired in the last hour to the workspace's linked chat, once.
+ * The alert is claimed before the message goes out, so a failed send is not retried.
+ */
+export async function pushBalanceAlerts() {
+  if (!telegramEnabled()) return 0;
+  const due = await db.query<{ asset: string; threshold: string; chat_id: string }>(
+    `UPDATE balance_alerts b SET pushed_at = now() FROM telegram_links l
+     WHERE l.user_id = b.user_id AND b.triggered_at > now() - interval '1 hour'
+       AND b.triggered_at > COALESCE(b.pushed_at, '-infinity')
+     RETURNING b.asset, trim_scale(b.threshold)::text AS threshold, l.chat_id::text`,
+  );
+  for (const alert of due.rows)
+    await reply(
+      Number(alert.chat_id),
+      `Your available ${alert.asset.toUpperCase()} on Liege fell below the ${alert.threshold} alert you set. Top up in your workspace Settings; /balance shows what is left.`,
+    ).catch((error) =>
+      console.error(
+        JSON.stringify({
+          event: "telegram.balance_alert_failed",
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      ),
+    );
+  return due.rowCount ?? 0;
+}
+
+let alertTimer: ReturnType<typeof setInterval> | undefined;
+export function startBalanceAlertPush() {
+  if (alertTimer || env.NODE_ENV === "test") return;
+  alertTimer = setInterval(() => {
+    void pushBalanceAlerts().catch((error) =>
+      console.error(
+        JSON.stringify({
+          event: "telegram.balance_alerts_failed",
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      ),
+    );
+  }, 30_000);
+  alertTimer.unref();
+}
+export function stopBalanceAlertPush() {
+  if (alertTimer) clearInterval(alertTimer);
+  alertTimer = undefined;
+}

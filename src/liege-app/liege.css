@@ -1759,6 +1759,9 @@ section[id] {
   background: var(--l-panel);
   max-width: 800px;
 }
+.balance-alert-row + .balance-alert-row {
+  margin-top: 14px;
+}
 .settings-panel h2,
 .settings-panel h3 {
   font-size: 16px;

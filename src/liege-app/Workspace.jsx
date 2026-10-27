@@ -45,6 +45,7 @@ import TopUp from "./TopUp";
 import SecondOpinion from "./SecondOpinion";
 import JobBonus from "./JobBonus";
 import TelegramLink from "./TelegramLink";
+import BalanceAlerts from "./BalanceAlerts";
 import { api, agentForDisplay, jobForDisplay } from "./api";
 import "./live-jobs.css";
 
@@ -427,7 +428,8 @@ export default function Workspace() {
           tone:
             item.event_type === "watch.alert"
               ? "danger"
-              : item.event_type === "job.rejected" ||
+              : item.event_type === "balance.low" ||
+                  item.event_type === "job.rejected" ||
                   item.event_type === "job.expired" ||
                   (item.event_type === "trigger.fired" &&
                     allJobs.find((job) => job.id === item.job_id)?.status === "Open")
@@ -438,6 +440,8 @@ export default function Workspace() {
               ? "watchlist alert"
               : item.event_type === "trigger.fired"
                 ? "trigger"
+                : item.event_type === "balance.low"
+                  ? "low balance"
                 : item.event_type.replace("job.", "").replaceAll("_", " "),
           title: item.title,
           detail: item.message,
@@ -459,6 +463,11 @@ export default function Workspace() {
               }
             }
             setNotificationsOpen(false);
+            // Account alerts have no job; a low balance is fixed by topping up in Settings.
+            if (!item.job_id) {
+              navigate("settings");
+              return;
+            }
             const job = allJobs.find((entry) => entry.id === item.job_id);
             navigate("jobs");
             if (job) setModal({ type: "job", id: job.id });
@@ -837,6 +846,7 @@ export default function Workspace() {
                 />
               )}
               {wallet.apiSession && <TopUp token="cookie" onNotice={notify} />}
+              {wallet.apiSession && <BalanceAlerts token="cookie" />}
               {wallet.apiSession && <TelegramLink token="cookie" />}
               {wallet.apiSession && <WebhookDeliveryCenter token="cookie" onNotice={notify} />}
               {wallet.apiSession && (
