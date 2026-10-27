@@ -6,6 +6,7 @@ import { userBalance } from "../ledger.js";
 import { asyncRoute } from "../http.js";
 import { env } from "../config.js";
 import { claimTopup, topupTokens } from "../topups.js";
+import { registerTelegramAccountRoutes } from "./telegram.js";
 
 export const accountRouter = Router();
 
@@ -101,3 +102,5 @@ accountRouter.post(
     response.status(topup.alreadyCredited ? 200 : 201).json({ data: topup });
   }),
 );
+
+registerTelegramAccountRoutes(accountRouter);

@@ -119,13 +119,18 @@ export type Target = {
 };
 
 /** Holds the price and records the call. Returns an earlier call for a repeated idempotency key. */
-async function openCall(input: {
+type CallInput = {
   clientId: string;
   agentId: string;
   request: string;
   asset: SettlementAsset;
   idempotencyKey?: string;
-}) {
+  source?: "api" | "telegram";
+  // Calls from Telegram spend at most this much USDG a day, across all of them.
+  dailyCapUsdg?: number;
+};
+
+async function openCall(input: CallInput) {
   return inTransaction(async (client) => {
     if (input.idempotencyKey) {
       const earlier = await client.query<{ id: string }>(
@@ -157,11 +162,29 @@ async function openCall(input: {
       );
     if (target.owner_id === input.clientId)
       throw new ApiError(422, "self_hire_not_allowed", "An owner cannot hire their own agent.");
+    if (input.dailyCapUsdg !== undefined) {
+      // Serializes this client's capped calls so two at once cannot both slip under the cap.
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+        `call-cap:${input.clientId}`,
+      ]);
+      const spent = await client.query<{ total: string }>(
+        `SELECT COALESCE(sum(price), 0)::text AS total FROM superagent_calls
+         WHERE client_id = $1 AND source = $2 AND settlement_asset = 'usdg'
+           AND status <> 'refunded' AND created_at > now() - interval '1 day'`,
+        [input.clientId, input.source ?? "api"],
+      );
+      if (Number(spent.rows[0].total) + Number(target.price) > input.dailyCapUsdg)
+        throw new ApiError(
+          402,
+          "daily_cap_reached",
+          `This would pass your daily limit of ${input.dailyCapUsdg} USDG for these calls.`,
+        );
+    }
     const id = randomUUID();
     await client.query(
       `INSERT INTO superagent_calls
-         (id, client_id, agent_id, service_slug, settlement_asset, price, idempotency_key, input_ciphertext)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+         (id, client_id, agent_id, service_slug, settlement_asset, price, idempotency_key, input_ciphertext, source)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
       [
         id,
         input.clientId,
@@ -171,6 +194,7 @@ async function openCall(input: {
         target.price,
         input.idempotencyKey ?? null,
         encryptPayload(input.request, payloadContext(id, "call-input")),
+        input.source ?? "api",
       ],
     );
     const accounts = await heldAccounts(client, input.clientId, input.asset);
@@ -313,13 +337,7 @@ export async function dispatch(id: string, agentId: string, request: string, tar
   }
 }
 
-export async function runCall(input: {
-  clientId: string;
-  agentId: string;
-  request: string;
-  asset: SettlementAsset;
-  idempotencyKey?: string;
-}) {
+export async function runCall(input: CallInput) {
   const opened = await openCall(input);
   if (!opened.replay) {
     const started = Date.now();

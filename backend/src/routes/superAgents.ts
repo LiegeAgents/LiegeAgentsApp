@@ -640,7 +640,7 @@ export async function createIntent(
   requestId: string | undefined,
   input: {
     text: string;
-    source: "dashboard" | "cli" | "mcp";
+    source: "dashboard" | "cli" | "mcp" | "telegram";
     budgetAmount?: number;
     // Names the agent when the caller already chose one, as an agent's own A2A endpoint does.
     agentName?: string;

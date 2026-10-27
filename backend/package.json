@@ -15,7 +15,8 @@
     "format:check": "prettier --check .",
     "test": "NODE_ENV=test bun test --parallel=1 --max-concurrency=1",
     "migrate": "bun src/db/migrate.ts",
-    "reencrypt": "bun src/db/reencrypt.ts"
+    "reencrypt": "bun src/db/reencrypt.ts",
+    "telegram:webhook": "bun src/telegramWebhook.ts"
   },
   "dependencies": {
     "@virtuals-protocol/acp-node-v2": "^0.1.11",

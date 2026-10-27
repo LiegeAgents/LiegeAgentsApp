@@ -98,6 +98,15 @@ const env = z
         return undefined;
       }),
     TOPUP_CONFIRMATIONS: z.coerce.number().int().min(1).max(100).catch(2),
+    // Liege on Telegram: the BotFather token, the secret Telegram sends with each webhook, and the
+    // bot's username for link-up links. Without all three the bot is off.
+    TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),
+    TELEGRAM_WEBHOOK_SECRET: z.string().min(16).optional().catch(undefined),
+    TELEGRAM_BOT_USERNAME: z
+      .string()
+      .regex(/^[A-Za-z0-9_]{5,32}$/)
+      .optional()
+      .catch(undefined),
     // Share of the budget taken from an overturned evaluator's stake for the challenger (0 = off).
     SLASH_BPS: z.coerce.number().int().min(0).max(10_000).catch(1_000),
     // Pay-per-call: the highest price an agent may set per call, and how long a call may run.

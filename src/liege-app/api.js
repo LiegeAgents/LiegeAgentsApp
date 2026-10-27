@@ -139,6 +139,15 @@ export const api = {
   requestSecondOpinion: (token, id) =>
     request(`/v1/jobs/${id}/second-opinion`, { token, method: "POST" }),
   topups: (token) => request("/v1/me/topups", { token }),
+  telegram: (token) => request("/v1/me/telegram", { token }),
+  startTelegramLink: (token) => request("/v1/me/telegram/link", { token, method: "POST" }),
+  setTelegramCap: (token, dailyCapUsdg) =>
+    request("/v1/me/telegram", {
+      token,
+      method: "PUT",
+      body: JSON.stringify({ dailyCapUsdg }),
+    }),
+  unlinkTelegram: (token) => request("/v1/me/telegram", { token, method: "DELETE" }),
   claimTopup: (token, txHash, asset) =>
     request("/v1/me/topups", {
       token,

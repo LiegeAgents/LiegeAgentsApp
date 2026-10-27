@@ -22,6 +22,7 @@ import { receiptAnchorsRouter } from "./routes/jobReceipts.js";
 import { servicesRouter } from "./routes/services.js";
 import { x402CallsRouter } from "./routes/x402Calls.js";
 import { disputesRouter } from "./routes/disputes.js";
+import { telegramRouter } from "./routes/telegram.js";
 import { legionsRouter } from "./routes/legions.js";
 import { ApiError, asyncRoute, errorHandler } from "./http.js";
 import { parseTrustProxy, rateLimit, requestContext } from "./operations.js";
@@ -150,6 +151,7 @@ export const routers = [
   ["/v1/github", githubHooksRouter],
   ["/v1/x402", x402CallsRouter],
   ["/v1/disputes", disputesRouter],
+  ["/v1/telegram", telegramRouter],
   ["/v1/a2a", a2aRouter],
   ["/.well-known", wellKnownRouter],
 ] as const;
