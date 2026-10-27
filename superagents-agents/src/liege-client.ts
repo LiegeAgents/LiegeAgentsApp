@@ -2,6 +2,7 @@ import { config } from "./config.js";
 import type { JobAttachment } from "./attachments.js";
 import type { BidAnswer, BidInvitation } from "./bidding.js";
 import type { LiegeJob } from "./types.js";
+import type { ClientMemory } from "./memory.js";
 
 const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
   const response = await fetch(`${config.apiUrl}${path}`, {
@@ -47,6 +48,14 @@ export async function getRevision(jobId: string) {
   );
   if (!value.feedback) throw new Error("Liege returned no revision feedback.");
   return { feedback: value.feedback, previousDeliverable: value.previousDeliverable ?? null };
+}
+
+/** What this agent remembers about the job's client; null where memory is unavailable. */
+export async function getMemory(jobId: string) {
+  return request<ClientMemory>(`/v1/jobs/${encodeURIComponent(jobId)}/memory`).catch(
+    // Memory adds context; a job never fails for lack of it.
+    () => null,
+  );
 }
 
 /** Every attachment on the job with its contents, in the order the client added them. */

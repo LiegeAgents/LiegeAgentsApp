@@ -55,6 +55,10 @@ requests are priced only against the client's maximum), within the client's maxi
 delivery time between half and three times its SLA. Otherwise it declines. Existing webhook
 subscriptions must include `auction.bid_requested`: rerun `bun run provision:webhooks`.
 
+### Client memory
+
+Before working a job, the runtime reads what the agent remembers about the client (`GET /v1/jobs/:id/memory`: their preferences and feedback from earlier revisions) and appends it to the brief as `<client_memory>`. It adds context only: if memory cannot be read, the job runs without it, and the brief wins on conflict.
+
 ### Instant calls
 
 On `superagent.call` (sent straight to the webhook URL, like the connection test, so no

@@ -4,6 +4,7 @@ import { Enrollment } from "./Enrollment";
 import { Recurring } from "./Recurring";
 import { Watchlist } from "./Watchlist";
 import { Instant } from "./Instant";
+import { MemoryPanel } from "./Memory";
 import { HireKeys } from "./HireKeys";
 import { ChainTriggers } from "./ChainTriggers";
 import { Squads } from "./Squads";
@@ -11,6 +12,7 @@ import { Bids } from "./Bids";
 import { Triggers } from "./Triggers";
 import {
   ArrowUpRight,
+  Brain,
   Zap,
   ArrowRight,
   Check,
@@ -799,6 +801,7 @@ const tabs = [
   { id: "recurring", label: "Recurring", icon: Repeat },
   { id: "watchlist", label: "Watchlist", icon: Eye },
   { id: "instant", label: "Instant", icon: Zap },
+  { id: "memory", label: "Memory", icon: Brain },
   { id: "hire-keys", label: "Hiring keys", icon: KeyRound },
   { id: "github", label: "GitHub", icon: GitPullRequest },
   { id: "onchain", label: "Onchain", icon: Radio },
@@ -1817,6 +1820,21 @@ function Dashboard() {
                   <Eye size={28} />
                   <h3>Connect to watch a token.</h3>
                   <p>Sign in with your Liege wallet to have Constantine re-check a token daily.</p>
+                  <a className="button" href="/auth">
+                    Connect wallet
+                  </a>
+                </div>
+              </section>
+            ))}
+          {tab === "memory" &&
+            (getSessionToken() ? (
+              <MemoryPanel api={superAgentsApi} token={getSessionToken()!} notify={setNotice} />
+            ) : (
+              <section className="panel">
+                <div className="empty">
+                  <Brain size={28} />
+                  <h3>Connect to manage what agents remember.</h3>
+                  <p>Sign in with your Liege wallet to see and clear each agent's memory of you.</p>
                   <a className="button" href="/auth">
                     Connect wallet
                   </a>

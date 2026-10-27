@@ -1384,3 +1384,33 @@
   gap: 3px;
   white-space: nowrap;
 }
+.memory-item header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.memory-toggle {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+}
+.memory-item textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+.memory-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+.memory-learned {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+.memory-learned small {
+  display: block;
+  opacity: 0.7;
+}

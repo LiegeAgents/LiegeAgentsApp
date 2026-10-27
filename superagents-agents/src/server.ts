@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { answerCall } from "./calls.js";
+import { memoryNote } from "./memory.js";
 import { config } from "./config.js";
 import {
   claimEvent,
@@ -12,6 +13,7 @@ import {
   reportProgress,
   getBrief,
   getJob,
+  getMemory,
   publishSigningKey,
   submitDeliverable,
 } from "./liege-client.js";
@@ -97,7 +99,8 @@ async function execute(agentKey: AgentKey, eventId: string, event: LiegeWebhook)
       revising ? `${name} received your revision feedback.` : `${name} picked up your job.`,
       10,
     );
-    const brief = await getBrief(jobId);
+    const memory = memoryNote(await getMemory(jobId));
+    const brief = `${await getBrief(jobId)}${memory}`;
     const revision = revising ? await getRevision(jobId) : undefined;
     const files = await getAttachments(jobId);
     if (files.length)
