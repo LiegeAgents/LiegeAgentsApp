@@ -4,6 +4,7 @@ import type { SettlementAsset } from "./assets.js";
 import { env } from "./config.js";
 import { encryptPayload, payloadContext, payloadDigest } from "./crypto.js";
 import { escrowAccount, transfer, userBalance } from "./ledger.js";
+import { lateRefundRaw, recordLateRefund } from "./lateDelivery.js";
 import { planSettlement, processSettlement } from "./settlement.js";
 import { enqueueWebhookEvent } from "./webhooks.js";
 
@@ -78,17 +79,37 @@ export async function releaseLedgerOutcome(
       metadata: { jobId: job.id, allocationBps: member.allocation_bps },
     });
   }
+  // A late delivery refunds part of the budget, out of the lead provider's share.
+  const leadRaw = budgetRaw - delegatedRaw;
+  const lateRaw = [await lateRefundRaw(client, job.id, budgetRaw), leadRaw].reduce((a, b) =>
+    a < b ? a : b,
+  );
+  if (lateRaw > 0n) {
+    const clientBalance = await userBalance(client, job.client_id, "available", asset);
+    await transfer(client, {
+      reference: `job-late-refund:${job.id}`,
+      type: "late_delivery_refund",
+      from: escrow,
+      to: clientBalance.accountId,
+      amount: formatUnits(lateRaw, decimals),
+      asset,
+      createdBy: actorId,
+      metadata: { jobId: job.id },
+    });
+    await recordLateRefund(client, job.id, formatUnits(lateRaw, decimals));
+  }
   const provider = await userBalance(client, job.provider_id, "available", asset);
-  await transfer(client, {
-    reference: `job-settle-provider:${job.id}`,
-    type: "job_settlement",
-    from: escrow,
-    to: provider.accountId,
-    amount: formatUnits(budgetRaw - delegatedRaw, decimals),
-    asset,
-    createdBy: actorId,
-    metadata: { jobId: job.id },
-  });
+  if (leadRaw - lateRaw > 0n)
+    await transfer(client, {
+      reference: `job-settle-provider:${job.id}`,
+      type: "job_settlement",
+      from: escrow,
+      to: provider.accountId,
+      amount: formatUnits(leadRaw - lateRaw, decimals),
+      asset,
+      createdBy: actorId,
+      metadata: { jobId: job.id },
+    });
   if (Number(fee) > 0) {
     const evaluator = await userBalance(client, evaluatorId, "available", asset);
     await transfer(client, {

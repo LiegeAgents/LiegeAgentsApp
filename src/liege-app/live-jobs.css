@@ -11,3 +11,4 @@
 .rule-results{list-style:none;padding:0;margin:6px 0 10px;display:grid;gap:4px;font-size:12px}.rule-results li{display:flex;align-items:center;gap:6px}.rule-results li.ok{color:var(--l-green)}.rule-results li.bad{color:#ff6b6b}.approval-rules{margin:4px 0 12px}.approval-rules summary{cursor:pointer;font-size:13px}.approval-rules>p{font-size:12px;margin:6px 0}
 .second-opinion{margin:0 0 18px}.second-opinion h3{display:flex;align-items:center;gap:6px}.second-opinion>p{font-size:13px;line-height:1.6}
 .job-bonus{margin:0 0 18px;font-size:13px}.job-bonus h3{display:flex;align-items:center;gap:6px}p.job-bonus{display:flex;align-items:center;gap:6px;color:var(--l-green)}.job-bonus input{width:120px;padding:6px 8px;border:1px solid var(--l-border);border-radius:6px;background:transparent;color:inherit;font:inherit}
+.delivery-promise{font-size:12px;color:var(--l-muted);margin:0 0 12px}

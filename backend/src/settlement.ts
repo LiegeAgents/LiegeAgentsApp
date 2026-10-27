@@ -1,5 +1,13 @@
 import type { PoolClient } from "pg";
-import { parseUnits, type Address, type Hash, type Hex, type LocalAccount } from "viem";
+import {
+  formatUnits,
+  parseUnits,
+  type Address,
+  type Hash,
+  type Hex,
+  type LocalAccount,
+} from "viem";
+import { lateRefundRaw, recordLateRefund } from "./lateDelivery.js";
 import { env } from "./config.js";
 import { audit } from "./audit.js";
 import { db } from "./db/index.js";
@@ -89,7 +97,16 @@ export async function planSettlement(
       delegated += amount;
       payouts.push(["legion_payment", asset, member.wallet_address, amount]);
     }
-    payouts.push(["provider_payment", asset, input.providerAddress, budget - delegated]);
+    // A late delivery refunds part of the budget to the client, out of the lead provider's share.
+    const lead = budget - delegated;
+    const late = await lateRefundRaw(client, input.jobId, budget);
+    const refund = late < lead ? late : lead;
+    if (lead - refund > 0n)
+      payouts.push(["provider_payment", asset, input.providerAddress, lead - refund]);
+    if (refund > 0n) {
+      payouts.push(["client_refund", asset, input.clientAddress, refund]);
+      await recordLateRefund(client, input.jobId, formatUnits(refund, decimals));
+    }
     if (fee > 0n) payouts.push(["evaluator_fee", asset, input.evaluatorAddress, fee]);
   }
   if (input.funded && input.outcome === "rejected")

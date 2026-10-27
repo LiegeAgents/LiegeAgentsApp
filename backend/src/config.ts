@@ -98,6 +98,10 @@ const env = z
         return undefined;
       }),
     TOPUP_CONFIRMATIONS: z.coerce.number().int().min(1).max(100).catch(2),
+    // Delivery promises: the refund per hour an accepted job is delivered past its promise, and
+    // the most it can reach, in basis points of the budget.
+    LATE_REFUND_BPS_PER_HOUR: z.coerce.number().int().min(0).max(10_000).catch(1_000),
+    LATE_REFUND_MAX_BPS: z.coerce.number().int().min(0).max(10_000).catch(5_000),
     // Liege on Telegram: the BotFather token, the secret Telegram sends with each webhook, and the
     // bot's username for link-up links. Without all three the bot is off.
     TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),

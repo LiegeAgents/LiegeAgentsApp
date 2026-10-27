@@ -100,8 +100,9 @@ export async function openSuperAgentJob(
   const created = await client.query(
     `INSERT INTO jobs (id, client_id, agent_id, evaluator_id, kind, title, brief_ciphertext, brief_hash,
        acceptance_criteria, settlement_asset, budget_amount, evaluator_fee_amount, budget_usdg,
-       evaluator_fee_usdg, deadline_at, expires_at, strategy_policy, escrow_mode)
-     VALUES ($1,$2,$3,NULL,'standard',$4,$5,$6,$7,$8,$9,0,$10,0,$11,$12,$13,$14)
+       evaluator_fee_usdg, deadline_at, expires_at, strategy_policy, escrow_mode,
+       promised_minutes, late_refund_bps_per_hour, late_refund_max_bps)
+     VALUES ($1,$2,$3,NULL,'standard',$4,$5,$6,$7,$8,$9,0,$10,0,$11,$12,$13,$14,$15,$16,$17)
      RETURNING id, public_id, title, status, escrow_mode, settlement_asset, budget_amount, budget_usdg, deadline_at, expires_at`,
     [
       jobId,
@@ -118,6 +119,10 @@ export async function openSuperAgentJob(
       expires,
       JSON.stringify({ source: "superagent", serviceSlug: agent.service_slug, ...input.policy }),
       resolveJobEscrowMode(false),
+      // The agent's listed delivery time is its promise, counted from funding.
+      agent.sla_minutes,
+      env.LATE_REFUND_BPS_PER_HOUR,
+      env.LATE_REFUND_MAX_BPS,
     ],
   );
   if (created.rows[0].escrow_mode === "onchain") await ensureEscrowWallet(client, jobId);

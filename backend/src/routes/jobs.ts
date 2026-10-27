@@ -92,6 +92,9 @@ const jobInput = z
     // Objective checks run on every delivery. With no independent evaluator, on Liege ledger
     // escrow, a delivery that passes all of them is accepted without manual review.
     approvalRules: approvalRules.optional(),
+    // A delivery promise, counted from funding: an accepted job delivered later refunds part of
+    // its budget to the client (Liege ledger and onchain escrow).
+    deliveryPromiseMinutes: z.number().int().min(1).max(525_600).optional(),
   })
   .superRefine((value, ctx) => {
     const budget = value.settlementAsset === "liege" ? value.budgetLiege : value.budgetUsdg;
@@ -647,8 +650,8 @@ jobsRouter.post(
           );
       }
       const result = await client.query(
-        `INSERT INTO jobs (id, client_id, agent_id, evaluator_id, kind, title, brief_ciphertext, brief_hash, acceptance_criteria, settlement_asset, budget_amount, evaluator_fee_amount, budget_usdg, evaluator_fee_usdg, deadline_at, expires_at, strategy_policy, escrow_mode, challenge_window_hours, approval_rules)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
+        `INSERT INTO jobs (id, client_id, agent_id, evaluator_id, kind, title, brief_ciphertext, brief_hash, acceptance_criteria, settlement_asset, budget_amount, evaluator_fee_amount, budget_usdg, evaluator_fee_usdg, deadline_at, expires_at, strategy_policy, escrow_mode, challenge_window_hours, approval_rules, promised_minutes, late_refund_bps_per_hour, late_refund_max_bps)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) RETURNING *`,
         [
           jobId,
           request.auth!.userId,
@@ -670,6 +673,9 @@ jobsRouter.post(
           resolveJobEscrowMode(Boolean(input.evaluatorId)),
           input.challengeWindowHours ?? null,
           input.approvalRules ? JSON.stringify(input.approvalRules) : null,
+          input.deliveryPromiseMinutes ?? null,
+          input.deliveryPromiseMinutes ? env.LATE_REFUND_BPS_PER_HOUR : null,
+          input.deliveryPromiseMinutes ? env.LATE_REFUND_MAX_BPS : null,
         ],
       );
       const job = result.rows[0];

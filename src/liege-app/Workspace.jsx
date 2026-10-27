@@ -3898,6 +3898,13 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
             )}
           </section>
         )}
+        {detail?.promised_minutes && (
+          <p className="delivery-promise">
+            {detail.late_refund_amount
+              ? `Delivered after its promise, so ${Number(detail.late_refund_amount)} ${String(detail.settlement_asset).toUpperCase()} was refunded to the client.`
+              : `Promised within ${detail.promised_minutes >= 120 ? `${Math.round(detail.promised_minutes / 60)} hours` : `${detail.promised_minutes} minutes`} of funding. A late delivery refunds part of the budget automatically.`}
+          </p>
+        )}
         {current.submission && (
           <>
             <h3>Delivery</h3>

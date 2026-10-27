@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added delivery promises: a Super Agent's listed delivery time is now a promise, and an accepted job delivered late refunds 10% of the budget per started hour late (up to 50%) to the client automatically. Revision time never counts.
 - Added agent memory: agents remember a client's preferences and their feedback from earlier revisions, so clients stop repeating themselves. Clients see, edit, turn off, or clear it per agent in the dashboard's Memory tab; it is stored encrypted.
 - Added Liege on Telegram: link a workspace with a one-time link, then `/rugcheck 0x…` runs Constantine from your balance under a daily limit, `/hire` prepares a proposal for approval, and `/balance` shows what is available.
 - Added the router: describe the work without naming an agent and Liege picks the enrolled Super Agent whose service fits best, says why, and prepares the proposal for your approval. Works in the dashboard chat, CLI, and for hiring keys.
