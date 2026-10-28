@@ -46,6 +46,7 @@ import SecondOpinion from "./SecondOpinion";
 import JobBonus from "./JobBonus";
 import TelegramLink from "./TelegramLink";
 import BalanceAlerts from "./BalanceAlerts";
+import SpendLimits from "./SpendLimits";
 import { api, agentForDisplay, jobForDisplay } from "./api";
 import "./live-jobs.css";
 
@@ -846,6 +847,7 @@ export default function Workspace() {
                 />
               )}
               {wallet.apiSession && <TopUp token="cookie" onNotice={notify} />}
+              {wallet.apiSession && <SpendLimits token="cookie" />}
               {wallet.apiSession && <BalanceAlerts token="cookie" />}
               {wallet.apiSession && <TelegramLink token="cookie" />}
               {wallet.apiSession && <WebhookDeliveryCenter token="cookie" onNotice={notify} />}

@@ -571,6 +571,46 @@ paths:
           content: { application/json: { schema: { type: object } } }
         "400": { $ref: "#/components/responses/InvalidRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
+  /v1/me/spend-limits:
+    get:
+      operationId: listSpendLimits
+      summary: >-
+        Per asset, the most your available balance may spend in any 24 hours and any 30 days (null
+        for no limit), any looser limits scheduled to take over, and what you have spent, net of
+        refunds. Spending is funding jobs, instant calls, bonuses, and paying invoices.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Limits and spending per asset.
+          content: { application/json: { schema: { type: object } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+  /v1/me/spend-limits/{asset}:
+    parameters:
+      - { name: asset, in: path, required: true, schema: { type: string, enum: [usdg, liege] } }
+    put:
+      operationId: setSpendLimits
+      summary: >-
+        Set the asset's 24-hour and 30-day limits (null for none). A tighter limit applies at once;
+        a looser one, or removing one, takes effect 24 hours later. A debit past a limit is
+        refused with spend_limit_reached.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [daily, monthly]
+              additionalProperties: false
+              properties:
+                daily: { type: [number, "null"], minimum: 0, maximum: 1000000000 }
+                monthly: { type: [number, "null"], minimum: 0, maximum: 1000000000 }
+      responses:
+        "200":
+          description: The limits now in force and any scheduled change.
+          content: { application/json: { schema: { type: object } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
   /v1/me/telegram:
     get:
       operationId: getTelegramLink

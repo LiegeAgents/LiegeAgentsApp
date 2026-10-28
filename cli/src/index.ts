@@ -95,6 +95,8 @@ Usage:
   liege alerts [list]
   liege alerts set usdg|liege <level>
   liege alerts off usdg|liege
+  liege limits [list]
+  liege limits set usdg|liege [--daily <n>|none] [--monthly <n>|none]
   liege disputes [list]
   liege disputes get <dispute-id>
   liege disputes vote <dispute-id> --decision upheld|denied --rationale <text>
@@ -799,6 +801,31 @@ export async function execute(args: string[]): Promise<unknown> {
     return request("/v1/me/topups", {
       method: "POST",
       body: JSON.stringify({ txHash: flags.tx, asset: flags.asset }),
+    });
+  }
+  if (resource === "limits") {
+    // Spend limits: tighter applies at once; looser or none waits 24 hours.
+    if (!action || action === "list") return request("/v1/me/spend-limits");
+    if (action !== "set" || (id !== "usdg" && id !== "liege"))
+      throw new Error("Usage: liege limits set usdg|liege [--daily <n>|none] [--monthly <n>|none]");
+    const current = (
+      (await request("/v1/me/spend-limits")) as {
+        data: Array<{ asset: string; daily: string | null; monthly: string | null }>;
+      }
+    ).data.find((entry) => entry.asset === id);
+    const parse = (value: unknown, fallback: string | null | undefined) => {
+      if (value === undefined) return fallback == null ? null : Number(fallback);
+      if (value === "none") return null;
+      const amount = Number(value);
+      if (!(amount >= 0)) throw new Error("A limit is a number of tokens, or none.");
+      return amount;
+    };
+    return request(`/v1/me/spend-limits/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        daily: parse(flags.daily, current?.daily),
+        monthly: parse(flags.monthly, current?.monthly),
+      }),
     });
   }
   if (resource === "alerts") {

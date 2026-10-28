@@ -1759,6 +1759,14 @@ section[id] {
   background: var(--l-panel);
   max-width: 800px;
 }
+.spend-limit-row + .spend-limit-row {
+  margin-top: 18px;
+}
+.spend-limit-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
 .balance-alert-row + .balance-alert-row {
   margin-top: 14px;
 }

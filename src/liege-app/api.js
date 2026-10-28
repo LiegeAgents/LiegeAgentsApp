@@ -139,6 +139,13 @@ export const api = {
   requestSecondOpinion: (token, id) =>
     request(`/v1/jobs/${id}/second-opinion`, { token, method: "POST" }),
   topups: (token) => request("/v1/me/topups", { token }),
+  spendLimits: (token) => request("/v1/me/spend-limits", { token }),
+  setSpendLimits: (token, asset, daily, monthly) =>
+    request(`/v1/me/spend-limits/${asset}`, {
+      token,
+      method: "PUT",
+      body: JSON.stringify({ daily, monthly }),
+    }),
   balanceAlerts: (token) => request("/v1/me/balance-alerts", { token }),
   setBalanceAlert: (token, asset, threshold) =>
     request(`/v1/me/balance-alerts/${asset}`, {

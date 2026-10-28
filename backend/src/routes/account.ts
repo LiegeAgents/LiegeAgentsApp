@@ -6,6 +6,7 @@ import { userBalance } from "../ledger.js";
 import { asyncRoute } from "../http.js";
 import { env } from "../config.js";
 import { claimTopup, topupTokens } from "../topups.js";
+import { readSpendLimits, setSpendLimits } from "../spendLimits.js";
 import { registerTelegramAccountRoutes } from "./telegram.js";
 
 export const accountRouter = Router();
@@ -154,6 +155,50 @@ accountRouter.delete(
       asset,
     ]);
     response.json({ data: { asset, removed: Boolean(removed.rowCount) } });
+  }),
+);
+
+// Spend limits: the most the available balance may spend in any 24 hours and any 30 days.
+accountRouter.get(
+  "/me/spend-limits",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const client = await db.connect();
+    try {
+      const data = [];
+      for (const asset of ["usdg", "liege"] as const) {
+        const account = await userBalance(client, request.auth!.userId, "available", asset);
+        data.push(await readSpendLimits(client, request.auth!.userId, account.accountId));
+      }
+      response.json({ data });
+    } finally {
+      client.release();
+    }
+  }),
+);
+
+accountRouter.put(
+  "/me/spend-limits/:asset",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const asset = alertAsset.parse(request.params.asset);
+    const limit = z.number().finite().min(0).max(1_000_000_000).nullable();
+    const input = z.object({ daily: limit, monthly: limit }).strict().parse(request.body);
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const account = await userBalance(client, request.auth!.userId, "available", asset);
+      await setSpendLimits(client, request.auth!.userId, asset, input);
+      await client.query("COMMIT");
+      response.json({
+        data: await readSpendLimits(client, request.auth!.userId, account.accountId),
+      });
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
   }),
 );
 

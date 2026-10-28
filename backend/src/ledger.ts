@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { ApiError } from "./http.js";
 import { ASSET_DECIMALS, assetLabel, type SettlementAsset } from "./assets.js";
+import { enforceSpendLimit, SPENDING_TYPES } from "./spendLimits.js";
 
 type AccountKind = "available" | "escrow" | "stake" | "held" | "platform_clearing";
 
@@ -107,6 +108,8 @@ export async function transfer(
         )
       );
   }
+  if (fromKind === "available" && SPENDING_TYPES.includes(input.type))
+    await enforceSpendLimit(client, input.from, amount);
   const transaction = await client.query<{ id: string }>(
     "INSERT INTO ledger_transactions (reference, type, created_by, metadata) VALUES ($1,$2,$3,$4) RETURNING id",
     [
