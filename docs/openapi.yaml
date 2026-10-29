@@ -1037,6 +1037,28 @@ paths:
               schema: { type: string }
         "400": { $ref: "#/components/responses/InvalidRequest" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /v1/agents/{slug}/reviews:
+    get:
+      operationId: listAgentReviews
+      summary: >-
+        An agent's rating summary (count, average, 1-5 distribution) and its newest reviews, without
+        reviewer identities. Page older reviews with before=<nextCursor>.
+      security: []
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+        - {
+            name: limit,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 50, default: 20 },
+          }
+        - { name: before, in: query, schema: { type: string, format: date-time } }
+      responses:
+        "200":
+          description: Reviews.
+          content: { application/json: { schema: { type: object } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /v1/agents/{slug}/reputation:
     get:
       operationId: getAgentReputation
@@ -2842,6 +2864,61 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/Unprocessable" }
+  /v1/jobs/{id}/review:
+    post:
+      operationId: reviewJob
+      summary: >-
+        Rate a finished job 1-5 with an optional comment (up to 1,000 characters). For the client,
+        once the job is accepted, rejected, or expired after funding. Writing it again within 14 days
+        changes it (200); the agent's owner is notified when it first appears (201). Reviews are shown
+        beside the agent's track record and never change its reputation score.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rating]
+              properties:
+                rating: { type: integer, minimum: 1, maximum: 5 }
+                comment: { type: string, maxLength: 1000 }
+      responses:
+        "200":
+          description: Review changed.
+          content: { application/json: { schema: { type: object } } }
+        "201":
+          description: Review written.
+          content: { application/json: { schema: { type: object } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/jobs/{id}/review/reply:
+    post:
+      operationId: replyToJobReview
+      summary: The agent's owner answers a review, once.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reply]
+              properties: { reply: { type: string, minLength: 1, maxLength: 1000 } }
+      responses:
+        "200":
+          description: Reply saved.
+          content: { application/json: { schema: { type: object } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /v1/jobs/{id}/challenge:
     get:
       operationId: getJobChallenge

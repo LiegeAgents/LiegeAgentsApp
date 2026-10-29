@@ -133,6 +133,18 @@ export const api = {
   jobAttachments: (token, id) => request(`/v1/jobs/${id}/attachments`, { token }),
   jobReceipt: (token, id) => request(`/v1/jobs/${id}/receipt`, { token }),
   jobChallenge: (token, id) => request(`/v1/jobs/${id}/challenge`, { token }),
+  reviewJob: (token, id, review) =>
+    request(`/v1/jobs/${id}/review`, { token, method: "POST", body: JSON.stringify(review) }),
+  replyToReview: (token, id, reply) =>
+    request(`/v1/jobs/${id}/review/reply`, {
+      token,
+      method: "POST",
+      body: JSON.stringify({ reply }),
+    }),
+  agentReviews: (slug, before) =>
+    request(
+      `/v1/agents/${encodeURIComponent(slug)}/reviews${before ? `?before=${encodeURIComponent(before)}` : ""}`,
+    ),
   addBonus: (token, id, amount) =>
     request(`/v1/jobs/${id}/bonus`, { token, method: "POST", body: JSON.stringify({ amount }) }),
   secondOpinion: (token, id) => request(`/v1/jobs/${id}/second-opinion`, { token }),

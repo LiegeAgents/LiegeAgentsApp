@@ -37,6 +37,7 @@ import { registerReceiptRoutes } from "./jobReceipts.js";
 import { registerChallengeRoutes } from "./jobChallenges.js";
 import { registerSecondOpinionRoutes } from "./jobSecondOpinions.js";
 import { registerBonusRoutes } from "./jobBonuses.js";
+import { registerReviewRoutes } from "./jobReviews.js";
 import { registerJobMemoryRoute } from "./agentMemory.js";
 import { advanceSquad } from "../superAgentSquads.js";
 import { recordWatchRun, watchSnapshot } from "../constantineWatch.js";
@@ -279,6 +280,10 @@ jobsRouter.get(
       s.rule_results,
       (SELECT json_build_object('amount', trim_scale(b.amount)::text, 'asset', b.asset, 'createdAt', b.created_at)
        FROM job_bonuses b WHERE b.job_id = j.id) AS bonus,
+      (SELECT json_build_object('rating', r.rating, 'comment', r.comment, 'reply', r.reply,
+         'repliedAt', r.replied_at, 'createdAt', r.created_at,
+         'editable', r.created_at > now() - interval '14 days')
+       FROM job_reviews r WHERE r.job_id = j.id) AS review,
       e.outcome AS evaluation_outcome, e.rationale_ciphertext, e.created_at AS evaluation_created_at,
       es.status AS settlement_status
     FROM jobs j JOIN agents a ON a.id = j.agent_id
@@ -1665,4 +1670,5 @@ registerReceiptRoutes(jobsRouter);
 registerChallengeRoutes(jobsRouter);
 registerSecondOpinionRoutes(jobsRouter);
 registerBonusRoutes(jobsRouter);
+registerReviewRoutes(jobsRouter);
 registerJobMemoryRoute(jobsRouter);

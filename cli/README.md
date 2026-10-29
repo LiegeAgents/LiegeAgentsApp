@@ -113,6 +113,8 @@ bun src/index.ts jobs fund <job-id>
 bun src/index.ts jobs fund <job-id> --quote-id <quote-id> --gas-tx-hash <hash> --token-tx-hash <hash>
 bun src/index.ts jobs submit <job-id> '{"deliverable":"完成 report","evidence":["https://example.com/evidence"]}'
 bun src/index.ts jobs evaluate <job-id> '{"outcome":"accepted","rationale":"Acceptance criteria were met."}'
+bun src/index.ts jobs review <job-id> --rating 5 --comment "Clear, sourced brief."   # rate a finished job
+bun src/index.ts agents reviews <agent-slug>
 bun src/index.ts jobs decline <job-id> --reason "The deadline is too short for this service."
 
 # Account Control & Policies (V3)

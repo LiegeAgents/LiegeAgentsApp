@@ -10,6 +10,7 @@ import { MIN_SCORED_JOBS, REPUTATION_WEIGHTS, agentStanding } from "../reputatio
 import { badgeMessage, renderBadge } from "../agentBadge.js";
 import { isEd25519PublicKey, keyFingerprint } from "../deliverableSignatures.js";
 import { reputationProof } from "../jobReceipts.js";
+import { agentReviews } from "./jobReviews.js";
 
 const createAgent = z
   .object({
@@ -62,7 +63,9 @@ agentsRouter.get(
                 ) ORDER BY s.created_at ASC)
                 FROM commerce_services s
                 WHERE s.agent_id = a.id AND s.active
-              ), '[]'::json) AS services
+              ), '[]'::json) AS services,
+              (SELECT json_build_object('count', count(*)::int, 'average', round(avg(rating), 1))
+                 FROM job_reviews r WHERE r.agent_id = a.id) AS reviews
      FROM agents a JOIN users u ON u.id = a.owner_id WHERE a.active AND ($1::text IS NULL OR a.category = $1)
        AND ($2::uuid IS NULL OR a.id < $2) ORDER BY a.id DESC LIMIT $3`,
       [query.category ?? null, query.cursor ?? null, query.limit + 1],
@@ -425,6 +428,26 @@ agentsRouter.get(
         auditedAt: new Date().toISOString(),
       },
     });
+  }),
+);
+
+// Public reviews: the rating summary and newest reviews, without reviewer identities.
+agentsRouter.get(
+  "/:slug/reviews",
+  asyncRoute(async (request, response) => {
+    const query = z
+      .object({
+        limit: z.coerce.number().int().min(1).max(50).default(20),
+        before: z.string().datetime().optional(),
+      })
+      .parse(request.query);
+    const agent = await db.query<{ id: string }>(
+      "SELECT id FROM agents WHERE slug = $1 AND active",
+      [request.params.slug],
+    );
+    if (!agent.rowCount)
+      throw new ApiError(404, "agent_not_found", "No active agent exists with that slug.");
+    response.json({ data: await agentReviews(agent.rows[0].id, query.limit, query.before) });
   }),
 );
 

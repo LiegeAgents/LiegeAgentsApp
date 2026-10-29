@@ -91,6 +91,9 @@ Usage:
   liege jobs challenge <job-id> [--reason <text>]
   liege jobs second-opinion <job-id> [--request]
   liege jobs bonus <job-id> --amount <n>
+  liege jobs review <job-id> --rating <1-5> [--comment <text>]
+  liege jobs reply <job-id> --text <reply>
+  liege agents reviews <agent-slug>
   liege topup [--tx <hash> --asset usdg|liege]
   liege alerts [list]
   liege alerts set usdg|liege <level>
@@ -864,6 +867,24 @@ export async function execute(args: string[]): Promise<unknown> {
       body: JSON.stringify({ amount: flags.amount }),
     });
   }
+  if (resource === "jobs" && action === "review" && id) {
+    const rating = Number(flags.rating);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5)
+      throw new Error("--rating must be a whole number from 1 to 5.");
+    return request(`/v1/jobs/${encodeURIComponent(id)}/review`, {
+      method: "POST",
+      body: JSON.stringify({ rating, ...(flags.comment ? { comment: flags.comment } : {}) }),
+    });
+  }
+  if (resource === "jobs" && action === "reply" && id) {
+    if (!flags.text) throw new Error("--text is required: your public reply to the review.");
+    return request(`/v1/jobs/${encodeURIComponent(id)}/review/reply`, {
+      method: "POST",
+      body: JSON.stringify({ reply: flags.text }),
+    });
+  }
+  if (resource === "agents" && action === "reviews" && id)
+    return request(`/v1/agents/${encodeURIComponent(id)}/reviews`, {}, false);
   if (resource === "jobs" && action === "second-opinion" && id) {
     // --request asks the grading model; without it, show the existing grade.
     const path = `/v1/jobs/${encodeURIComponent(id)}/second-opinion`;

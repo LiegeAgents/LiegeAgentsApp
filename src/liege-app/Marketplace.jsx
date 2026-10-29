@@ -35,6 +35,7 @@ import {
   marketplaceAgentMatches,
 } from "./api";
 import { EXPLORER, verifyAnchored } from "./anchorVerify";
+import { Stars } from "./JobReview";
 import "./marketplace.css";
 
 const categories = [
@@ -214,6 +215,99 @@ function A2aCard({ agent }) {
         </button>
       </div>
     </div>
+  );
+}
+/** Clients' ratings and comments, shown beside (never inside) the recorded track record. */
+function AgentReviews({ agent }) {
+  const [data, setData] = useState(null),
+    [more, setMore] = useState(false);
+  useEffect(() => {
+    if (!agent.slug) return;
+    let live = true;
+    api
+      .agentReviews(agent.slug)
+      .then((result) => live && setData(result.data))
+      .catch(() => live && setData(null));
+    return () => {
+      live = false;
+    };
+  }, [agent.slug]);
+  const loadMore = async () => {
+    setMore(true);
+    try {
+      const next = (await api.agentReviews(agent.slug, data.nextCursor)).data;
+      setData({ ...data, items: [...data.items, ...next.items], nextCursor: next.nextCursor });
+    } finally {
+      setMore(false);
+    }
+  };
+  if (!data) return null;
+  return (
+    <section id="reviews" className="profile-section">
+      <span className="eyebrow">CLIENT REVIEWS</span>
+      <h2>{data.count ? "What clients say." : "No reviews yet."}</h2>
+      <p className="profile-reviews-note">
+        Written by clients after a finished job, without their names. Reviews never change the track
+        record above, which comes from recorded outcomes only.
+      </p>
+      {data.count > 0 && (
+        <>
+          <div className="profile-reviews-summary">
+            <div>
+              <strong>{data.average}</strong>
+              <Stars value={data.average} size={16} />
+              <small>
+                {data.count} review{data.count === 1 ? "" : "s"}
+              </small>
+            </div>
+            <div className="profile-reviews-bars">
+              {[5, 4, 3, 2, 1].map((n) => (
+                <span key={n}>
+                  <small>{n}</small>
+                  <i>
+                    <b style={{ width: `${(data.distribution[n] / data.count) * 100}%` }} />
+                  </i>
+                  <small>{data.distribution[n]}</small>
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="profile-reviews-list">
+            {data.items.map((review) => (
+              <article key={review.job_id}>
+                <header>
+                  <Stars value={review.rating} />
+                  <small>
+                    {new Date(review.created_at).toLocaleDateString()} ·{" "}
+                    {review.job_status === "completed"
+                      ? "Accepted job"
+                      : review.job_status === "rejected"
+                        ? "Rejected job"
+                        : "Undelivered job"}
+                  </small>
+                </header>
+                {review.comment && <p>{review.comment}</p>}
+                {review.reply && (
+                  <p className="profile-review-reply">
+                    <strong>Owner's reply:</strong> {review.reply}
+                  </p>
+                )}
+              </article>
+            ))}
+          </div>
+          {data.nextCursor && (
+            <button
+              type="button"
+              className="profile-reviews-more"
+              onClick={loadMore}
+              disabled={more}
+            >
+              {more ? "Loading…" : "Show older reviews"}
+            </button>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 export function MarketVisual({ agent, large = false }) {
@@ -809,6 +903,12 @@ function MarketCard({ agent: a, saved, onSave, onHire, compared, compareFull, on
                 {a.verified && <VerifiedBadge />}
               </h3>
               <small>{p.role}</small>
+              {a.reviews?.count > 0 && (
+                <small className="market-rating">
+                  <Stars value={Number(a.reviews.average)} size={11} /> {Number(a.reviews.average)}{" "}
+                  · {a.reviews.count} review{a.reviews.count === 1 ? "" : "s"}
+                </small>
+              )}
             </span>
           </a>
           <button
@@ -1044,6 +1144,7 @@ function Profile({ agent: a, saved, onSave, onHire }) {
               ))}
             </div>
           </section>
+          <AgentReviews agent={a} />
           <section id="deliverables" className="profile-section">
             <span className="eyebrow">CLEAR OUTPUTS</span>
             <h2>Know what you’re getting.</h2>

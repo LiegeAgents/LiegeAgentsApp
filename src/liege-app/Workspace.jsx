@@ -44,6 +44,7 @@ import DisputePanels from "./DisputePanels";
 import TopUp from "./TopUp";
 import SecondOpinion from "./SecondOpinion";
 import JobBonus from "./JobBonus";
+import JobReview from "./JobReview";
 import TelegramLink from "./TelegramLink";
 import BalanceAlerts from "./BalanceAlerts";
 import SpendLimits from "./SpendLimits";
@@ -443,7 +444,7 @@ export default function Workspace() {
                 ? "trigger"
                 : item.event_type === "balance.low"
                   ? "low balance"
-                : item.event_type.replace("job.", "").replaceAll("_", " "),
+                  : item.event_type.replace("job.", "").replaceAll("_", " "),
           title: item.title,
           detail: item.message,
           date: item.created_at,
@@ -3966,6 +3967,19 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
             asset={detail.settlement_asset}
             budget={Number(detail.budget_amount ?? detail.budget_usdg ?? 0)}
             onAdded={load}
+          />
+        )}
+        {detail && (
+          <JobReview
+            key={detail.review?.createdAt ?? "new"}
+            jobId={job.id}
+            token={token}
+            status={detail.status}
+            fundedAt={detail.funded_at}
+            isClient={isClient}
+            isProvider={isProvider}
+            review={detail.review}
+            onSaved={load}
           />
         )}
         <details className="payload-access-history">
