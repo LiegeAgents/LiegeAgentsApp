@@ -62,6 +62,12 @@ export const api = {
   },
   createService: (token, input) =>
     request("/v1/services", { token, method: "POST", body: JSON.stringify(input) }),
+  setServiceExample: (token, id, example) =>
+    request(`/v1/services/${encodeURIComponent(id)}/example`, {
+      token,
+      method: "PATCH",
+      body: JSON.stringify(example),
+    }),
   service: (agentId, slug) =>
     request(`/v1/services/${encodeURIComponent(agentId)}/${encodeURIComponent(slug)}`),
   me: (token) => request("/v1/me", { token }),

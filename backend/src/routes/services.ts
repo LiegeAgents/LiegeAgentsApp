@@ -1,8 +1,15 @@
 import { Router } from "express";
 import { z } from "zod";
 import { requireAuth } from "../auth.js";
+import { audit } from "../audit.js";
 import { db } from "../db/index.js";
 import { ApiError, asyncRoute } from "../http.js";
+
+const exampleText = (max: number) =>
+  z
+    .string()
+    .transform((value) => value.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "").trim())
+    .pipe(z.string().min(1).max(max));
 
 const serviceInput = z
   .object({
@@ -23,6 +30,9 @@ const serviceInput = z
     deliverableSchema: z.record(z.unknown()).default({}),
     // Legacy service registrations omitted settlementAssets; preserve both rails for them.
     settlementAssets: z.array(z.string()).min(1).default(["usdg", "liege"]),
+    // An example brief and what the agent delivered for it, shown before anyone hires.
+    sampleRequest: exampleText(2000).optional(),
+    sampleDeliverable: exampleText(8000).optional(),
   })
   .transform((value, ctx) => {
     if (value.minPriceUsd !== undefined && value.minPriceUsd > value.priceUsd)
@@ -58,6 +68,7 @@ servicesRouter.get(
       `SELECT s.id, s.agent_id, s.slug, s.name, s.description, s.service_type, s.execution_mode,
         s.settlement_assets,
         s.price_usd, s.sla_minutes, s.requirements_schema, s.deliverable_schema,
+        s.sample_request, s.sample_deliverable,
         s.created_at, s.updated_at, a.slug AS agent_slug, a.name AS agent_name
        FROM commerce_services s JOIN agents a ON a.id = s.agent_id
        WHERE s.active AND a.active AND ($1::uuid IS NULL OR s.agent_id = $1)
@@ -81,6 +92,7 @@ servicesRouter.get(
       `SELECT s.id, s.agent_id, s.slug, s.name, s.description, s.service_type, s.execution_mode,
         s.settlement_assets,
         s.price_usd, s.sla_minutes, s.requirements_schema, s.deliverable_schema,
+        s.sample_request, s.sample_deliverable,
         s.created_at, s.updated_at, a.slug AS agent_slug, a.name AS agent_name
        FROM commerce_services s JOIN agents a ON a.id = s.agent_id
        WHERE s.agent_id = $1 AND s.slug = $2 AND s.active AND a.active`,
@@ -111,8 +123,8 @@ servicesRouter.post(
       );
     const result = await db.query(
       `INSERT INTO commerce_services
-       (agent_id, slug, name, description, service_type, execution_mode, price_usd, sla_minutes, requirements_schema, deliverable_schema, settlement_assets, min_price_usd)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+       (agent_id, slug, name, description, service_type, execution_mode, price_usd, sla_minutes, requirements_schema, deliverable_schema, settlement_assets, min_price_usd, sample_request, sample_deliverable)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
       [
         input.agentId,
         input.slug,
@@ -126,6 +138,8 @@ servicesRouter.post(
         JSON.stringify(input.deliverableSchema),
         input.settlementAssets,
         input.minPriceUsd ?? null,
+        input.sampleRequest ?? null,
+        input.sampleDeliverable ?? null,
       ],
     );
     response.status(201).json({ data: result.rows[0] });
@@ -158,6 +172,41 @@ servicesRouter.patch(
       "UPDATE commerce_services SET min_price_usd = $2 WHERE id = $1 RETURNING id, price_usd, min_price_usd",
       [id, minPriceUsd],
     );
+    response.json({ data: updated.rows[0] });
+  }),
+);
+
+// The owner adds, changes, or clears (null) the service's example request and delivery.
+servicesRouter.patch(
+  "/:id/example",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const id = z.string().uuid().parse(request.params.id);
+    const input = z
+      .object({
+        sampleRequest: exampleText(2000).nullable(),
+        sampleDeliverable: exampleText(8000).nullable(),
+      })
+      .parse(request.body);
+    const updated = await db.query(
+      `UPDATE commerce_services s SET sample_request = $3, sample_deliverable = $4, updated_at = now()
+       FROM agents a WHERE s.id = $1 AND a.id = s.agent_id AND a.owner_id = $2
+       RETURNING s.id, s.sample_request, s.sample_deliverable`,
+      [id, request.auth!.userId, input.sampleRequest, input.sampleDeliverable],
+    );
+    if (!updated.rowCount)
+      throw new ApiError(404, "service_not_found", "This service is not owned by your account.");
+    await audit(db, {
+      actorId: request.auth!.userId,
+      action: "service.example_updated",
+      targetType: "commerce_service",
+      targetId: id,
+      requestId: request.requestId,
+      metadata: {
+        sampleRequest: input.sampleRequest !== null,
+        sampleDeliverable: input.sampleDeliverable !== null,
+      },
+    });
     response.json({ data: updated.rows[0] });
   }),
 );

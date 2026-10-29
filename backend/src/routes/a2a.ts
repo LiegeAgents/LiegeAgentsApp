@@ -51,6 +51,8 @@ const skillFor = (agent: Hireable) => ({
   id: agent.slug,
   name: `${agent.name}: ${agent.service_name}`,
   description: `${sentence(agent.description)} Listed at ${Number(agent.price_usd)} USD, delivered within ${agent.sla_minutes} minutes.`,
+  // A2A examples are sample prompts; the owner's example request is exactly that.
+  ...(agent.sample_request ? { examples: [agent.sample_request] } : {}),
   tags: [agent.category, "liege", "super-agent", ...(agent.verified ? ["verified"] : [])].filter(
     Boolean,
   ),

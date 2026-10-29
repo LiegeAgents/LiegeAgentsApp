@@ -1265,7 +1265,10 @@ function ServiceCatalog({ token, agents, ownerAddress, onNotice }) {
     requirementsSchema: "{}",
     deliverableSchema: "{}",
     settlementAssets: ["usdg"],
+    sampleRequest: "",
+    sampleDeliverable: "",
   });
+  const [editingExample, setEditingExample] = useState(null);
   const load = async () => {
     setLoading(true);
     try {
@@ -1316,9 +1319,19 @@ function ServiceCatalog({ token, agents, ownerAddress, onNotice }) {
         requirementsSchema,
         deliverableSchema,
         settlementAssets: form.settlementAssets,
+        ...(form.sampleRequest.trim() ? { sampleRequest: form.sampleRequest } : {}),
+        ...(form.sampleDeliverable.trim() ? { sampleDeliverable: form.sampleDeliverable } : {}),
       });
       setShowCreate(false);
-      setForm((current) => ({ ...current, name: "", slug: "", description: "", priceUsd: "" }));
+      setForm((current) => ({
+        ...current,
+        name: "",
+        slug: "",
+        description: "",
+        priceUsd: "",
+        sampleRequest: "",
+        sampleDeliverable: "",
+      }));
       onNotice("Service published to the catalog.");
       await load();
     } catch (error) {
@@ -1327,6 +1340,24 @@ function ServiceCatalog({ token, agents, ownerAddress, onNotice }) {
       setSaving(false);
     }
   };
+  const saveExample = async (event) => {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      await api.setServiceExample(token, editingExample.id, {
+        sampleRequest: editingExample.sampleRequest.trim() || null,
+        sampleDeliverable: editingExample.sampleDeliverable.trim() || null,
+      });
+      setEditingExample(null);
+      onNotice("Example saved. It shows on the agent's profile.");
+      await load();
+    } catch (error) {
+      onNotice(error?.message || "Could not save the example.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  const ownedIds = new Set(ownedAgents.map((agent) => agent.id));
   return (
     <>
       <SectionHeading
@@ -1500,6 +1531,29 @@ function ServiceCatalog({ token, agents, ownerAddress, onNotice }) {
               />
             </Field>
           </div>
+          <Field
+            label="Example request (optional)"
+            help="A brief a client might send. Shown on the agent's profile and to AI clients."
+          >
+            <textarea
+              rows={2}
+              maxLength={2000}
+              value={form.sampleRequest}
+              onChange={set("sampleRequest")}
+              placeholder="Research tokenized stocks on Robinhood Chain: issuers, volumes, risks."
+            />
+          </Field>
+          <Field
+            label="Example delivery (optional)"
+            help="What the agent delivered for it, so clients know what they are buying."
+          >
+            <textarea
+              rows={4}
+              maxLength={8000}
+              value={form.sampleDeliverable}
+              onChange={set("sampleDeliverable")}
+            />
+          </Field>
           <Button type="submit" disabled={saving || !form.agentId}>
             {saving ? "Publishing…" : "Publish service"}
             <ArrowRight size={14} />
@@ -1558,6 +1612,59 @@ function ServiceCatalog({ token, agents, ownerAddress, onNotice }) {
                 <span className="mono">/{service.slug}</span>
                 <span>{service.agent_name || service.agentName || "Agent service"}</span>
               </div>
+              {ownedIds.has(service.agent_id) &&
+                (editingExample?.id === service.id ? (
+                  <form className="service-example-form" onSubmit={saveExample}>
+                    <Field label="Example request">
+                      <textarea
+                        rows={2}
+                        maxLength={2000}
+                        value={editingExample.sampleRequest}
+                        onChange={(e) =>
+                          setEditingExample({ ...editingExample, sampleRequest: e.target.value })
+                        }
+                      />
+                    </Field>
+                    <Field label="Example delivery">
+                      <textarea
+                        rows={4}
+                        maxLength={8000}
+                        value={editingExample.sampleDeliverable}
+                        onChange={(e) =>
+                          setEditingExample({
+                            ...editingExample,
+                            sampleDeliverable: e.target.value,
+                          })
+                        }
+                      />
+                    </Field>
+                    <div className="receipt-actions">
+                      <Button small type="submit" disabled={saving}>
+                        {saving ? "Saving…" : "Save example"}
+                      </Button>
+                      <Button small secondary type="button" onClick={() => setEditingExample(null)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </form>
+                ) : (
+                  <Button
+                    small
+                    secondary
+                    type="button"
+                    onClick={() =>
+                      setEditingExample({
+                        id: service.id,
+                        sampleRequest: service.sample_request || "",
+                        sampleDeliverable: service.sample_deliverable || "",
+                      })
+                    }
+                  >
+                    {service.sample_request || service.sample_deliverable
+                      ? "Edit example"
+                      : "Add an example"}
+                  </Button>
+                ))}
             </article>
           ))}
         </div>

@@ -20,7 +20,7 @@ export const getApiUrl = () =>
   (process.env.LIEGE_API_URL ?? "https://api.liegeagents.com").replace(/\/$/, "");
 export const getSessionToken = () => process.env.LIEGE_SESSION_TOKEN;
 
-const BOOLEAN_FLAGS = new Set(["ap2", "help", "h", "auto-fund", "fund", "no-comment"]);
+const BOOLEAN_FLAGS = new Set(["ap2", "help", "h", "auto-fund", "fund", "no-comment", "clear"]);
 const INSTALLER_URL =
   "https://raw.githubusercontent.com/LiegeAgents/LiegeAgentsApp/main/cli/install.sh";
 
@@ -124,6 +124,7 @@ Usage:
   liege services list [--agent-id <id>] [--type <tool|data|skill>] [--limit <n>]
   liege services get <agent-id> <slug>
   liege services create '<json-service>' | [flags]
+  liege services example <service-id> --request <text> --deliverable <text|@file> | --clear
   liege mcp connections
   liege mcp revoke <connection-id>
   liege hire-keys create <name> --max-per-hire <usdg> --daily <usdg> [--days <n>]
@@ -1043,6 +1044,24 @@ export async function execute(args: string[]): Promise<unknown> {
   }
 
   if (resource === "services" || resource === "service") {
+    // The owner's example request and delivery, shown on the profile; --clear removes both.
+    if (action === "example" && id) {
+      const read = async (value: string | undefined) =>
+        value?.startsWith("@") ? (await Bun.file(value.slice(1)).text()).trim() : value;
+      const body =
+        flags.clear === "true"
+          ? { sampleRequest: null, sampleDeliverable: null }
+          : {
+              sampleRequest: (await read(flags.request)) || null,
+              sampleDeliverable: (await read(flags.deliverable)) || null,
+            };
+      if (flags.clear !== "true" && !body.sampleRequest && !body.sampleDeliverable)
+        throw new Error("Provide --request and/or --deliverable, or --clear.");
+      return request(`/v1/services/${encodeURIComponent(id)}/example`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+    }
     if (action === "list") {
       const query = new URLSearchParams();
       const agentId = flags["agent-id"] ?? flags.agentId ?? flags.agent;

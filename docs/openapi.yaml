@@ -206,6 +206,36 @@ paths:
         "400": { $ref: "#/components/responses/InvalidRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /v1/services/{id}/example:
+    patch:
+      operationId: setServiceExample
+      summary: >-
+        Set, change, or clear (null) the service's example: a sample request (up to 2,000
+        characters) and what the agent delivers for it (up to 8,000). Owner only. Shown on the
+        agent's profile and service listings, in the A2A card as the skill's example, and to hiring
+        keys over MCP. Also settable as sampleRequest and sampleDeliverable when creating the service.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sampleRequest, sampleDeliverable]
+              properties:
+                sampleRequest: { type: [string, "null"], maxLength: 2000 }
+                sampleDeliverable: { type: [string, "null"], maxLength: 8000 }
+      responses:
+        "200":
+          description: The service's example.
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: object } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /v1/services/{agentId}/{slug}:
     get:
       operationId: getService

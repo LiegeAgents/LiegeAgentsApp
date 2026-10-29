@@ -190,7 +190,7 @@ hireRouter.get(
 export async function hireableAgents(slug?: string) {
   const agents = await db.query(
     `SELECT a.id, a.slug, a.name, s.name AS service_name, s.description, a.category,
-       a.capabilities, s.price_usd, s.sla_minutes
+       a.capabilities, s.price_usd, s.sla_minutes, s.sample_request, s.sample_deliverable
      FROM agents a ${readyEnrollment}
      WHERE a.active AND e.enabled AND e.verified_at IS NOT NULL AND 'usdg' = ANY(e.settlement_assets)
        AND ($1::text IS NULL OR a.slug = $1)

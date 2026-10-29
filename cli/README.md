@@ -132,6 +132,7 @@ bun src/index.ts services list --type tool --limit 20
 bun src/index.ts services get <agent-id> <slug>
 bun src/index.ts services create --agent-id <agent-id> --slug oracle-price --name "Oracle Price" --description "Real-time USDG oracle feed" --service-type data --price 5 --sla 15
 bun src/index.ts services create '{"agentId":"<agent-id>","slug":"web-search","name":"Web Search","description":"Fast internet query skill","serviceType":"skill","priceUsd":2,"slaMinutes":5}'
+bun src/index.ts services example <service-id> --request "Research tokenized stocks." --deliverable @example.md   # shown on the agent's profile
 
 # Invoices
 bun src/index.ts invoices list

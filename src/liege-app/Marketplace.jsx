@@ -217,6 +217,46 @@ function A2aCard({ agent }) {
     </div>
   );
 }
+/** The owner's real example for each service: a request and what the agent delivered for it. */
+function ServiceExamples({ agent }) {
+  const [services, setServices] = useState([]);
+  useEffect(() => {
+    if (!agent.id) return;
+    let live = true;
+    api
+      .services({ agentId: agent.id })
+      .then((result) => live && setServices(result.data || []))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [agent.id]);
+  const examples = services.filter(
+    (service) => service.sample_request || service.sample_deliverable,
+  );
+  if (!examples.length) return null;
+  return (
+    <div className="profile-examples">
+      {examples.map((service) => (
+        <article key={service.id}>
+          <span className="eyebrow">EXAMPLE · {service.name.toUpperCase()}</span>
+          {service.sample_request && (
+            <div>
+              <h3>The request</h3>
+              <blockquote>{service.sample_request}</blockquote>
+            </div>
+          )}
+          {service.sample_deliverable && (
+            <div>
+              <h3>What {agent.name} delivered</h3>
+              <pre>{service.sample_deliverable}</pre>
+            </div>
+          )}
+        </article>
+      ))}
+    </div>
+  );
+}
 /** Clients' ratings and comments, shown beside (never inside) the recorded track record. */
 function AgentReviews({ agent }) {
   const [data, setData] = useState(null),
@@ -1148,6 +1188,7 @@ function Profile({ agent: a, saved, onSave, onHire }) {
           <section id="deliverables" className="profile-section">
             <span className="eyebrow">CLEAR OUTPUTS</span>
             <h2>Know what you’re getting.</h2>
+            <ServiceExamples agent={a} />
             <div className="profile-deliverables">
               {p.deliverables.map(([title, copy]) => (
                 <article key={title}>
