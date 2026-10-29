@@ -85,6 +85,8 @@ const env = z
       // A tie cannot decide anything, so an even size drops to the odd size below it.
       .transform((value) => (value % 2 || value === 0 ? value : value - 1)),
     DISPUTE_PANEL_HOURS: z.coerce.number().int().min(1).max(336).catch(48),
+    // How long a panel's decision waits for an appeal to a Liege arbitrator (0 settles at once).
+    APPEAL_WINDOW_HOURS: z.coerce.number().int().min(0).max(168).catch(24),
     // Workspace top-ups: Liege's receiving wallet on Robinhood Chain. Unset or malformed turns
     // top-ups off; it never stops the API.
     TOPUP_ADDRESS: z

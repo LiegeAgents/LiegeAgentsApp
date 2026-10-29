@@ -26,10 +26,14 @@ type PanelRow = {
   upheld: number;
   denied: number;
   members: number;
+  panel_resolution: string | null;
+  appeal_deadline_at: Date | null;
+  appealed: boolean;
 };
 
 const panelColumns = `d.id, d.job_id, j.title, d.decided_outcome, d.status, d.resolution,
-  d.panel_deadline_at, d.created_at, m.decision AS my_decision,
+  d.panel_deadline_at, d.created_at, m.decision AS my_decision, d.panel_resolution,
+  d.appeal_deadline_at, d.appellant_id IS NOT NULL AS appealed,
   (SELECT count(*) FILTER (WHERE x.decision = 'upheld') FROM dispute_panel_members x WHERE x.dispute_id = d.id)::int AS upheld,
   (SELECT count(*) FILTER (WHERE x.decision = 'denied') FROM dispute_panel_members x WHERE x.dispute_id = d.id)::int AS denied,
   (SELECT count(*) FROM dispute_panel_members x WHERE x.dispute_id = d.id)::int AS members`;
@@ -43,8 +47,15 @@ const summary = (row: PanelRow) => ({
   resolution: row.resolution,
   panelDeadlineAt: row.panel_deadline_at,
   myVote: row.my_decision,
-  // The tally is shown once the dispute is resolved, so no one votes with the crowd.
-  tally: row.status === "open" ? null : { upheld: row.upheld, denied: row.denied, of: row.members },
+  // The panel's majority decision, open to appeal until appealDeadlineAt.
+  panelResolution: row.panel_resolution,
+  appealDeadlineAt: row.appeal_deadline_at,
+  appealed: row.appealed,
+  // The tally is shown once the panel has decided, so no one votes with the crowd.
+  tally:
+    row.status === "open" && !row.panel_resolution
+      ? null
+      : { upheld: row.upheld, denied: row.denied, of: row.members },
   createdAt: row.created_at,
 });
 

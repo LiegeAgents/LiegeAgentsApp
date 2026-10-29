@@ -2595,8 +2595,10 @@ paths:
       operationId: votePanelDispute
       summary: >-
         Vote to uphold or deny the challenge, once, before the panel's deadline. When a majority
-        agrees the dispute resolves on it, the job settles, and each vote counts toward the
-        voter's accuracy (completed and correct counts).
+        agrees, each vote counts toward the voter's accuracy (completed and correct counts) and the
+        majority's decision is recorded as `verdict`; the job settles on it when the
+        APPEAL_WINDOW_HOURS appeal window (24 by default) closes without an appeal. With a window of
+        0 the dispute resolves at once and `resolved` carries the result.
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -2644,7 +2646,10 @@ paths:
         challenger, plus their fee), or deny it, which keeps the decision and pays the bond to the
         other side. The job
         settles either way. A party to the job cannot arbitrate it, and a dispute with an evaluator
-        panel can be arbitrated only after the panel's deadline. Administrators only.
+        panel can be arbitrated only after the panel's deadline without a majority, or once the
+        panel's decision is appealed. On an appeal the ruling is final: the appeal bond returns to
+        the appellant when it overturns the panel, and otherwise goes to the other side.
+        Administrators only.
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -2995,6 +3000,38 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+  /v1/jobs/{id}/appeal:
+    post:
+      operationId: appealJob
+      summary: >-
+        Appeal an evaluator panel's decision to a Liege arbitrator, before its appeal window
+        closes. Only the side the panel ruled against may appeal, once. The appeal bond (twice the
+        challenge bond) is held from the appellant's available balance and returned if the
+        arbitrator overturns the panel; if the arbitrator affirms it, the bond goes to the other
+        side.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties: { reason: { type: string, minLength: 10, maxLength: 4000 } }
+      responses:
+        "201":
+          description: Appeal filed; the dispute waits for a Liege arbitrator.
+          content: { application/json: { schema: { type: object } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "402":
+          description: The available balance cannot cover the appeal bond (insufficient_bond).
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /v1/jobs/{id}/receipt:
     get:
       operationId: getJobReceipt
@@ -3058,8 +3095,9 @@ paths:
     post:
       operationId: releasePayouts
       summary: >-
-        Pay out Liege-ledger decisions whose challenge window closed without a challenge. Also runs
-        in-process every minute; each job pays out once.
+        Pay out Liege-ledger decisions whose challenge window closed without a challenge, and
+        settle panel decisions whose appeal window closed without an appeal. Also runs in-process
+        every minute; each job pays out once.
       security: [{ cronSecret: [] }]
       responses:
         "429": { $ref: "#/components/responses/RateLimited" }

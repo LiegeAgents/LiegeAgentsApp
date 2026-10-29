@@ -53,7 +53,8 @@ export default function DisputePanels({ token }) {
       </h2>
       <p className="muted">
         You were drawn at random to decide these challenged decisions. Vote once; the majority
-        settles the job, and each vote counts toward your accuracy.
+        decides, the job settles on it unless the losing side appeals to a Liege arbitrator, and
+        each vote counts toward your accuracy.
       </p>
       <ul className="dispute-list">
         {items.map((item) => (
@@ -64,9 +65,11 @@ export default function DisputePanels({ token }) {
             <small>
               {item.status !== "open"
                 ? `Resolved: ${item.resolution}`
-                : item.myVote
-                  ? `You voted ${item.myVote}`
-                  : `Vote by ${when(item.panelDeadlineAt)}`}
+                : item.panelResolution
+                  ? `Panel ${item.panelResolution}${item.appealed ? " · under appeal" : ` · appeal window to ${when(item.appealDeadlineAt)}`}`
+                  : item.myVote
+                    ? `You voted ${item.myVote}`
+                    : `Vote by ${when(item.panelDeadlineAt)}`}
             </small>
           </li>
         ))}

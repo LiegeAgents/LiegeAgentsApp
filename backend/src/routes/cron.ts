@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { env } from "../config.js";
 import { db } from "../db/index.js";
-import { releaseDuePayouts } from "../challenges.js";
+import { finalizePanelDecisions, releaseDuePayouts } from "../challenges.js";
 import { ApiError, asyncRoute } from "../http.js";
 import { escrowAccount, transfer, userBalance } from "../ledger.js";
 import { planSettlement, processPendingSettlements } from "../settlement.js";
@@ -177,10 +177,12 @@ cronRouter.post(
   }),
 );
 
-// Decisions are also released in-process every minute; each job pays out once.
+// Decisions are also released in-process every minute; each job pays out once. Panel decisions
+// whose appeal window closed unappealed settle in the same pass.
 cronRouter.post(
   "/release-payouts",
   asyncRoute(async (_request, response) => {
-    response.json({ data: { released: await releaseDuePayouts() } });
+    const released = await releaseDuePayouts();
+    response.json({ data: { released, panelDecisions: await finalizePanelDecisions() } });
   }),
 );

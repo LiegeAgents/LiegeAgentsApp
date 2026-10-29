@@ -189,11 +189,17 @@ type DisputeRow = {
   mode: "arbitrator" | "panel";
   panel_deadline_at: Date | null;
   panel_deciding: boolean;
+  panel_resolution: "upheld" | "denied" | null;
+  panel_rationale: string | null;
+  appeal_deadline_at: Date | null;
+  appellant_id: string | null;
+  appeal_bond: string | null;
 };
 
 async function lockDispute(client: PoolClient, disputeId: string) {
   const found = await client.query<DisputeRow>(
-    `SELECT *, (mode = 'panel' AND panel_deadline_at > now()) AS panel_deciding
+    `SELECT *, trim_scale(appeal_bond)::text AS appeal_bond,
+       (mode = 'panel' AND panel_resolution IS NULL AND panel_deadline_at > now()) AS panel_deciding
      FROM disputes WHERE id = $1 FOR UPDATE`,
     [disputeId],
   );
@@ -367,6 +373,12 @@ export async function resolveChallenge(input: {
         "panel_deciding",
         "An evaluator panel is deciding this dispute; an arbitrator steps in only after its deadline.",
       );
+    if (dispute.panel_resolution && !dispute.appellant_id)
+      throw new ApiError(
+        409,
+        "panel_decided",
+        "The panel decided this dispute; it settles on that decision unless a party appeals before the appeal window closes.",
+      );
     const job = (await lockDecided(client, dispute.job_id))!;
     if ([job.client_id, job.provider_id, dispute.original_evaluator_id].includes(input.resolverId))
       throw new ApiError(
@@ -378,15 +390,197 @@ export async function resolveChallenge(input: {
       ...input,
       actorId: input.resolverId,
     });
+    const appeal = dispute.appellant_id
+      ? await settleAppealBond(client, dispute, input.resolution, input.resolverId)
+      : null;
     await client.query("COMMIT");
     if (result.settlesOnchain) startOnchainSettlement(result.jobId);
-    return result;
+    return { ...result, appeal };
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
   } finally {
     client.release();
   }
+}
+
+/**
+ * An appeal's bond after the arbitrator rules: back to the appellant when the panel is
+ * overturned, otherwise to the side the panel ruled for.
+ */
+async function settleAppealBond(
+  client: PoolClient,
+  dispute: DisputeRow,
+  resolution: "upheld" | "denied",
+  actorId: string,
+) {
+  const job = (await lockDecided(client, dispute.job_id))!;
+  const overturned = resolution !== dispute.panel_resolution;
+  const appellant = await heldAccounts(client, dispute.appellant_id!, dispute.asset);
+  const winner = dispute.appellant_id === job.client_id ? job.provider_id : job.client_id;
+  await transfer(client, {
+    reference: `appeal-bond-${overturned ? "return" : "forfeit"}:${job.id}`,
+    type: overturned ? "appeal_bond_return" : "appeal_bond_forfeit",
+    from: appellant.held,
+    to: overturned
+      ? appellant.available
+      : (await heldAccounts(client, winner, dispute.asset)).available,
+    amount: dispute.appeal_bond!,
+    asset: dispute.asset,
+    createdBy: actorId,
+    metadata: { jobId: job.id, disputeId: dispute.id },
+  });
+  const outcome = overturned ? "overturned" : "affirmed";
+  await client.query("UPDATE disputes SET appeal_outcome = $2 WHERE id = $1", [
+    dispute.id,
+    outcome,
+  ]);
+  return { outcome, bond: dispute.appeal_bond! };
+}
+
+export const appealBond = (challengeBondAmount: string | number, asset: SettlementAsset) =>
+  Number((Number(challengeBondAmount) * 2).toFixed(asset === "liege" ? 18 : 6));
+
+/**
+ * Appeals a panel's decision to a Liege arbitrator, inside the appeal window, by the side the
+ * panel ruled against. The bond (twice the challenge bond) is held until the arbitrator rules.
+ */
+export async function appealPanelDecision(input: {
+  jobId: string;
+  userId: string;
+  reason: string;
+  requestId?: string;
+}) {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const found = await client.query<{ id: string }>("SELECT id FROM disputes WHERE job_id = $1", [
+      input.jobId,
+    ]);
+    const job = found.rowCount ? await lockDecided(client, input.jobId) : null;
+    if (!job || (job.client_id !== input.userId && job.provider_id !== input.userId))
+      throw new ApiError(404, "dispute_not_found", "This job has no dispute.");
+    const dispute = await lockDispute(client, found.rows[0].id);
+    if (!dispute.panel_resolution)
+      throw new ApiError(
+        409,
+        "not_appealable",
+        "Only a decision by an evaluator panel can be appealed.",
+      );
+    if (dispute.appellant_id)
+      throw new ApiError(409, "already_appealed", "This decision is already under appeal.");
+    if (new Date(dispute.appeal_deadline_at!) <= new Date())
+      throw new ApiError(409, "appeal_window_closed", "The appeal window has closed.");
+    const counterparty = dispute.challenger_id === job.client_id ? job.provider_id : job.client_id;
+    const loser = dispute.panel_resolution === "upheld" ? counterparty : dispute.challenger_id;
+    if (input.userId !== loser)
+      throw new ApiError(
+        403,
+        "not_appellant",
+        "Only the side the panel ruled against can appeal its decision.",
+      );
+    const bond = appealBond(dispute.challenge_bond_usdg, dispute.asset);
+    const accounts = await heldAccounts(client, input.userId, dispute.asset);
+    await transfer(client, {
+      reference: `appeal-bond:${job.id}`,
+      type: "appeal_bond",
+      from: accounts.available,
+      to: accounts.held,
+      amount: bond,
+      asset: dispute.asset,
+      createdBy: input.userId,
+      metadata: { jobId: job.id, disputeId: dispute.id },
+      insufficientFunds: new ApiError(
+        402,
+        "insufficient_bond",
+        `An appeal needs a bond of ${bond} ${assetLabel(dispute.asset)} from your available balance. It comes back if the arbitrator overturns the panel.`,
+      ),
+    });
+    await client.query(
+      `UPDATE disputes SET appellant_id = $2, appeal_reason_ciphertext = $3, appeal_bond = $4,
+         appealed_at = now() WHERE id = $1`,
+      [
+        dispute.id,
+        input.userId,
+        encryptPayload(input.reason, payloadContext(job.id, "appeal")),
+        bond,
+      ],
+    );
+    const event = await client.query<{ id: string; created_at: Date }>(
+      "INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,$2,'job.appealed') RETURNING id, created_at",
+      [job.id, input.userId],
+    );
+    const other = input.userId === job.client_id ? job.provider_id : job.client_id;
+    await client.query(
+      `INSERT INTO notifications (user_id, job_id, event_id, event_type, title, message, created_at)
+       VALUES ($1,$2,$3,'dispute.appealed',$4,$5,$6) ON CONFLICT (user_id, event_id) DO NOTHING`,
+      [
+        other,
+        job.id,
+        event.rows[0].id,
+        "The panel's decision was appealed",
+        "A Liege arbitrator will review the dispute and make the final decision. The payout waits until then.",
+        event.rows[0].created_at,
+      ],
+    );
+    await audit(client, {
+      actorId: input.userId,
+      action: "dispute.appealed",
+      targetType: "dispute",
+      targetId: dispute.id,
+      requestId: input.requestId,
+      metadata: { jobId: job.id, bond, panelResolution: dispute.panel_resolution },
+    });
+    await client.query("COMMIT");
+    return dispute.id;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/** Settles panel decisions whose appeal window closed without an appeal. Each settles once. */
+export async function finalizePanelDecisions(limit = 50) {
+  const finalized: string[] = [];
+  for (let index = 0; index < limit; index++) {
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const due = await client.query<{ id: string }>(
+        `SELECT id FROM disputes WHERE status = 'open' AND panel_resolution IS NOT NULL
+           AND appellant_id IS NULL AND appeal_deadline_at <= now()
+         ORDER BY appeal_deadline_at LIMIT 1 FOR UPDATE SKIP LOCKED`,
+      );
+      if (!due.rowCount) {
+        await client.query("COMMIT");
+        break;
+      }
+      const dispute = await lockDispute(client, due.rows[0].id);
+      // The first panelist in the majority stands as the actor, as when the vote settled at once.
+      const voter = await client.query<{ evaluator_id: string }>(
+        `SELECT evaluator_id FROM dispute_panel_members WHERE dispute_id = $1 AND decision = $2
+         ORDER BY decided_at LIMIT 1`,
+        [dispute.id, dispute.panel_resolution],
+      );
+      const result = await applyResolution(client, dispute, {
+        resolution: dispute.panel_resolution!,
+        rationale: dispute.panel_rationale ?? "Evaluator panel decision.",
+        actorId: voter.rows[0].evaluator_id,
+        resolverId: null,
+      });
+      await client.query("COMMIT");
+      if (result.settlesOnchain) startOnchainSettlement(result.jobId);
+      finalized.push(dispute.id);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+  return finalized;
 }
 
 /**
@@ -446,6 +640,44 @@ async function drawPanel(
 }
 
 /**
+ * Records a panel's majority decision and opens the appeal window. Both sides are told what the
+ * panel decided and that the side it went against may appeal before the window closes.
+ */
+async function recordPanelVerdict(
+  client: PoolClient,
+  dispute: DisputeRow,
+  resolution: "upheld" | "denied",
+  rationale: string,
+) {
+  const updated = await client.query<{ appeal_deadline_at: Date }>(
+    `UPDATE disputes SET panel_resolution = $2, panel_rationale = $3,
+       appeal_deadline_at = now() + ($4::int * interval '1 hour') WHERE id = $1
+     RETURNING appeal_deadline_at`,
+    [dispute.id, resolution, rationale, env.APPEAL_WINDOW_HOURS],
+  );
+  const job = (await lockDecided(client, dispute.job_id))!;
+  const event = await client.query<{ id: string; created_at: Date }>(
+    "INSERT INTO job_events (job_id, actor_id, event_type) VALUES ($1,NULL,'dispute.panel_decided') RETURNING id, created_at",
+    [job.id],
+  );
+  const reversed = resolution === "upheld";
+  for (const userId of [job.client_id, job.provider_id])
+    await client.query(
+      `INSERT INTO notifications (user_id, job_id, event_id, event_type, title, message, created_at)
+       VALUES ($1,$2,$3,'dispute.panel_decided',$4,$5,$6) ON CONFLICT (user_id, event_id) DO NOTHING`,
+      [
+        userId,
+        job.id,
+        event.rows[0].id,
+        "The panel decided the challenge",
+        `The panel ${reversed ? "upheld the challenge, reversing" : "denied the challenge, keeping"} the decision. The side it went against may appeal to a Liege arbitrator within ${env.APPEAL_WINDOW_HOURS} hours; otherwise the job settles then.`,
+        event.rows[0].created_at,
+      ],
+    );
+  return { resolution, appealDeadlineAt: updated.rows[0].appeal_deadline_at };
+}
+
+/**
  * Records a panelist's vote. Once a majority agrees, the dispute is resolved on it and every vote
  * cast so far counts toward the voters' accuracy.
  */
@@ -471,6 +703,8 @@ export async function castPanelVote(input: {
     const me = members.rows.find((row) => row.evaluator_id === input.evaluatorId);
     if (!me) throw new ApiError(404, "dispute_not_found", "Dispute not found.");
     if (me.decision) throw new ApiError(409, "already_voted", "You already voted on this dispute.");
+    if (dispute.panel_resolution)
+      throw new ApiError(409, "panel_decided", "The panel has already reached a majority.");
     if (!dispute.panel_deciding)
       throw new ApiError(
         409,
@@ -495,14 +729,19 @@ export async function castPanelVote(input: {
     const decided =
       count("upheld") >= majority ? "upheld" : count("denied") >= majority ? "denied" : null;
     let result: Awaited<ReturnType<typeof applyResolution>> | null = null;
+    let verdict: { resolution: "upheld" | "denied"; appealDeadlineAt: Date } | null = null;
     if (decided) {
-      result = await applyResolution(client, dispute, {
-        resolution: decided,
-        rationale: `Evaluator panel: ${count("upheld")} upheld, ${count("denied")} denied of ${members.rows.length}.`,
-        actorId: input.evaluatorId,
-        resolverId: null,
-        requestId: input.requestId,
-      });
+      const rationale = `Evaluator panel: ${count("upheld")} upheld, ${count("denied")} denied of ${members.rows.length}.`;
+      if (env.APPEAL_WINDOW_HOURS)
+        verdict = await recordPanelVerdict(client, dispute, decided, rationale);
+      else
+        result = await applyResolution(client, dispute, {
+          resolution: decided,
+          rationale,
+          actorId: input.evaluatorId,
+          resolverId: null,
+          requestId: input.requestId,
+        });
       for (const [index, row] of members.rows.entries()) {
         const vote = votes[index];
         if (!vote) continue;
@@ -520,6 +759,8 @@ export async function castPanelVote(input: {
       vote: input.decision,
       votes: { upheld: count("upheld"), denied: count("denied"), of: members.rows.length },
       resolved: result,
+      // With an appeal window, the majority's decision settles when the window closes unappealed.
+      verdict,
     };
   } catch (error) {
     await client.query("ROLLBACK");
@@ -571,7 +812,7 @@ let timer: ReturnType<typeof setInterval> | undefined;
 export function startPayoutReleases() {
   if (timer || env.NODE_ENV === "test") return;
   timer = setInterval(() => {
-    void releaseDuePayouts().catch((error) =>
+    void Promise.all([releaseDuePayouts(), finalizePanelDecisions()]).catch((error) =>
       console.error(
         JSON.stringify({
           event: "payouts.release_failed",

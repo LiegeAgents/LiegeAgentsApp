@@ -15,7 +15,8 @@ import {
   type User,
 } from "./support.js";
 import { adminKey } from "./setup.js";
-import { releaseDuePayouts } from "../src/challenges.js";
+import { finalizePanelDecisions, releaseDuePayouts } from "../src/challenges.js";
+import { env } from "../src/config.js";
 import { ensureEscrowWallet } from "../src/escrow.js";
 import { processSettlement, useEscrowChain } from "../src/settlement.js";
 import { FakeChain } from "./fake-chain.js";
@@ -276,7 +277,19 @@ describe.skipIf(!databaseAvailable)("challenge window", () => {
       );
       await vote(panel[1], opened.id, "denied").expect(200);
       const third = (await vote(panel[2], opened.id, "upheld").expect(200)).body.data;
-      expect(third.resolved).toMatchObject({ resolution: "upheld", finalOutcome: "rejected" });
+      // The majority's decision waits out the appeal window before the job settles on it.
+      expect(third.resolved).toBeNull();
+      expect(third.verdict).toMatchObject({ resolution: "upheld" });
+      expect(await job(jobId)).toMatchObject({ status: "challenged" });
+      expect((await resolve(opened.id, "denied").expect(409)).body.error.code).toBe(
+        "panel_decided",
+      );
+      expect(await finalizePanelDecisions()).toEqual([]);
+      await db.query(
+        "UPDATE disputes SET appeal_deadline_at = now() - interval '1 second' WHERE id = $1",
+        [opened.id],
+      );
+      expect(await finalizePanelDecisions()).toEqual([opened.id]);
 
       // Upheld: the client is refunded and gets the bond back.
       expect(await availableBalance(client.userId)).toBe(100);
@@ -299,6 +312,123 @@ describe.skipIf(!databaseAvailable)("challenge window", () => {
       expect((await vote(panel[2], opened.id, "upheld").expect(409)).body.error.code).toBe(
         "dispute_resolved",
       );
+    });
+
+    describe("appeals", () => {
+      const appeal = (user: User, jobId: string) =>
+        api()
+          .post(`/v1/jobs/${jobId}/appeal`)
+          .set(bearer(user))
+          .send({ reason: "The panel ignored the second criterion entirely." });
+      /** An accepted job challenged by the client and upheld by its panel (2 of 3). */
+      async function panelUpheld() {
+        const pool = await evaluators(3);
+        const jobId = await decided("accepted");
+        const opened = (await challenge(client, jobId).expect(201)).body.data;
+        await vote(pool[0], opened.id, "upheld").expect(200);
+        const second = (await vote(pool[1], opened.id, "upheld").expect(200)).body.data;
+        expect(second.verdict.resolution).toBe("upheld");
+        await credit(provider.userId, 10);
+        return { jobId, disputeId: opened.id as string, pool };
+      }
+
+      test("with no appeal window the majority settles at once, as before", async () => {
+        const window = env.APPEAL_WINDOW_HOURS;
+        env.APPEAL_WINDOW_HOURS = 0;
+        try {
+          const pool = await evaluators(3);
+          const jobId = await decided("accepted");
+          const opened = (await challenge(client, jobId).expect(201)).body.data;
+          await vote(pool[0], opened.id, "denied").expect(200);
+          const second = (await vote(pool[1], opened.id, "denied").expect(200)).body.data;
+          expect(second).toMatchObject({ verdict: null, resolved: { resolution: "denied" } });
+          expect(await job(jobId)).toMatchObject({ status: "completed" });
+        } finally {
+          env.APPEAL_WINDOW_HOURS = window;
+        }
+      });
+
+      test("only the side the panel ruled against appeals, once, inside the window", async () => {
+        const { jobId, disputeId } = await panelUpheld();
+        const view = (
+          await api().get(`/v1/jobs/${jobId}/challenge`).set(bearer(provider)).expect(200)
+        ).body.data;
+        expect(view).toMatchObject({
+          canAppeal: true,
+          dispute: { panelResolution: "upheld", appealBond: "2", appeal: null },
+        });
+        const clientView = (
+          await api().get(`/v1/jobs/${jobId}/challenge`).set(bearer(client)).expect(200)
+        ).body.data;
+        expect(clientView.canAppeal).toBe(false);
+        expect((await appeal(client, jobId).expect(403)).body.error.code).toBe("not_appellant");
+        const filed = (await appeal(provider, jobId).expect(201)).body.data;
+        expect(filed.appeal).toMatchObject({
+          appellantId: provider.userId,
+          bond: "2",
+          reason: "The panel ignored the second criterion entirely.",
+          outcome: null,
+        });
+        // The bond moves from available to held.
+        expect(await availableBalance(provider.userId)).toBe(13);
+        expect((await appeal(provider, jobId).expect(409)).body.error.code).toBe(
+          "already_appealed",
+        );
+        const inbox = await db.query(
+          "SELECT user_id FROM notifications WHERE event_type = 'dispute.appealed'",
+        );
+        expect(inbox.rows.map((row) => row.user_id)).toEqual([client.userId]);
+        // An appealed decision does not settle when its window closes.
+        await db.query(
+          "UPDATE disputes SET appeal_deadline_at = now() - interval '1 second' WHERE id = $1",
+          [disputeId],
+        );
+        expect(await finalizePanelDecisions()).toEqual([]);
+        expect(await job(jobId)).toMatchObject({ status: "challenged" });
+      });
+
+      test("a closed window refuses appeals, and the panel's decision settles", async () => {
+        const { jobId, disputeId } = await panelUpheld();
+        await db.query(
+          "UPDATE disputes SET appeal_deadline_at = now() - interval '1 second' WHERE id = $1",
+          [disputeId],
+        );
+        expect((await appeal(provider, jobId).expect(409)).body.error.code).toBe(
+          "appeal_window_closed",
+        );
+        expect(await finalizePanelDecisions()).toEqual([disputeId]);
+        expect(await job(jobId)).toMatchObject({ status: "rejected" });
+        expect(await availableBalance(client.userId)).toBe(100);
+      });
+
+      test("an arbitrator who overturns the panel returns the appeal bond", async () => {
+        const { jobId, disputeId } = await panelUpheld();
+        await appeal(provider, jobId).expect(201);
+        const ruled = (await resolve(disputeId, "denied").expect(200)).body.data;
+        expect(ruled).toMatchObject({
+          finalOutcome: "accepted",
+          appeal: { outcome: "overturned", bond: "2" },
+        });
+        expect(await job(jobId)).toMatchObject({ status: "completed" });
+        // Paid for the job, the challenge bond forfeited to it, and the appeal bond returned.
+        expect(await availableBalance(provider.userId)).toBe(15 + 10 + 1);
+        expect(await availableBalance(client.userId)).toBe(89);
+      });
+
+      test("an arbitrator who affirms the panel pays the appeal bond to the other side", async () => {
+        const { jobId, disputeId } = await panelUpheld();
+        await appeal(provider, jobId).expect(201);
+        const ruled = (await resolve(disputeId, "upheld").expect(200)).body.data;
+        expect(ruled).toMatchObject({ finalOutcome: "rejected", appeal: { outcome: "affirmed" } });
+        expect(await job(jobId)).toMatchObject({ status: "rejected" });
+        expect(await availableBalance(provider.userId)).toBe(13);
+        // Refunded, the challenge bond returned, plus the forfeited appeal bond.
+        expect(await availableBalance(client.userId)).toBe(102);
+        const final = (
+          await api().get(`/v1/jobs/${jobId}/challenge`).set(bearer(client)).expect(200)
+        ).body.data.dispute;
+        expect(final).toMatchObject({ status: "resolved_client", appeal: { outcome: "affirmed" } });
+      });
     });
 
     test("after the panel's deadline an arbitrator decides and late votes are refused", async () => {

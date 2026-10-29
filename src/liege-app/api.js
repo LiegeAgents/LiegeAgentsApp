@@ -202,6 +202,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ reason }),
     }),
+  appealJob: (token, id, reason) =>
+    request(`/v1/jobs/${id}/appeal`, {
+      token,
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
   jobAttachment: (token, id, attachmentId) =>
     request(`/v1/jobs/${id}/attachments/${attachmentId}`, { token }),
   attachLink: (token, id, input) =>
