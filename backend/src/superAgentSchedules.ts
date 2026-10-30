@@ -3,12 +3,12 @@ import type { PoolClient } from "pg";
 import { audit } from "./audit.js";
 import { selfSettlementLimit } from "./capacity.js";
 import { env } from "./config.js";
-import { resolveJobEscrowMode } from "./jobEscrowMode.js";
+import { resolveJobEscrowMode, type JobEscrowMode } from "./jobEscrowMode.js";
 import { encryptPayload, payloadContext, payloadDigest } from "./crypto.js";
 import { db } from "./db/index.js";
 import { ensureEscrowWallet } from "./escrow.js";
 import { ApiError } from "./http.js";
-import { escrowAccount, transfer, userBalance } from "./ledger.js";
+import { escrowAccount, heldAccounts, transfer, userBalance } from "./ledger.js";
 import { readyEnrollment } from "./superAgentEnrollment.js";
 import { enqueueWebhookEvent } from "./webhooks.js";
 
@@ -78,6 +78,9 @@ export async function openSuperAgentJob(
     deadlineAt?: string | null;
     policy: Record<string, unknown>;
     title?: string;
+    acceptanceCriteria?: string[];
+    // Milestone plans pay from the client's Liege balance, so their jobs stay in ledger escrow.
+    escrowMode?: JobEscrowMode;
   },
 ) {
   const agent = await readySuperAgent(
@@ -111,14 +114,14 @@ export async function openSuperAgentJob(
       title,
       encryptPayload(input.request, payloadContext(jobId, "brief")),
       payloadDigest(input.request),
-      JSON.stringify(["Deliver the requested work", agent.description]),
+      JSON.stringify(input.acceptanceCriteria ?? ["Deliver the requested work", agent.description]),
       input.asset,
       String(input.budget),
       input.asset === "usdg" ? String(input.budget) : null,
       deadline,
       expires,
       JSON.stringify({ source: "superagent", serviceSlug: agent.service_slug, ...input.policy }),
-      resolveJobEscrowMode(false),
+      input.escrowMode ?? resolveJobEscrowMode(false),
       // The agent's listed delivery time is its promise, counted from funding.
       agent.sla_minutes,
       env.LATE_REFUND_BPS_PER_HOUR,
@@ -215,7 +218,13 @@ export async function fundTriggeredJob(
   }
 }
 
-export async function fundLedgerJob(client: PoolClient, jobId: string, userId: string) {
+export async function fundLedgerJob(
+  client: PoolClient,
+  jobId: string,
+  userId: string,
+  // A milestone is funded from the amount its plan locked in the client's held account.
+  options: { fromHeld?: boolean } = {},
+) {
   const found = await client.query<{
     client_id: string;
     status: string;
@@ -237,11 +246,13 @@ export async function fundLedgerJob(client: PoolClient, jobId: string, userId: s
     throw new ApiError(409, "invalid_job_transition", "This job cannot be funded automatically.");
   if (job.unfundable)
     throw new ApiError(409, "job_deadline_passed", "This job can no longer be funded.");
-  const available = await userBalance(client, userId, "available", job.settlement_asset);
+  const from = options.fromHeld
+    ? (await heldAccounts(client, userId, job.settlement_asset)).held
+    : (await userBalance(client, userId, "available", job.settlement_asset)).accountId;
   await transfer(client, {
     reference: `job-fund:${jobId}`,
-    type: "job_fund",
-    from: available.accountId,
+    type: options.fromHeld ? "milestone_fund" : "job_fund",
+    from,
     to: await escrowAccount(client, jobId, job.settlement_asset),
     asset: job.settlement_asset,
     amount: Number(job.budget_amount) + Number(job.evaluator_fee_amount),

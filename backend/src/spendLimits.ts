@@ -2,13 +2,20 @@ import type { PoolClient } from "pg";
 import { ApiError } from "./http.js";
 
 /** Debits of the available balance that count as spending, and the refunds that give it back. */
-export const SPENDING_TYPES = ["job_fund", "call_hold", "job_bonus", "invoice_payment"];
+export const SPENDING_TYPES = [
+  "job_fund",
+  "call_hold",
+  "job_bonus",
+  "invoice_payment",
+  "milestone_lock",
+];
 const REFUND_TYPES = [
   "job_refund",
   "job_expiry_refund",
   "call_refund",
   "invoice_refund",
   "late_delivery_refund",
+  "milestone_release",
 ];
 
 /**

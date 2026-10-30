@@ -9,6 +9,7 @@ import { startSuperAgentScheduler, stopSuperAgentScheduler } from "./superAgentS
 import { startReceiptAnchoring, stopReceiptAnchoring } from "./jobReceipts.js";
 import { startCallSweeper, stopCallSweeper } from "./superAgentCalls.js";
 import { startPayoutReleases, stopPayoutReleases } from "./challenges.js";
+import { startMilestoneAdvances, stopMilestoneAdvances } from "./milestones.js";
 import { startChainTriggers, stopChainTriggers } from "./chainTriggers.js";
 import { startBalanceAlertPush, stopBalanceAlertPush } from "./telegram.js";
 
@@ -21,6 +22,7 @@ startSuperAgentScheduler();
 startReceiptAnchoring();
 startCallSweeper();
 startPayoutReleases();
+startMilestoneAdvances();
 startChainTriggers();
 startBalanceAlertPush();
 
@@ -34,6 +36,7 @@ const shutdown = () =>
         stopReceiptAnchoring();
         stopCallSweeper();
         stopPayoutReleases();
+        stopMilestoneAdvances();
         stopChainTriggers();
         stopBalanceAlertPush();
         void db.end();

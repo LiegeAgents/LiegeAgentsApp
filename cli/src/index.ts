@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { createHash } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
@@ -100,6 +100,9 @@ Usage:
   liege alerts off usdg|liege
   liege limits [list]
   liege limits set usdg|liege [--daily <n>|none] [--monthly <n>|none]
+  liege milestones [list]
+  liege milestones get|cancel <plan-id>
+  liege milestones create --file <plan.json>
   liege disputes [list]
   liege disputes get <dispute-id>
   liege disputes vote <dispute-id> --decision upheld|denied --rationale <text>
@@ -806,6 +809,25 @@ export async function execute(args: string[]): Promise<unknown> {
       method: "POST",
       body: JSON.stringify({ txHash: flags.tx, asset: flags.asset }),
     });
+  }
+  if (resource === "milestones") {
+    // Milestone escrow: the budget is locked up front and paid one accepted milestone at a time.
+    if (!action || action === "list") return request("/v1/milestones");
+    if (action === "create") {
+      if (typeof flags.file !== "string")
+        throw new Error(
+          "Usage: liege milestones create --file plan.json (agentId, title, brief, milestones[]).",
+        );
+      return request("/v1/milestones", {
+        method: "POST",
+        body: await readFile(flags.file, "utf8"),
+      });
+    }
+    if (!id) throw new Error("Usage: liege milestones get|cancel <plan-id>");
+    if (action === "get") return request(`/v1/milestones/${id}`);
+    if (action === "cancel")
+      return request(`/v1/milestones/${id}/cancel`, { method: "POST", body: "{}" });
+    throw new Error("Usage: liege milestones [list|get|cancel|create]");
   }
   if (resource === "limits") {
     // Spend limits: tighter applies at once; looser or none waits 24 hours.

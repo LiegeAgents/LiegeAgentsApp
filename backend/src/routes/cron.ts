@@ -3,6 +3,7 @@ import { z } from "zod";
 import { env } from "../config.js";
 import { db } from "../db/index.js";
 import { finalizePanelDecisions, releaseDuePayouts } from "../challenges.js";
+import { advanceMilestonePlans } from "../milestones.js";
 import { ApiError, asyncRoute } from "../http.js";
 import { escrowAccount, transfer, userBalance } from "../ledger.js";
 import { planSettlement, processPendingSettlements } from "../settlement.js";
@@ -183,6 +184,9 @@ cronRouter.post(
   "/release-payouts",
   asyncRoute(async (_request, response) => {
     const released = await releaseDuePayouts();
-    response.json({ data: { released, panelDecisions: await finalizePanelDecisions() } });
+    const panelDecisions = await finalizePanelDecisions();
+    response.json({
+      data: { released, panelDecisions, milestonePlans: await advanceMilestonePlans() },
+    });
   }),
 );

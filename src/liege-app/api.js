@@ -158,6 +158,11 @@ export const api = {
     request(`/v1/jobs/${id}/second-opinion`, { token, method: "POST" }),
   topups: (token) => request("/v1/me/topups", { token }),
   spendLimits: (token) => request("/v1/me/spend-limits", { token }),
+  milestonePlans: (token) => request("/v1/milestones", { token }),
+  createMilestonePlan: (token, body) =>
+    request("/v1/milestones", { token, method: "POST", body: JSON.stringify(body) }),
+  cancelMilestonePlan: (token, id) =>
+    request(`/v1/milestones/${id}/cancel`, { token, method: "POST", body: "{}" }),
   setSpendLimits: (token, asset, daily, monthly) =>
     request(`/v1/me/spend-limits/${asset}`, {
       token,
