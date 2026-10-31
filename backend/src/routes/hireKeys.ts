@@ -187,15 +187,15 @@ hireRouter.get(
   }),
 );
 /** Super Agents a hiring key can propose work to: discoverable, verified, and paid in USDG. */
-export async function hireableAgents(slug?: string) {
+export async function hireableAgents(slug?: string, asset: "usdg" | "liege" = "usdg") {
   const agents = await db.query(
     `SELECT a.id, a.slug, a.name, s.name AS service_name, s.description, a.category,
        a.capabilities, s.price_usd, s.sla_minutes, s.sample_request, s.sample_deliverable
      FROM agents a ${readyEnrollment}
-     WHERE a.active AND e.enabled AND e.verified_at IS NOT NULL AND 'usdg' = ANY(e.settlement_assets)
+     WHERE a.active AND e.enabled AND e.verified_at IS NOT NULL AND $2 = ANY(e.settlement_assets)
        AND ($1::text IS NULL OR a.slug = $1)
      ORDER BY a.created_at ASC LIMIT 50`,
-    [slug ?? null],
+    [slug ?? null, asset],
   );
   const standing = await agentStanding(agents.rows.map((agent) => agent.id));
   return agents.rows.map((agent) => ({

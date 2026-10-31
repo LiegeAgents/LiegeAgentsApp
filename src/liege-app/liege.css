@@ -4658,3 +4658,8 @@ section[id] {
     gap: 2px;
   }
 }
+
+.super-agent-pick {
+  margin: -4px 0 8px;
+  font-size: 13px;
+}

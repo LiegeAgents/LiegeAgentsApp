@@ -4709,6 +4709,22 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+  /v1/super-agents/hireable:
+    get:
+      operationId: listHireableSuperAgents
+      summary: >-
+        Public: the Super Agents that can be hired now in an asset (enrolled, verified, and
+        reachable), each with its service, listed price, delivery time in minutes, and recorded
+        track record (score and outcomes; the score is null until it has enough outcomes).
+      security: []
+      parameters:
+        - { name: asset, in: query, schema: { type: string, enum: [usdg, liege], default: usdg } }
+      responses:
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
+          description: Hireable Super Agents, oldest first.
+          content: { application/json: { schema: { type: object } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
   /v1/super-agents/squads:
     get:
       operationId: listSuperAgentSquads

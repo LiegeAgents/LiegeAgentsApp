@@ -25,6 +25,7 @@ import { disputesRouter } from "./routes/disputes.js";
 import { milestonesRouter } from "./routes/milestones.js";
 import { retainersRouter } from "./routes/retainers.js";
 import { watchRouter } from "./routes/jobWatch.js";
+import { superAgentDirectoryRouter } from "./routes/superAgentDirectory.js";
 import { telegramRouter } from "./routes/telegram.js";
 import { legionsRouter } from "./routes/legions.js";
 import { ApiError, asyncRoute, errorHandler } from "./http.js";
@@ -149,6 +150,7 @@ export const routers = [
   ["/v1/receipts", receiptsRouter],
   ["/v1/services", servicesRouter],
   ["/v1/mobile", mobileRouter],
+  ["/v1/super-agents", superAgentDirectoryRouter],
   ["/v1/super-agents", superAgentsRouter],
   ["/v1/staking", stakingRouter],
   ["/v1/github", githubHooksRouter],

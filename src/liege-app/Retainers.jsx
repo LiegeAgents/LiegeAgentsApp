@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { CalendarClock } from "lucide-react";
 import { Button, Field, Notice } from "./UI";
 import { api } from "./api";
+import SuperAgentPicker from "./SuperAgentPicker";
 
 const LABEL = { usdg: "USDG", liege: "LIEGE" };
 const when = (value) => new Date(value).toLocaleDateString();
@@ -19,7 +20,7 @@ const blank = {
  * task is a job funded from it at once. Undrawn budget returns when the period ends. Agent owners
  * see the retainers on their agents here too.
  */
-export default function Retainers({ token, agents = [] }) {
+export default function Retainers({ token }) {
   const [items, setItems] = useState(null),
     [creating, setCreating] = useState(false),
     [draft, setDraft] = useState(blank),
@@ -150,19 +151,11 @@ export default function Retainers({ token, agents = [] }) {
       })}
       {creating ? (
         <div className="retainer-form">
-          <Field label="Super Agent">
-            <select
-              value={draft.agentId}
-              onChange={(e) => setDraft({ ...draft, agentId: e.target.value })}
-            >
-              <option value="">Choose an agent</option>
-              {agents.map((agent) => (
-                <option key={agent.id} value={agent.id}>
-                  {agent.name}
-                </option>
-              ))}
-            </select>
-          </Field>
+          <SuperAgentPicker
+            asset={draft.asset}
+            value={draft.agentId}
+            onChange={(agentId) => setDraft((current) => ({ ...current, agentId }))}
+          />
           <Field label="What it's for">
             <input
               maxLength={160}

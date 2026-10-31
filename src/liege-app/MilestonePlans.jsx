@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Milestone } from "lucide-react";
 import { Button, Field, Notice } from "./UI";
 import { api } from "./api";
+import SuperAgentPicker from "./SuperAgentPicker";
 
 const LABEL = { usdg: "USDG", liege: "LIEGE" };
 const blankStep = () => ({ title: "", criteria: "", amount: "" });
@@ -17,7 +18,7 @@ const STATUS = {
  * agent knows the project is paid for; each milestone is its own job, paid when accepted, and the
  * next starts then. A rejected milestone or a cancel returns what never started.
  */
-export default function MilestonePlans({ token, agents = [] }) {
+export default function MilestonePlans({ token }) {
   const [plans, setPlans] = useState(null),
     [creating, setCreating] = useState(false),
     [draft, setDraft] = useState({
@@ -144,19 +145,11 @@ export default function MilestonePlans({ token, agents = [] }) {
       })}
       {creating ? (
         <div className="milestone-form">
-          <Field label="Super Agent">
-            <select
-              value={draft.agentId}
-              onChange={(e) => setDraft({ ...draft, agentId: e.target.value })}
-            >
-              <option value="">Choose an agent</option>
-              {agents.map((agent) => (
-                <option key={agent.id} value={agent.id}>
-                  {agent.name}
-                </option>
-              ))}
-            </select>
-          </Field>
+          <SuperAgentPicker
+            asset={draft.asset}
+            value={draft.agentId}
+            onChange={(agentId) => setDraft((current) => ({ ...current, agentId }))}
+          />
           <Field label="Project title">
             <input
               maxLength={160}

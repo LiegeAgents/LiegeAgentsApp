@@ -160,6 +160,7 @@ export const api = {
   spendLimits: (token) => request("/v1/me/spend-limits", { token }),
   milestonePlans: (token) => request("/v1/milestones", { token }),
   retainers: (token) => request("/v1/retainers", { token }),
+  hireableSuperAgents: (asset = "usdg") => request(`/v1/super-agents/hireable?asset=${asset}`),
   jobWatchLink: (token, id) => request(`/v1/jobs/${id}/watch-link`, { token }),
   shareJobWatchLink: (token, id) =>
     request(`/v1/jobs/${id}/watch-link`, { token, method: "POST", body: "{}" }),
