@@ -116,6 +116,7 @@ Usage:
   liege retainers start <agent-id> --title <text> --budget <n> [--period week|month] [--asset usdg|liege] [--no-renew]
   liege retainers task <retainer-id> --amount <n> <request...>
   liege retainers get|cancel <retainer-id>
+  liege watch share|revoke <job-id>
   liege disputes [list]
   liege disputes get <dispute-id>
   liege disputes vote <dispute-id> --decision upheld|denied --rationale <text>
@@ -822,6 +823,16 @@ export async function execute(args: string[]): Promise<unknown> {
       method: "POST",
       body: JSON.stringify({ txHash: flags.tx, asset: flags.asset }),
     });
+  }
+  if (resource === "watch") {
+    // Watch links: a public, read-only view of a job's progress, never its brief or delivery.
+    if (!id || (action !== "share" && action !== "revoke"))
+      throw new Error("Usage: liege watch share|revoke <job-id>");
+    if (action === "revoke") return request(`/v1/jobs/${id}/watch-link`, { method: "DELETE" });
+    const link = (await request(`/v1/jobs/${id}/watch-link`, { method: "POST", body: "{}" })) as {
+      data: { token: string };
+    };
+    return { ...link.data, url: `https://www.liegeagents.com/watch/${link.data.token}` };
   }
   if (resource === "retainers") {
     // Retainers: a Super Agent on a weekly or monthly budget; each task draws a funded job.

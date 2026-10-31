@@ -4584,3 +4584,77 @@ section[id] {
   display: block;
   margin: 8px 0;
 }
+
+.job-watch-link input {
+  width: 100%;
+  margin: 6px 0;
+}
+.watch-job {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 16px;
+}
+.watch-kicker {
+  font-size: 13px;
+  opacity: 0.7;
+  margin: 0;
+}
+.watch-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+.watch-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #9ca3af;
+}
+.watch-dot.live {
+  background: #22c55e;
+  animation: watch-pulse 1.6s ease-in-out infinite;
+}
+@keyframes watch-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+.watch-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  list-style: none;
+  padding: 0;
+}
+.watch-steps li {
+  opacity: 0.5;
+}
+.watch-steps li.done {
+  opacity: 1;
+}
+.watch-progress {
+  list-style: none;
+  padding: 0;
+}
+.watch-progress li {
+  display: grid;
+  grid-template-columns: minmax(0, 11em) 1fr;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid rgba(127, 127, 127, 0.2);
+}
+.watch-progress time {
+  font-size: 13px;
+  opacity: 0.7;
+}
+.watch-footer {
+  margin-top: 32px;
+  font-size: 13px;
+}
+@media (max-width: 520px) {
+  .watch-progress li {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}

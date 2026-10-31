@@ -24,6 +24,7 @@ import { x402CallsRouter } from "./routes/x402Calls.js";
 import { disputesRouter } from "./routes/disputes.js";
 import { milestonesRouter } from "./routes/milestones.js";
 import { retainersRouter } from "./routes/retainers.js";
+import { watchRouter } from "./routes/jobWatch.js";
 import { telegramRouter } from "./routes/telegram.js";
 import { legionsRouter } from "./routes/legions.js";
 import { ApiError, asyncRoute, errorHandler } from "./http.js";
@@ -155,6 +156,7 @@ export const routers = [
   ["/v1/disputes", disputesRouter],
   ["/v1/milestones", milestonesRouter],
   ["/v1/retainers", retainersRouter],
+  ["/v1/watch", watchRouter],
   ["/v1/telegram", telegramRouter],
   ["/v1/a2a", a2aRouter],
   ["/.well-known", wellKnownRouter],

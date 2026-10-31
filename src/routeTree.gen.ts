@@ -25,6 +25,7 @@ import { Route as ZhRouteImport } from './routes/zh'
 import { Route as ApiSplatRouteImport } from './routes/api/$'
 import { Route as DocsTopicRouteImport } from './routes/docs.$topic'
 import { Route as MarketplaceAgentRouteImport } from './routes/marketplace.$agent'
+import { Route as WatchTokenRouteImport } from './routes/watch.$token'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -106,6 +107,11 @@ const MarketplaceAgentRoute = MarketplaceAgentRouteImport.update({
   path: '/$agent',
   getParentRoute: () => MarketplaceRoute,
 } as any)
+const WatchTokenRoute = WatchTokenRouteImport.update({
+  id: '/watch/$token',
+  path: '/watch/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -124,6 +130,7 @@ export interface FileRoutesByFullPath {
   '/api/$': typeof ApiSplatRoute
   '/docs/$topic': typeof DocsTopicRoute
   '/marketplace/$agent': typeof MarketplaceAgentRoute
+  '/watch/$token': typeof WatchTokenRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -142,6 +149,7 @@ export interface FileRoutesByTo {
   '/api/$': typeof ApiSplatRoute
   '/docs/$topic': typeof DocsTopicRoute
   '/marketplace/$agent': typeof MarketplaceAgentRoute
+  '/watch/$token': typeof WatchTokenRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -161,6 +169,7 @@ export interface FileRoutesById {
   '/api/$': typeof ApiSplatRoute
   '/docs/$topic': typeof DocsTopicRoute
   '/marketplace/$agent': typeof MarketplaceAgentRoute
+  '/watch/$token': typeof WatchTokenRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -181,6 +190,7 @@ export interface FileRouteTypes {
     | '/api/$'
     | '/docs/$topic'
     | '/marketplace/$agent'
+    | '/watch/$token'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -199,6 +209,7 @@ export interface FileRouteTypes {
     | '/api/$'
     | '/docs/$topic'
     | '/marketplace/$agent'
+    | '/watch/$token'
   id:
     | '__root__'
     | '/'
@@ -217,6 +228,7 @@ export interface FileRouteTypes {
     | '/api/$'
     | '/docs/$topic'
     | '/marketplace/$agent'
+    | '/watch/$token'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -234,6 +246,7 @@ export interface RootRouteChildren {
   WhitepaperRoute: typeof WhitepaperRoute
   ZhRoute: typeof ZhRoute
   ApiSplatRoute: typeof ApiSplatRoute
+  WatchTokenRoute: typeof WatchTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -350,6 +363,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MarketplaceAgentRouteImport
       parentRoute: typeof MarketplaceRoute
     }
+    '/watch/$token': {
+      id: '/watch/$token'
+      path: '/watch/$token'
+      fullPath: '/watch/$token'
+      preLoaderRoute: typeof WatchTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -390,6 +410,7 @@ const rootRouteChildren: RootRouteChildren = {
   WhitepaperRoute: WhitepaperRoute,
   ZhRoute: ZhRoute,
   ApiSplatRoute: ApiSplatRoute,
+  WatchTokenRoute: WatchTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

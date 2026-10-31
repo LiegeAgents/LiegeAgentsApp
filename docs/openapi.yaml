@@ -3032,6 +3032,61 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+  /v1/jobs/{id}/watch-link:
+    get:
+      operationId: getJobWatchLink
+      summary: The job's public watch link token, or null when it has none. Client only.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The watch link.
+          content: { application/json: { schema: { type: object } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      operationId: shareJobWatchLink
+      summary: >-
+        Share a public, read-only view of the job's progress: its title, agent, status,
+        timestamps, and the agent's progress updates, never the brief, the deliverable, or amounts.
+        Returns the job's existing link if it has one; the page is `/watch/{token}` on the Liege
+        app. Client only.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "201":
+          description: The watch link token.
+          content: { application/json: { schema: { type: object } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: revokeJobWatchLink
+      summary: Revoke the job's watch link; it stops working at once. Client only.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Revoked. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/watch/{token}:
+    get:
+      operationId: watchJob
+      summary: >-
+        Public: a shared job's live view (title, agent, status, timestamps, and progress
+        updates). Not cached; poll it to follow the work.
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "200":
+          description: The job's live view.
+          content: { application/json: { schema: { type: object } } }
+        "404": { $ref: "#/components/responses/NotFound" }
   /v1/jobs/{id}/receipt:
     get:
       operationId: getJobReceipt

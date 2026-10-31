@@ -50,6 +50,7 @@ import BalanceAlerts from "./BalanceAlerts";
 import SpendLimits from "./SpendLimits";
 import MilestonePlans from "./MilestonePlans";
 import Retainers from "./Retainers";
+import JobWatchLink from "./JobWatchLink";
 import { api, agentForDisplay, jobForDisplay } from "./api";
 import "./live-jobs.css";
 
@@ -3885,6 +3886,7 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
             editable={isClient && String(detail.status).toLowerCase() === "open"}
           />
         )}
+        {detail && isClient && <JobWatchLink jobId={job.id} token={token} />}
         {detail && <JobChallenge jobId={job.id} token={token} status={detail.status} />}
         {detail && <JobReceipt jobId={job.id} token={token} status={detail.status} />}
         <h3>Acceptance criteria</h3>
