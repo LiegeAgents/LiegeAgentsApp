@@ -142,7 +142,7 @@ async function startMilestone(client: PoolClient, plan: PlanRow, position: numbe
       acceptanceCriteria: step.acceptance_criteria,
       escrowMode: "ledger",
     });
-    await fundLedgerJob(client, job.id, plan.client_id, { fromHeld: true });
+    await fundLedgerJob(client, job.id, plan.client_id, { fromHeld: "milestone_fund" });
     await client.query("RELEASE SAVEPOINT milestone_open");
     jobId = job.id;
   } catch (error) {

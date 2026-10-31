@@ -222,8 +222,9 @@ export async function fundLedgerJob(
   client: PoolClient,
   jobId: string,
   userId: string,
-  // A milestone is funded from the amount its plan locked in the client's held account.
-  options: { fromHeld?: boolean } = {},
+  // Milestones and retainer tasks are funded from the budget their plan or retainer locked in the
+  // client's held account; the transaction type names which.
+  options: { fromHeld?: "milestone_fund" | "retainer_fund" } = {},
 ) {
   const found = await client.query<{
     client_id: string;
@@ -251,7 +252,7 @@ export async function fundLedgerJob(
     : (await userBalance(client, userId, "available", job.settlement_asset)).accountId;
   await transfer(client, {
     reference: `job-fund:${jobId}`,
-    type: options.fromHeld ? "milestone_fund" : "job_fund",
+    type: options.fromHeld ?? "job_fund",
     from,
     to: await escrowAccount(client, jobId, job.settlement_asset),
     asset: job.settlement_asset,

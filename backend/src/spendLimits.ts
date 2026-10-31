@@ -8,6 +8,7 @@ export const SPENDING_TYPES = [
   "job_bonus",
   "invoice_payment",
   "milestone_lock",
+  "retainer_lock",
 ];
 const REFUND_TYPES = [
   "job_refund",
@@ -16,6 +17,7 @@ const REFUND_TYPES = [
   "invoice_refund",
   "late_delivery_refund",
   "milestone_release",
+  "retainer_release",
 ];
 
 /**

@@ -20,7 +20,16 @@ export const getApiUrl = () =>
   (process.env.LIEGE_API_URL ?? "https://api.liegeagents.com").replace(/\/$/, "");
 export const getSessionToken = () => process.env.LIEGE_SESSION_TOKEN;
 
-const BOOLEAN_FLAGS = new Set(["ap2", "help", "h", "auto-fund", "fund", "no-comment", "clear"]);
+const BOOLEAN_FLAGS = new Set([
+  "ap2",
+  "help",
+  "h",
+  "auto-fund",
+  "fund",
+  "no-comment",
+  "clear",
+  "no-renew",
+]);
 const INSTALLER_URL =
   "https://raw.githubusercontent.com/LiegeAgents/LiegeAgentsApp/main/cli/install.sh";
 
@@ -103,6 +112,10 @@ Usage:
   liege milestones [list]
   liege milestones get|cancel <plan-id>
   liege milestones create --file <plan.json>
+  liege retainers [list]
+  liege retainers start <agent-id> --title <text> --budget <n> [--period week|month] [--asset usdg|liege] [--no-renew]
+  liege retainers task <retainer-id> --amount <n> <request...>
+  liege retainers get|cancel <retainer-id>
   liege disputes [list]
   liege disputes get <dispute-id>
   liege disputes vote <dispute-id> --decision upheld|denied --rationale <text>
@@ -809,6 +822,41 @@ export async function execute(args: string[]): Promise<unknown> {
       method: "POST",
       body: JSON.stringify({ txHash: flags.tx, asset: flags.asset }),
     });
+  }
+  if (resource === "retainers") {
+    // Retainers: a Super Agent on a weekly or monthly budget; each task draws a funded job.
+    if (!action || action === "list") return request("/v1/retainers");
+    if (!id) throw new Error("Name the agent (start) or the retainer (task, get, cancel).");
+    if (action === "start") {
+      const budget = Number(flags.budget);
+      if (typeof flags.title !== "string" || !(budget > 0))
+        throw new Error("Usage: liege retainers start <agent-id> --title <text> --budget <n>");
+      return request("/v1/retainers", {
+        method: "POST",
+        body: JSON.stringify({
+          agentId: id,
+          title: flags.title,
+          budget,
+          period: flags.period ?? "month",
+          settlementAsset: flags.asset ?? "usdg",
+          autoRenew: !flags["no-renew"],
+        }),
+      });
+    }
+    if (action === "task") {
+      const amount = Number(flags.amount);
+      const task = positional.slice(3).join(" ").trim();
+      if (!(amount > 0) || !task)
+        throw new Error("Usage: liege retainers task <retainer-id> --amount <n> <request...>");
+      return request(`/v1/retainers/${id}/tasks`, {
+        method: "POST",
+        body: JSON.stringify({ request: task, amount }),
+      });
+    }
+    if (action === "get") return request(`/v1/retainers/${id}`);
+    if (action === "cancel")
+      return request(`/v1/retainers/${id}/cancel`, { method: "POST", body: "{}" });
+    throw new Error("Usage: liege retainers [list|start|task|get|cancel]");
   }
   if (resource === "milestones") {
     // Milestone escrow: the budget is locked up front and paid one accepted milestone at a time.

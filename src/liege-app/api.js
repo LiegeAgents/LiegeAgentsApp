@@ -159,6 +159,17 @@ export const api = {
   topups: (token) => request("/v1/me/topups", { token }),
   spendLimits: (token) => request("/v1/me/spend-limits", { token }),
   milestonePlans: (token) => request("/v1/milestones", { token }),
+  retainers: (token) => request("/v1/retainers", { token }),
+  createRetainer: (token, body) =>
+    request("/v1/retainers", { token, method: "POST", body: JSON.stringify(body) }),
+  retainerTask: (token, id, task, amount) =>
+    request(`/v1/retainers/${id}/tasks`, {
+      token,
+      method: "POST",
+      body: JSON.stringify({ request: task, amount }),
+    }),
+  cancelRetainer: (token, id) =>
+    request(`/v1/retainers/${id}/cancel`, { token, method: "POST", body: "{}" }),
   createMilestonePlan: (token, body) =>
     request("/v1/milestones", { token, method: "POST", body: JSON.stringify(body) }),
   cancelMilestonePlan: (token, id) =>

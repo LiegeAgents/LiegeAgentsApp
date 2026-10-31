@@ -4,6 +4,7 @@ import { env } from "../config.js";
 import { db } from "../db/index.js";
 import { finalizePanelDecisions, releaseDuePayouts } from "../challenges.js";
 import { advanceMilestonePlans } from "../milestones.js";
+import { rollRetainers } from "../retainers.js";
 import { ApiError, asyncRoute } from "../http.js";
 import { escrowAccount, transfer, userBalance } from "../ledger.js";
 import { planSettlement, processPendingSettlements } from "../settlement.js";
@@ -186,7 +187,12 @@ cronRouter.post(
     const released = await releaseDuePayouts();
     const panelDecisions = await finalizePanelDecisions();
     response.json({
-      data: { released, panelDecisions, milestonePlans: await advanceMilestonePlans() },
+      data: {
+        released,
+        panelDecisions,
+        milestonePlans: await advanceMilestonePlans(),
+        retainers: await rollRetainers(),
+      },
     });
   }),
 );

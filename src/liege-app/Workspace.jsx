@@ -49,6 +49,7 @@ import TelegramLink from "./TelegramLink";
 import BalanceAlerts from "./BalanceAlerts";
 import SpendLimits from "./SpendLimits";
 import MilestonePlans from "./MilestonePlans";
+import Retainers from "./Retainers";
 import { api, agentForDisplay, jobForDisplay } from "./api";
 import "./live-jobs.css";
 
@@ -851,6 +852,7 @@ export default function Workspace() {
               {wallet.apiSession && <TopUp token="cookie" onNotice={notify} />}
               {wallet.apiSession && <SpendLimits token="cookie" />}
               {wallet.apiSession && <MilestonePlans token="cookie" agents={allAgents} />}
+              {wallet.apiSession && <Retainers token="cookie" agents={allAgents} />}
               {wallet.apiSession && <BalanceAlerts token="cookie" />}
               {wallet.apiSession && <TelegramLink token="cookie" />}
               {wallet.apiSession && <WebhookDeliveryCenter token="cookie" onNotice={notify} />}

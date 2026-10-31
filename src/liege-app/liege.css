@@ -4560,3 +4560,27 @@ section[id] {
   margin: 8px 0;
   padding: 8px 12px;
 }
+
+.retainer {
+  border-top: 1px solid var(--line, rgba(127, 127, 127, 0.2));
+  padding: 10px 0;
+}
+.retainer header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px;
+}
+.retainer ul {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+.retainer li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.retainer-renew {
+  display: block;
+  margin: 8px 0;
+}
