@@ -84,6 +84,7 @@ Usage:
   liege watchlist pause|resume|cancel <watch-id>
   liege jobs list [--status <status>] [--asset <usdg|liege>] [--limit <n>]
   liege jobs get <job-id>
+  liege jobs rerun <job-id> [--deadline-days <n>]
   liege jobs simulate '<json-job>'
   liege jobs funding-quote <job-id>
   liege jobs fund <job-id> [--quote-id <id>] [--gas-tx-hash <hash>] [--token-tx-hash <hash>] [--usdg-tx-hash <hash>]
@@ -751,6 +752,54 @@ export async function execute(args: string[]): Promise<unknown> {
     if (flags.limit) query.set("limit", flags.limit);
     const suffix = query.toString() ? `?${query}` : "";
     return request(`/v1/jobs${suffix}`);
+  }
+  if (resource === "jobs" && action === "rerun" && id) {
+    // Opens a new job like a past one: same brief, criteria, rules, agent, evaluator, and budget,
+    // with a deadline as far out as the original's unless --deadline-days says otherwise.
+    const job = (await request(`/v1/jobs/${encodeURIComponent(id)}`)) as Json;
+    const brief = (await request(`/v1/jobs/${encodeURIComponent(id)}/payload/brief`)) as Json;
+    if (typeof brief?.content !== "string" || !brief.content)
+      throw new Error("That job's brief is no longer available, so it cannot be run again.");
+    const day = 864e5;
+    const created = Date.parse(String(job.created_at));
+    const deadline = Date.parse(String(job.deadline_at));
+    const days =
+      flags["deadline-days"] !== undefined
+        ? Number(flags["deadline-days"])
+        : Math.max(1, Math.round((deadline - created) / day) || 7);
+    if (!(days > 0)) throw new Error("--deadline-days must be a positive number.");
+    const graceDays = Math.max(0, (Date.parse(String(job.expires_at)) - deadline) / day) || 7;
+    const deadlineAt = new Date(Date.now() + days * day);
+    const asset = job.settlement_asset === "liege" ? "liege" : "usdg";
+    const amount = (value: unknown) => String(Number(value));
+    const input = Object.fromEntries(
+      Object.entries({
+        agentId: job.agent_id,
+        evaluatorId: job.evaluator_id,
+        kind: job.kind,
+        title: job.title,
+        brief: brief.content,
+        acceptanceCriteria: job.acceptance_criteria,
+        settlementAsset: asset,
+        [asset === "liege" ? "budgetLiege" : "budgetUsdg"]: amount(
+          job.budget_amount ?? job.budget_usdg,
+        ),
+        ...(job.evaluator_id && Number(job.evaluator_fee_amount) > 0
+          ? {
+              [asset === "liege" ? "evaluatorFeeLiege" : "evaluatorFeeUsdg"]: amount(
+                job.evaluator_fee_amount,
+              ),
+            }
+          : {}),
+        deadlineAt: deadlineAt.toISOString(),
+        expiresAt: new Date(deadlineAt.getTime() + graceDays * day).toISOString(),
+        strategyPolicy: job.strategy_policy,
+        challengeWindowHours: job.challenge_window_hours,
+        approvalRules: job.approval_rules,
+        deliveryPromiseMinutes: job.promised_minutes,
+      }).filter(([, value]) => value !== null && value !== undefined),
+    );
+    return request("/v1/jobs", { method: "POST", body: JSON.stringify(input) });
   }
   if (resource === "jobs" && action === "get" && id)
     return request(`/v1/jobs/${encodeURIComponent(id)}`);

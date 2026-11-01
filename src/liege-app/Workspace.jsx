@@ -3,6 +3,7 @@ import {
   ArrowRight,
   ArrowUpRight,
   Plus,
+  RotateCcw,
   Search,
   LayoutGrid,
   BriefcaseBusiness,
@@ -921,6 +922,7 @@ export default function Workspace() {
         <CreateJob
           agents={allAgents}
           defaultAgent={modal.agent}
+          prefill={modal.prefill}
           token={wallet.apiSession ? "cookie" : null}
           onClose={() => setModal(null)}
           onSave={saveCreatedJob}
@@ -944,6 +946,7 @@ export default function Workspace() {
             await refreshLive();
             notify(message);
           }}
+          onRunAgain={(prefill) => setModal({ type: "create-job", agent: prefill.agent, prefill })}
         />
       )}
     </div>
@@ -3393,7 +3396,39 @@ function AgentDetail({ agent: a, onClose, onHire }) {
     </Modal>
   );
 }
-function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
+// Approval rules as the job form's fields (the form edits these four kinds).
+const rulesToFields = (rules) => {
+  const values = (type) =>
+    (rules || [])
+      .filter((r) => r.type === type)
+      .map((r) => r.value)
+      .join(", ");
+  return {
+    minWords: values("min_words"),
+    headings: values("heading"),
+    mustInclude: values("contains"),
+    minLinks: values("min_links"),
+  };
+};
+// A past job as the job form's fields, with a deadline as far out as the original one was.
+const rerunDraft = (job, criteria) => {
+  const days = Math.max(
+    1,
+    Math.round((new Date(job.deadline_at) - new Date(job.created_at)) / 864e5) || 7,
+  );
+  return {
+    title: job.title,
+    brief: job.brief,
+    criteria: criteria.join("\n"),
+    ...rulesToFields(job.approval_rules),
+    agent: job.agent_id,
+    evaluator: job.evaluator_id || "",
+    settlementAsset: job.settlement_asset || "usdg",
+    budget: String(Number(job.budget_amount ?? job.budget_usdg)),
+    deadline: future(days),
+  };
+};
+function CreateJob({ agents, defaultAgent, prefill, token, onClose, onSave }) {
   const [v, setV] = useState({
       title: "",
       brief: "",
@@ -3408,6 +3443,7 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
       settlementAsset: "usdg",
       budget: agents.find((a) => a.id === defaultAgent)?.price || 0,
       deadline: future(7),
+      ...prefill,
     }),
     [error, setError] = useState(""),
     [saving, setSaving] = useState(false),
@@ -3433,7 +3469,15 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
     api
       .evaluators(v.settlementAsset)
       .then((result) => {
-        if (active) setEvaluators(result.data || []);
+        if (!active) return;
+        const listed = result.data || [];
+        setEvaluators(listed);
+        // A rerun's evaluator may no longer be eligible; fall back to no evaluator.
+        setV((current) =>
+          current.evaluator && !listed.some((e) => e.user_id === current.evaluator)
+            ? { ...current, evaluator: "" }
+            : current,
+        );
       })
       .catch(() => {});
     return () => {
@@ -3473,22 +3517,13 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
     setTemplateNote("");
     const t = templates.find((x) => x.id === id);
     if (!t) return;
-    const rules = t.approvalRules || [];
-    const values = (type) =>
-      rules
-        .filter((r) => r.type === type)
-        .map((r) => r.value)
-        .join(", ");
     const known = t.agentId && agents.some((a) => a.id === t.agentId);
     setV((current) => ({
       ...current,
       title: t.title,
       brief: t.brief,
       criteria: t.acceptanceCriteria.join("\n"),
-      minWords: values("min_words"),
-      headings: values("heading"),
-      mustInclude: values("contains"),
-      minLinks: values("min_links"),
+      ...rulesToFields(t.approvalRules),
       agent: known ? t.agentId : current.agent,
       settlementAsset: t.settlementAsset,
       budget: t.budget ?? current.budget,
@@ -3838,7 +3873,7 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
     </Modal>
   );
 }
-function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
+function JobDetail({ job, agent, token, account, onClose, onUpdated, onRunAgain }) {
   const [detail, setDetail] = useState(null),
     [payloadAccess, setPayloadAccess] = useState([]),
     [observability, setObservability] = useState([]),
@@ -3881,6 +3916,7 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
       setDetail({
         ...base,
         brief: brief?.content || "Private brief unavailable or expired.",
+        briefLoaded: Boolean(brief?.content),
         submission: base.submission
           ? {
               ...base.submission,
@@ -4015,6 +4051,20 @@ function JobDetail({ job, agent, token, account, onClose, onUpdated }) {
           />
         )}
         {detail && isClient && <JobWatchLink jobId={job.id} token={token} />}
+        {detail &&
+          isClient &&
+          detail.briefLoaded &&
+          (detail.kind || "standard") === "standard" &&
+          onRunAgain && (
+            <div className="job-run-again">
+              <Button small secondary onClick={() => onRunAgain(rerunDraft(detail, criteria))}>
+                <RotateCcw size={13} /> Run this job again
+              </Button>
+              <small className="muted">
+                Opens a new job with the same brief, criteria, agent, and budget for you to review.
+              </small>
+            </div>
+          )}
         {detail && <JobChallenge jobId={job.id} token={token} status={detail.status} />}
         {detail && <JobReceipt jobId={job.id} token={token} status={detail.status} />}
         <h3>Acceptance criteria</h3>
