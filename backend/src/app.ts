@@ -25,6 +25,7 @@ import { disputesRouter } from "./routes/disputes.js";
 import { milestonesRouter } from "./routes/milestones.js";
 import { retainersRouter } from "./routes/retainers.js";
 import { watchRouter } from "./routes/jobWatch.js";
+import { jobTemplatesRouter } from "./routes/jobTemplates.js";
 import { superAgentDirectoryRouter } from "./routes/superAgentDirectory.js";
 import { telegramRouter } from "./routes/telegram.js";
 import { legionsRouter } from "./routes/legions.js";
@@ -159,6 +160,7 @@ export const routers = [
   ["/v1/milestones", milestonesRouter],
   ["/v1/retainers", retainersRouter],
   ["/v1/watch", watchRouter],
+  ["/v1/job-templates", jobTemplatesRouter],
   ["/v1/telegram", telegramRouter],
   ["/v1/a2a", a2aRouter],
   ["/.well-known", wellKnownRouter],

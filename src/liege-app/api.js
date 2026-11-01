@@ -160,6 +160,10 @@ export const api = {
   spendLimits: (token) => request("/v1/me/spend-limits", { token }),
   milestonePlans: (token) => request("/v1/milestones", { token }),
   retainers: (token) => request("/v1/retainers", { token }),
+  jobTemplates: (token) => request("/v1/job-templates", { token }),
+  saveJobTemplate: (token, body) =>
+    request("/v1/job-templates", { token, method: "POST", body: JSON.stringify(body) }),
+  deleteJobTemplate: (token, id) => request(`/v1/job-templates/${id}`, { token, method: "DELETE" }),
   hireableSuperAgents: (asset = "usdg") => request(`/v1/super-agents/hireable?asset=${asset}`),
   jobWatchLink: (token, id) => request(`/v1/jobs/${id}/watch-link`, { token }),
   shareJobWatchLink: (token, id) =>

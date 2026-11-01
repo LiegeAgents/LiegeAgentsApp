@@ -3413,7 +3413,21 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
     [saving, setSaving] = useState(false),
     [simulating, setSimulating] = useState(false),
     [simulation, setSimulation] = useState(null),
-    [evaluators, setEvaluators] = useState([]);
+    [evaluators, setEvaluators] = useState([]),
+    [templates, setTemplates] = useState([]),
+    [templateId, setTemplateId] = useState(""),
+    [templateName, setTemplateName] = useState(""),
+    [templateNote, setTemplateNote] = useState("");
+  const loadTemplates = () =>
+    token
+      ? api
+          .jobTemplates(token)
+          .then((result) => setTemplates(result.data || []))
+          .catch(() => {})
+      : Promise.resolve();
+  useEffect(() => {
+    void loadTemplates();
+  }, [token]);
   useEffect(() => {
     let active = true;
     api
@@ -3453,6 +3467,73 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
     ...list(v.mustInclude).map((value) => ({ type: "contains", value })),
     ...(Number(v.minLinks) > 0 ? [{ type: "min_links", value: Number(v.minLinks) }] : []),
   ].slice(0, 10);
+  // Fills the form from a saved template; the deadline stays as it is.
+  const applyTemplate = (id) => {
+    setTemplateId(id);
+    setTemplateNote("");
+    const t = templates.find((x) => x.id === id);
+    if (!t) return;
+    const rules = t.approvalRules || [];
+    const values = (type) =>
+      rules
+        .filter((r) => r.type === type)
+        .map((r) => r.value)
+        .join(", ");
+    const known = t.agentId && agents.some((a) => a.id === t.agentId);
+    setV((current) => ({
+      ...current,
+      title: t.title,
+      brief: t.brief,
+      criteria: t.acceptanceCriteria.join("\n"),
+      minWords: values("min_words"),
+      headings: values("heading"),
+      mustInclude: values("contains"),
+      minLinks: values("min_links"),
+      agent: known ? t.agentId : current.agent,
+      settlementAsset: t.settlementAsset,
+      budget: t.budget ?? current.budget,
+    }));
+    setTemplateName(t.name);
+    setError("");
+    setSimulation(null);
+  };
+  const saveTemplate = async () => {
+    const acceptanceCriteria = v.criteria
+      .split("\n")
+      .map((x) => x.trim())
+      .filter(Boolean);
+    if (v.title.trim().length < 3 || !v.brief.trim() || !acceptanceCriteria.length) {
+      setTemplateNote("Fill in the title, brief, and at least one criterion first.");
+      return;
+    }
+    try {
+      const result = await api.saveJobTemplate(token, {
+        name: templateName.trim(),
+        title: v.title.trim(),
+        brief: v.brief.trim(),
+        acceptanceCriteria,
+        ...(approvalRules.length ? { approvalRules } : {}),
+        ...(v.agent ? { agentId: v.agent } : {}),
+        settlementAsset: v.settlementAsset,
+        ...(Number(v.budget) > 0 ? { budget: Number(v.budget) } : {}),
+      });
+      await loadTemplates();
+      setTemplateId(result.data.id);
+      setTemplateNote(`Saved as "${result.data.name}".`);
+    } catch (e) {
+      setTemplateNote(e?.message || "Could not save this template.");
+    }
+  };
+  const deleteTemplate = async () => {
+    try {
+      await api.deleteJobTemplate(token, templateId);
+      setTemplateId("");
+      setTemplateNote("Template deleted.");
+      await loadTemplates();
+    } catch (e) {
+      setTemplateNote(e?.message || "Could not delete this template.");
+    }
+  };
   const submit = async (e) => {
     e.preventDefault();
     if (!token) {
@@ -3535,6 +3616,25 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
           blank to use Liege on-chain escrow and review the delivery yourself. The escrow path is
           fixed when you create the job.
         </Notice>
+        {templates.length > 0 && (
+          <div className="job-template-pick">
+            <Field label="Start from a template">
+              <select value={templateId} onChange={(e) => applyTemplate(e.target.value)}>
+                <option value="">Blank job</option>
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            {templateId && (
+              <Button type="button" small secondary onClick={deleteTemplate}>
+                Delete template
+              </Button>
+            )}
+          </div>
+        )}
         <Field label="Job title">
           <input
             autoFocus
@@ -3693,6 +3793,34 @@ function CreateJob({ agents, defaultAgent, token, onClose, onSave }) {
               checks
             </span>
           </Notice>
+        )}
+        {token && (
+          <div className="job-template-save">
+            <Field
+              label="Save as a template (optional)"
+              help="Reuse this title, brief, criteria, agent, and budget next time. The brief stays encrypted."
+            >
+              <input
+                maxLength={80}
+                value={templateName}
+                onChange={(e) => {
+                  setTemplateName(e.target.value);
+                  setTemplateNote("");
+                }}
+                placeholder="Weekly market summary"
+              />
+            </Field>
+            <Button
+              type="button"
+              small
+              secondary
+              disabled={!templateName.trim()}
+              onClick={saveTemplate}
+            >
+              Save template
+            </Button>
+            {templateNote && <small className="muted">{templateNote}</small>}
+          </div>
         )}
         {error && <Notice error>{error}</Notice>}
         <div className="form-actions">

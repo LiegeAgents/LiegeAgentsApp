@@ -116,6 +116,9 @@ Usage:
   liege retainers start <agent-id> --title <text> --budget <n> [--period week|month] [--asset usdg|liege] [--no-renew]
   liege retainers task <retainer-id> --amount <n> <request...>
   liege retainers get|cancel <retainer-id>
+  liege templates [list]
+  liege templates save --file <template.json>
+  liege templates delete <template-id>
   liege watch share|revoke <job-id>
   liege disputes [list]
   liege disputes get <dispute-id>
@@ -868,6 +871,24 @@ export async function execute(args: string[]): Promise<unknown> {
     if (action === "cancel")
       return request(`/v1/retainers/${id}/cancel`, { method: "POST", body: "{}" });
     throw new Error("Usage: liege retainers [list|start|task|get|cancel]");
+  }
+  if (resource === "templates") {
+    // Job templates: a job you open often, saved under a name. Saving a used name replaces it.
+    if (!action || action === "list") return request("/v1/job-templates");
+    if (action === "save") {
+      if (typeof flags.file !== "string")
+        throw new Error(
+          "Usage: liege templates save --file template.json (name, title, brief, acceptanceCriteria).",
+        );
+      return request("/v1/job-templates", {
+        method: "POST",
+        body: await readFile(flags.file, "utf8"),
+      });
+    }
+    if (action === "delete" && id) return request(`/v1/job-templates/${id}`, { method: "DELETE" });
+    throw new Error(
+      "Usage: liege templates [list|save --file <template.json>|delete <template-id>]",
+    );
   }
   if (resource === "milestones") {
     // Milestone escrow: the budget is locked up front and paid one accepted milestone at a time.
