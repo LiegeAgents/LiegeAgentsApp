@@ -7,3 +7,4 @@ export const LiegeDocs: ComponentType;
 export const LiegeBaseline: ComponentType;
 export const LiegeRoadmap: ComponentType;
 export const LiegeWhitepaper: ComponentType;
+export const LiegeCompare: ComponentType;

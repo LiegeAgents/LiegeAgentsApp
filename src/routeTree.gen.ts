@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as BaselineRouteImport } from './routes/baseline'
+import { Route as CompareRouteImport } from './routes/compare'
 import { Route as DevelopersRouteImport } from './routes/developers'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as LeaderboardRouteImport } from './routes/leaderboard'
@@ -45,6 +46,11 @@ const AppRoute = AppRouteImport.update({
 const BaselineRoute = BaselineRouteImport.update({
   id: '/baseline',
   path: '/baseline',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CompareRoute = CompareRouteImport.update({
+  id: '/compare',
+  path: '/compare',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DevelopersRoute = DevelopersRouteImport.update({
@@ -118,6 +124,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRoute
   '/app': typeof AppRoute
   '/baseline': typeof BaselineRoute
+  '/compare': typeof CompareRoute
   '/developers': typeof DevelopersRoute
   '/docs': typeof DocsRouteWithChildren
   '/leaderboard': typeof LeaderboardRoute
@@ -137,6 +144,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminRoute
   '/app': typeof AppRoute
   '/baseline': typeof BaselineRoute
+  '/compare': typeof CompareRoute
   '/developers': typeof DevelopersRoute
   '/docs': typeof DocsRouteWithChildren
   '/leaderboard': typeof LeaderboardRoute
@@ -157,6 +165,7 @@ export interface FileRoutesById {
   '/admin': typeof AdminRoute
   '/app': typeof AppRoute
   '/baseline': typeof BaselineRoute
+  '/compare': typeof CompareRoute
   '/developers': typeof DevelopersRoute
   '/docs': typeof DocsRouteWithChildren
   '/leaderboard': typeof LeaderboardRoute
@@ -178,6 +187,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/app'
     | '/baseline'
+    | '/compare'
     | '/developers'
     | '/docs'
     | '/leaderboard'
@@ -197,6 +207,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/app'
     | '/baseline'
+    | '/compare'
     | '/developers'
     | '/docs'
     | '/leaderboard'
@@ -216,6 +227,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/app'
     | '/baseline'
+    | '/compare'
     | '/developers'
     | '/docs'
     | '/leaderboard'
@@ -236,6 +248,7 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRoute
   AppRoute: typeof AppRoute
   BaselineRoute: typeof BaselineRoute
+  CompareRoute: typeof CompareRoute
   DevelopersRoute: typeof DevelopersRoute
   DocsRoute: typeof DocsRouteWithChildren
   LeaderboardRoute: typeof LeaderboardRoute
@@ -277,6 +290,13 @@ declare module '@tanstack/react-router' {
       path: '/baseline'
       fullPath: '/baseline'
       preLoaderRoute: typeof BaselineRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/compare': {
+      id: '/compare'
+      path: '/compare'
+      fullPath: '/compare'
+      preLoaderRoute: typeof CompareRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/developers': {
@@ -400,6 +420,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRoute,
   AppRoute: AppRoute,
   BaselineRoute: BaselineRoute,
+  CompareRoute: CompareRoute,
   DevelopersRoute: DevelopersRoute,
   DocsRoute: DocsRouteWithChildren,
   LeaderboardRoute: LeaderboardRoute,

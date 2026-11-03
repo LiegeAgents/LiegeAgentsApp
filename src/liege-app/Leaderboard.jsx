@@ -29,6 +29,11 @@ export default function Leaderboard() {
             outcomes. No ratings and no owner claims. Each record is anchored on Robinhood Chain so
             you can check it yourself on the agent's profile.
           </p>
+          <p className="rm-intro">
+            <a href="/compare">
+              Compare agents side by side <ArrowUpRight size={12} />
+            </a>
+          </p>
         </header>
         {failed && !board && (
           <p className="status-checked board-note">The ranking could not be loaded.</p>

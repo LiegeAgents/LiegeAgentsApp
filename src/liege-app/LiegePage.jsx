@@ -14,6 +14,7 @@ const ReferencePage = lazy(() => import('./ReferencePage'))
 const Roadmap = lazy(() => import('./Roadmap'))
 const Status = lazy(() => import('./Status'))
 const Leaderboard = lazy(() => import('./Leaderboard'))
+const Compare = lazy(() => import('./Compare'))
 const Developers = lazy(() => import('./Developers'))
 const Whitepaper = lazy(() => import('./Whitepaper'))
 
@@ -79,6 +80,14 @@ export function LiegeLeaderboard() {
   return (
     <Shell>
       <Leaderboard />
+    </Shell>
+  )
+}
+
+export function LiegeCompare() {
+  return (
+    <Shell>
+      <Compare />
     </Shell>
   )
 }
