@@ -769,6 +769,41 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "400": { $ref: "#/components/responses/InvalidRequest" }
 
+  /v1/notifications/preferences:
+    get:
+      operationId: getNotificationPreferences
+      summary: >-
+        The notification categories you can mute (jobs, feedback, plans, automations), each with
+        whether it is muted. Disputes, slashing, and low-balance alerts always arrive.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Categories and their muted state.
+          content: { application/json: { schema: { type: object } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+    put:
+      operationId: setNotificationPreferences
+      summary: >-
+        Replace the set of muted categories. A muted notification is never stored, so it does not
+        reach the inbox, the unread count, or the mobile feed. Past notifications stay.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [muted]
+              properties:
+                muted:
+                  type: array
+                  items: { type: string, enum: [jobs, feedback, plans, automations] }
+      responses:
+        "200":
+          description: The updated categories.
+          content: { application/json: { schema: { type: object } } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
   /v1/notifications/read-all:
     post:
       operationId: markAllNotificationsRead

@@ -192,6 +192,13 @@ export const api = {
       body: JSON.stringify({ daily, monthly }),
     }),
   balanceAlerts: (token) => request("/v1/me/balance-alerts", { token }),
+  notificationPreferences: (token) => request("/v1/notifications/preferences", { token }),
+  setNotificationPreferences: (token, muted) =>
+    request("/v1/notifications/preferences", {
+      token,
+      method: "PUT",
+      body: JSON.stringify({ muted }),
+    }),
   setBalanceAlert: (token, asset, threshold) =>
     request(`/v1/me/balance-alerts/${asset}`, {
       token,

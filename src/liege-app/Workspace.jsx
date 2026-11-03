@@ -48,6 +48,7 @@ import JobBonus from "./JobBonus";
 import JobReview from "./JobReview";
 import TelegramLink from "./TelegramLink";
 import BalanceAlerts from "./BalanceAlerts";
+import NotificationSettings from "./NotificationSettings";
 import SpendLimits from "./SpendLimits";
 import MilestonePlans from "./MilestonePlans";
 import Retainers from "./Retainers";
@@ -856,6 +857,7 @@ export default function Workspace() {
               {wallet.apiSession && <MilestonePlans token="cookie" />}
               {wallet.apiSession && <Retainers token="cookie" />}
               {wallet.apiSession && <BalanceAlerts token="cookie" />}
+              {wallet.apiSession && <NotificationSettings token="cookie" />}
               {wallet.apiSession && <TelegramLink token="cookie" />}
               {wallet.apiSession && <WebhookDeliveryCenter token="cookie" onNotice={notify} />}
               {wallet.apiSession && (
