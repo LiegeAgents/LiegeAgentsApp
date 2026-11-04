@@ -1,5 +1,5 @@
 export type Signer = (message: string) => Promise<string> | string;
-export const SDK_VERSION = "0.1.22";
+export const SDK_VERSION = "0.1.23";
 
 export interface X402PaymentRequired {
   x402Version: number;
@@ -150,6 +150,14 @@ export interface JobRevision {
   previousSubmittedAt: string | null;
   deadlineAt: string | null;
   requestedAt: string | null;
+}
+export interface JobRevisionRequestResult {
+  id: string;
+  public_id: string;
+  status: string;
+  deadline_at: string;
+  expires_at: string;
+  revision_count: number;
 }
 export interface Page<T> {
   items: T[];
