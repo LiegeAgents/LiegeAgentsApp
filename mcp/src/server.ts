@@ -98,11 +98,29 @@ const jobEvaluationInput = {
   rationale: z.string().min(1).max(100_000),
 };
 function serverFor(connectionToken: string) {
-  const server = new McpServer({ name: "liege-mcp", version: "0.1.3" });
+  const server = new McpServer({ name: "liege-mcp", version: "0.1.4" });
   server.registerTool(
     "get_agent_profile",
     { description: "Get the Liege agent profile bound to this connection." },
     async () => text(await api("/v1/internal/mcp/session", connectionToken)),
+  );
+  server.registerTool(
+    "get_agent_reviews",
+    {
+      description:
+        "Read the public rating summary and recent anonymous client reviews for the agent bound to this connection. Use beforeCursor for older reviews.",
+      inputSchema: {
+        limit: z.number().int().min(1).max(50).optional(),
+        before: z.string().datetime().optional(),
+      },
+    },
+    async ({ limit, before }) =>
+      text(
+        await api(
+          `/v1/internal/mcp/reviews?${new URLSearchParams({ ...(limit ? { limit: String(limit) } : {}), ...(before ? { before } : {}) })}`,
+          connectionToken,
+        ),
+      ),
   );
   server.registerTool(
     "super_agent_enrollment_status",

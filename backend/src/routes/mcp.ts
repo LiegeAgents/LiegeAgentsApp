@@ -14,6 +14,7 @@ import { parseWebhookCursor, replayWebhookEvents } from "../webhooks.js";
 import { ensureAccount, publicAccount } from "./agentAccounts.js";
 import { issueExecutionGrant, readExecutionGrant } from "../executionGrants.js";
 import { submitDeliverableWithExecutionGrant } from "./jobs.js";
+import { agentReviews } from "./jobReviews.js";
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const connectionInput = z.object({ agentId: z.string().uuid(), name: z.string().min(2).max(80) });
@@ -637,6 +638,19 @@ mcpInternalRouter.get(
   asyncRoute(async (request, response) => {
     const c = await connection(request);
     response.json({ data: { agentId: c.agent_id, agentName: c.agent_name } });
+  }),
+);
+mcpInternalRouter.get(
+  "/reviews",
+  asyncRoute(async (request, response) => {
+    const c = await connection(request);
+    const query = z
+      .object({
+        limit: z.coerce.number().int().min(1).max(50).default(20),
+        before: z.string().datetime().optional(),
+      })
+      .parse(request.query);
+    response.json({ data: await agentReviews(c.agent_id, query.limit, query.before) });
   }),
 );
 mcpInternalRouter.get(
