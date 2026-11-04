@@ -371,6 +371,29 @@ class JobRevision:
 
 
 @dataclass(frozen=True)
+class JobRevisionRequestResult:
+    id: str
+    public_id: str
+    status: str
+    deadline_at: datetime | None
+    expires_at: datetime | None
+    revision_count: int
+    raw: dict[str, Any]
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "JobRevisionRequestResult":
+        return cls(
+            str(value["id"]),
+            str(value.get("public_id", value.get("publicId", ""))),
+            str(value["status"]),
+            _date(value.get("deadline_at", value.get("deadlineAt"))),
+            _date(value.get("expires_at", value.get("expiresAt"))),
+            int(value.get("revision_count", value.get("revisionCount", 0))),
+            value,
+        )
+
+
+@dataclass(frozen=True)
 class McpJobStatus:
     id: str
     public_id: str

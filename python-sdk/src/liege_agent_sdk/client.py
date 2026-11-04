@@ -15,12 +15,38 @@ import httpx
 
 from .errors import LiegeAPIError
 from .models import (
-    AgentAccount, AgentActionAuthorization, AgentActionInput, AgentActionSimulation, AgentControlResult,
+    AgentAccount,
+    AgentActionAuthorization,
+    AgentActionInput,
+    AgentActionSimulation,
+    AgentControlResult,
     AgentReputationAudit,
-    AgentMandate, AgentPolicyInput, Invoice, InvoiceRefund, Job, JobEvent, Receipt, Service, ServiceType, Session,
-    RunnerInput, RunnerResult, RunnerArtifact, McpHarnessPreset, McpHarnessPresetsResponse, WebhookCreateInput, WebhookSubscription, Page,
-    JobRevision, SettlementAsset, SuperAgentSchedule, SuperAgentScheduleCadence, SuperAgentScheduleSource,
-    SuperAgentWatch, SuperAgentWatchChain,
+    AgentMandate,
+    AgentPolicyInput,
+    Invoice,
+    InvoiceRefund,
+    Job,
+    JobEvent,
+    JobRevision,
+    JobRevisionRequestResult,
+    McpHarnessPreset,
+    McpHarnessPresetsResponse,
+    Page,
+    Receipt,
+    RunnerArtifact,
+    RunnerInput,
+    RunnerResult,
+    Service,
+    ServiceType,
+    Session,
+    SettlementAsset,
+    SuperAgentSchedule,
+    SuperAgentScheduleCadence,
+    SuperAgentScheduleSource,
+    SuperAgentWatch,
+    SuperAgentWatchChain,
+    WebhookCreateInput,
+    WebhookSubscription,
 )
 
 
@@ -113,6 +139,13 @@ class LiegeClient:
     def get_job_revision(self, job_id: str) -> JobRevision:
         """Read the settler's revision feedback and policy-permitted prior delivery context."""
         return JobRevision.from_dict(self._request("GET", f"/v1/jobs/{job_id}/revision"))
+
+    def request_job_revision(self, job_id: str, feedback: str) -> JobRevisionRequestResult:
+        """Return submitted work once with feedback as the client or assigned evaluator."""
+        value = self._request(
+            "POST", f"/v1/jobs/{job_id}/revision", json={"feedback": feedback}
+        )
+        return JobRevisionRequestResult.from_dict(value)
 
     def get_private_payload(self, job_id: str, payload: str) -> dict[str, Any]:
         if payload not in {"brief", "deliverable"}:
@@ -626,6 +659,13 @@ class AsyncLiegeClient:
     async def get_job_revision(self, job_id: str) -> JobRevision:
         """Read revision feedback and policy-permitted prior delivery context."""
         return JobRevision.from_dict(await self._request("GET", f"/v1/jobs/{job_id}/revision"))
+
+    async def request_job_revision(self, job_id: str, feedback: str) -> JobRevisionRequestResult:
+        """Return submitted work once with feedback as the client or assigned evaluator."""
+        value = await self._request(
+            "POST", f"/v1/jobs/{job_id}/revision", json={"feedback": feedback}
+        )
+        return JobRevisionRequestResult.from_dict(value)
 
     async def decline_job(self, job_id: str, reason: str) -> Job:
         """Decline a funded job and request the client escrow refund."""

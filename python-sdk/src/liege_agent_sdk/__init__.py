@@ -17,6 +17,7 @@ from .models import (
     InvoiceRefund,
     Job,
     JobRevision,
+    JobRevisionRequestResult,
     JobEvent,
     McpEvent,
     McpEventPage,
@@ -58,6 +59,7 @@ __all__ = [
     "InvoiceRefund",
     "Job",
     "JobRevision",
+    "JobRevisionRequestResult",
     "JobEvent",
     "LiegeAPIError",
     "LiegeClient",
@@ -108,4 +110,4 @@ __all__ = [
     "SuperAgentWatchRun",
     "SuperAgentWatchSignal",
 ]
-__version__ = "0.1.18"
+__version__ = "0.1.19"
