@@ -236,16 +236,9 @@ agentsRouter.get(
 
     const agent = agentResult.rows[0];
 
-    const [
-      jobStatsResult,
-      revisionStatsResult,
-      disputeStatsResult,
-      serviceStatsResult,
-      mandateStatsResult,
-      bonusStatsResult,
-    ] = await Promise.all([
-      db.query(
-        `SELECT
+    const statsResult = await db.query(
+      `WITH job_stats AS (
+         SELECT
             COUNT(*)::int AS total_jobs,
             COUNT(*) FILTER (WHERE status = 'completed')::int AS completed_jobs,
             COUNT(*) FILTER (WHERE status = 'rejected')::int AS rejected_jobs,
@@ -258,77 +251,66 @@ agentsRouter.get(
             COALESCE(SUM(CASE WHEN settlement_asset = 'usdg' AND status = 'completed' THEN COALESCE(budget_amount, budget_usdg, 0) ELSE 0 END), 0) AS total_settled_usdg,
             COALESCE(SUM(CASE WHEN settlement_asset = 'liege' AND status = 'completed' THEN COALESCE(budget_amount, 0) ELSE 0 END), 0) AS total_settled_liege
           FROM jobs
-          WHERE agent_id = $1`,
-        [agent.id],
-      ),
-      db.query(
-        `SELECT
+          WHERE agent_id = $1
+       ), revision_stats AS (
+         SELECT
             COUNT(*)::int AS revision_requests,
             COUNT(DISTINCT e.job_id)::int AS jobs_with_revisions
            FROM job_events e
            JOIN jobs j ON j.id = e.job_id
-           WHERE j.agent_id = $1 AND e.event_type = 'job.revision_requested'`,
-        [agent.id],
-      ),
-      db.query(
-        `SELECT
+           WHERE j.agent_id = $1 AND e.event_type = 'job.revision_requested'
+       ), dispute_stats AS (
+         SELECT
             COUNT(d.id)::int AS total_disputes,
             COUNT(d.id) FILTER (WHERE d.status = 'resolved_provider')::int AS disputes_won,
             COUNT(d.id) FILTER (WHERE d.status = 'resolved_client')::int AS disputes_lost
           FROM disputes d
           JOIN jobs j ON j.id = d.job_id
-          WHERE j.agent_id = $1`,
-        [agent.id],
-      ),
-      db.query(
-        `SELECT
+          WHERE j.agent_id = $1
+       ), service_stats AS (
+         SELECT
             COUNT(*)::int AS total_services,
             MIN(sla_minutes)::int AS min_sla_minutes,
             ARRAY_AGG(DISTINCT service_type) FILTER (WHERE service_type IS NOT NULL) AS service_types
           FROM commerce_services
-          WHERE agent_id = $1 AND active = true`,
-        [agent.id],
-      ),
-      db.query(
-        `SELECT
+          WHERE agent_id = $1 AND active = true
+       ), mandate_stats AS (
+         SELECT
             COUNT(*)::int AS total_mandates,
             COUNT(*) FILTER (WHERE status = 'active' AND expires_at > now())::int AS active_mandates
           FROM agent_mandates
-          WHERE agent_id = $1`,
-        [agent.id],
-      ),
-      db.query(
-        `SELECT COUNT(*)::int AS bonuses,
+          WHERE agent_id = $1
+       ), bonus_stats AS (
+         SELECT COUNT(*)::int AS bonuses,
             COUNT(DISTINCT client_id)::int AS clients,
             COALESCE(trim_scale(SUM(amount) FILTER (WHERE asset = 'usdg')), 0)::text AS usdg,
             COALESCE(trim_scale(SUM(amount) FILTER (WHERE asset = 'liege')), 0)::text AS liege
-          FROM job_bonuses WHERE agent_id = $1`,
-        [agent.id],
-      ),
-    ]);
+          FROM job_bonuses WHERE agent_id = $1
+       )
+       SELECT job_stats.*, revision_stats.*, dispute_stats.*, service_stats.*,
+         mandate_stats.*, bonus_stats.*
+       FROM job_stats CROSS JOIN revision_stats CROSS JOIN dispute_stats
+       CROSS JOIN service_stats CROSS JOIN mandate_stats CROSS JOIN bonus_stats`,
+      [agent.id],
+    );
+    const stats = statsResult.rows[0];
 
-    const jobStats = jobStatsResult.rows[0];
-    const revisionStats = revisionStatsResult.rows[0];
-    const disputeStats = disputeStatsResult.rows[0];
-    const serviceStats = serviceStatsResult.rows[0];
-    const mandateStats = mandateStatsResult.rows[0];
-
-    const completedJobs = Number(jobStats.completed_jobs ?? 0);
+    const completedJobs = Number(stats.completed_jobs ?? 0);
     const closedJobs =
-      completedJobs + Number(jobStats.rejected_jobs ?? 0) + Number(jobStats.expired_jobs ?? 0);
+      completedJobs + Number(stats.rejected_jobs ?? 0) + Number(stats.expired_jobs ?? 0);
     const completionRate = closedJobs > 0 ? Number((completedJobs / closedJobs).toFixed(4)) : null;
 
     const avgTurnaroundSeconds =
-      jobStats.avg_turnaround_seconds != null ? Number(jobStats.avg_turnaround_seconds) : null;
+      stats.avg_turnaround_seconds != null ? Number(stats.avg_turnaround_seconds) : null;
     const avgTurnaroundMinutes =
       avgTurnaroundSeconds != null ? Number((avgTurnaroundSeconds / 60).toFixed(2)) : null;
 
-    const onTimeJobs = Number(jobStats.on_time_jobs ?? 0);
+    const onTimeJobs = Number(stats.on_time_jobs ?? 0);
     const onTimeDeliveryRate =
       completedJobs > 0 ? Number((onTimeJobs / completedJobs).toFixed(4)) : null;
 
-    const totalJobs = Number(jobStats.total_jobs ?? 0);
-    const totalDisputes = Number(disputeStats.total_disputes ?? 0);
+    const totalJobs = Number(stats.total_jobs ?? 0);
+    const totalDisputes = Number(stats.total_disputes ?? 0);
     const disputeRate = totalJobs > 0 ? Number((totalDisputes / totalJobs).toFixed(4)) : 0.0;
 
     const standing = (await agentStanding([agent.id])).get(agent.id);
@@ -361,25 +343,25 @@ agentsRouter.get(
       },
       // Bonuses clients chose to add after accepting work: paid from their own balance.
       bonuses: {
-        count: Number(bonusStatsResult.rows[0].bonuses),
-        fromClients: Number(bonusStatsResult.rows[0].clients),
-        totalUsdg: bonusStatsResult.rows[0].usdg,
-        totalLiege: bonusStatsResult.rows[0].liege,
+        count: Number(stats.bonuses),
+        fromClients: Number(stats.clients),
+        totalUsdg: stats.usdg,
+        totalLiege: stats.liege,
       },
       settlement: {
         currency: "USDG",
-        totalSettledUsdg: String(Number(jobStats.total_settled_usdg).toFixed(6)),
-        totalSettledLiege: String(Number(jobStats.total_settled_liege).toFixed(6)),
+        totalSettledUsdg: String(Number(stats.total_settled_usdg).toFixed(6)),
+        totalSettledLiege: String(Number(stats.total_settled_liege).toFixed(6)),
         network: "robinhood_chain",
         chainId: 4663,
       },
       jobs: {
         total: totalJobs,
         completed: completedJobs,
-        rejected: Number(jobStats.rejected_jobs ?? 0),
-        expired: Number(jobStats.expired_jobs ?? 0),
-        cancelled: Number(jobStats.cancelled_jobs ?? 0),
-        active: Number(jobStats.active_jobs ?? 0),
+        rejected: Number(stats.rejected_jobs ?? 0),
+        expired: Number(stats.expired_jobs ?? 0),
+        cancelled: Number(stats.cancelled_jobs ?? 0),
+        active: Number(stats.active_jobs ?? 0),
         completionRate,
       },
       performance: {
@@ -387,35 +369,34 @@ agentsRouter.get(
         completedJobs,
         onTimeCompletedJobs: onTimeJobs,
         onTimeDeliveryRate,
-        rejectedJobs: Number(jobStats.rejected_jobs ?? 0),
-        expiredJobs: Number(jobStats.expired_jobs ?? 0),
-        cancelledJobs: Number(jobStats.cancelled_jobs ?? 0),
-        jobsWithRevisionRequests: Number(revisionStats.jobs_with_revisions ?? 0),
-        revisionRequests: Number(revisionStats.revision_requests ?? 0),
-        lastCompletedAt: jobStats.last_completed_at
-          ? new Date(jobStats.last_completed_at).toISOString()
+        rejectedJobs: Number(stats.rejected_jobs ?? 0),
+        expiredJobs: Number(stats.expired_jobs ?? 0),
+        cancelledJobs: Number(stats.cancelled_jobs ?? 0),
+        jobsWithRevisionRequests: Number(stats.jobs_with_revisions ?? 0),
+        revisionRequests: Number(stats.revision_requests ?? 0),
+        lastCompletedAt: stats.last_completed_at
+          ? new Date(stats.last_completed_at).toISOString()
           : null,
       },
       sla: {
         avgTurnaroundMinutes,
         onTimeJobs,
         onTimeDeliveryRate,
-        minCatalogSlaMinutes:
-          serviceStats.min_sla_minutes != null ? Number(serviceStats.min_sla_minutes) : null,
+        minCatalogSlaMinutes: stats.min_sla_minutes != null ? Number(stats.min_sla_minutes) : null,
       },
       disputes: {
         total: totalDisputes,
-        resolvedProvider: Number(disputeStats.disputes_won ?? 0),
-        resolvedClient: Number(disputeStats.disputes_lost ?? 0),
+        resolvedProvider: Number(stats.disputes_won ?? 0),
+        resolvedClient: Number(stats.disputes_lost ?? 0),
         disputeRate,
       },
       catalog: {
-        activeServicesCount: Number(serviceStats.total_services ?? 0),
-        serviceTypes: (serviceStats.service_types as string[] | null) ?? [],
+        activeServicesCount: Number(stats.total_services ?? 0),
+        serviceTypes: (stats.service_types as string[] | null) ?? [],
       },
       mandates: {
-        activeCount: Number(mandateStats.active_mandates ?? 0),
-        totalIssued: Number(mandateStats.total_mandates ?? 0),
+        activeCount: Number(stats.active_mandates ?? 0),
+        totalIssued: Number(stats.total_mandates ?? 0),
       },
     };
 
