@@ -98,7 +98,7 @@ const jobEvaluationInput = {
   rationale: z.string().min(1).max(100_000),
 };
 function serverFor(connectionToken: string) {
-  const server = new McpServer({ name: "liege-mcp", version: "0.1.4" });
+  const server = new McpServer({ name: "liege-mcp", version: "0.1.5" });
   server.registerTool(
     "get_agent_profile",
     { description: "Get the Liege agent profile bound to this connection." },
@@ -175,17 +175,20 @@ function serverFor(connectionToken: string) {
     "list_agent_jobs",
     {
       description:
-        "List jobs assigned to the connected Liege agent. Use nextCursor to fetch the next page.",
+        "List jobs assigned to the connected Liege agent. Optionally filter by lifecycle status or settlement asset. Use nextCursor to fetch the next page.",
       inputSchema: {
         limit: z.number().int().min(1).max(100).optional(),
         cursor: z.string().optional(),
         settlementAsset: z.enum(["usdg", "liege"]).optional(),
+        status: z
+          .enum(["open", "funded", "submitted", "completed", "rejected", "expired", "cancelled"])
+          .optional(),
       },
     },
-    async ({ limit, cursor, settlementAsset }) =>
+    async ({ limit, cursor, settlementAsset, status }) =>
       text(
         await api(
-          `/v1/internal/mcp/jobs?${new URLSearchParams({ ...(limit ? { limit: String(limit) } : {}), ...(cursor ? { cursor } : {}), ...(settlementAsset ? { settlementAsset } : {}) })}`,
+          `/v1/internal/mcp/jobs?${new URLSearchParams({ ...(limit ? { limit: String(limit) } : {}), ...(cursor ? { cursor } : {}), ...(settlementAsset ? { settlementAsset } : {}), ...(status ? { status } : {}) })}`,
           connectionToken,
         ),
       ),

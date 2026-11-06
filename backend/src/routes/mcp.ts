@@ -1003,6 +1003,9 @@ mcpInternalRouter.get(
         limit: z.coerce.number().int().min(1).max(100).default(50),
         cursor: z.string().optional(),
         settlementAsset: z.enum(["usdg", "liege"]).optional(),
+        status: z
+          .enum(["open", "funded", "submitted", "completed", "rejected", "expired", "cancelled"])
+          .optional(),
       })
       .parse(request.query);
     const cursor = parseCursor(query.cursor);
@@ -1011,12 +1014,14 @@ mcpInternalRouter.get(
        FROM jobs WHERE agent_id = $1
          AND ($2::timestamptz IS NULL OR (created_at,id) < ($2::timestamptz,$3::uuid))
          AND ($4::text IS NULL OR COALESCE(settlement_asset, 'usdg') = $4::text)
-       ORDER BY created_at DESC, id DESC LIMIT $5`,
+         AND ($5::job_status IS NULL OR status = $5::job_status)
+       ORDER BY created_at DESC, id DESC LIMIT $6`,
       [
         c.agent_id,
         cursor?.createdAt ?? null,
         cursor?.id ?? null,
         query.settlementAsset ?? null,
+        query.status ?? null,
         query.limit + 1,
       ],
     );

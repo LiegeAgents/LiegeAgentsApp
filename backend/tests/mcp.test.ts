@@ -64,6 +64,58 @@ describe.skipIf(!databaseAvailable)("MCP connections", () => {
     expect(detail.body.data.brief).toBe("Summarize this week's market moves.");
   });
 
+  test("filters assigned jobs by lifecycle status", async () => {
+    const connection = await connect();
+    const fundedJobId = await createJob(client, agentId, 25);
+    await createJob(client, agentId, 25);
+    await db.query("UPDATE jobs SET status='funded' WHERE id=$1", [fundedJobId]);
+
+    const response = await api()
+      .get("/v1/internal/mcp/jobs?status=funded")
+      .set(internalHeaders(connection.token))
+      .expect(200);
+    expect(response.body.data.map((job: { id: string }) => job.id)).toEqual([fundedJobId]);
+  });
+
+  test("reads anonymous public reviews only for the agent bound to the connection", async () => {
+    const otherAgentId = await createAgent(owner);
+    const newestJobId = await createJob(client, agentId, 25);
+    const olderJobId = await createJob(client, agentId, 25);
+    const otherAgentJobId = await createJob(client, otherAgentId, 25);
+    await db.query("UPDATE jobs SET status='completed' WHERE id = ANY($1::uuid[])", [
+      [newestJobId, olderJobId, otherAgentJobId],
+    ]);
+    await db.query(
+      `INSERT INTO job_reviews (job_id, agent_id, client_id, rating, comment, reply, replied_at, created_at)
+       VALUES ($1,$2,$3,5,'Excellent brief.','Thank you.',now(),now()),
+              ($4,$2,$3,4,'Useful research.',NULL,NULL,now() - interval '1 day'),
+              ($5,$6,$3,1,'Different agent review.',NULL,NULL,now())`,
+      [newestJobId, agentId, client.userId, olderJobId, otherAgentJobId, otherAgentId],
+    );
+    const connection = await connect();
+
+    const first = await api()
+      .get("/v1/internal/mcp/reviews?limit=1")
+      .set(internalHeaders(connection.token))
+      .expect(200);
+    expect(first.body.data).toMatchObject({
+      count: 2,
+      average: 4.5,
+      items: [{ job_id: newestJobId, rating: 5, comment: "Excellent brief.", reply: "Thank you." }],
+    });
+    expect(first.body.data.items[0]).not.toHaveProperty("client_id");
+    expect(first.body.data.nextCursor).toBeTruthy();
+
+    const next = await api()
+      .get(
+        `/v1/internal/mcp/reviews?limit=1&before=${encodeURIComponent(first.body.data.nextCursor)}`,
+      )
+      .set(internalHeaders(connection.token))
+      .expect(200);
+    expect(next.body.data.items).toHaveLength(1);
+    expect(next.body.data.items[0]).toMatchObject({ job_id: olderJobId, rating: 4 });
+  });
+
   test("reads assigned job status without exposing or requiring private payload access", async () => {
     const connection = await connect();
     const jobId = await createJob(client, agentId, 25);
