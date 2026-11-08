@@ -29,6 +29,7 @@ from .models import (
     JobEvent,
     JobRevision,
     JobRevisionRequestResult,
+    JobTemplate,
     McpHarnessPreset,
     McpHarnessPresetsResponse,
     Page,
@@ -146,6 +147,31 @@ class LiegeClient:
             "POST", f"/v1/jobs/{job_id}/revision", json={"feedback": feedback}
         )
         return JobRevisionRequestResult.from_dict(value)
+
+    def list_job_templates(self) -> list[JobTemplate]:
+        """Your saved job templates, most recently saved first, with briefs decrypted."""
+        return [JobTemplate.from_dict(item) for item in self._request("GET", "/v1/job-templates")]
+
+    def save_job_template(
+        self,
+        name: str,
+        title: str,
+        brief: str,
+        acceptance_criteria: list[str],
+        *,
+        approval_rules: list[dict[str, Any]] | None = None,
+        agent_id: str | None = None,
+        settlement_asset: SettlementAsset = "usdg",
+        budget: float | None = None,
+    ) -> JobTemplate:
+        """Save a job template; an existing name is replaced. Moves no funds."""
+        body = _template_body(
+            name, title, brief, acceptance_criteria, approval_rules, agent_id, settlement_asset, budget
+        )
+        return JobTemplate.from_dict(self._request("POST", "/v1/job-templates", json=body))
+
+    def delete_job_template(self, template_id: str) -> None:
+        self._request("DELETE", f"/v1/job-templates/{template_id}")
 
     def get_private_payload(self, job_id: str, payload: str) -> dict[str, Any]:
         if payload not in {"brief", "deliverable"}:
@@ -667,6 +693,32 @@ class AsyncLiegeClient:
         )
         return JobRevisionRequestResult.from_dict(value)
 
+    async def list_job_templates(self) -> list[JobTemplate]:
+        """Your saved job templates, most recently saved first, with briefs decrypted."""
+        value = await self._request("GET", "/v1/job-templates")
+        return [JobTemplate.from_dict(item) for item in value]
+
+    async def save_job_template(
+        self,
+        name: str,
+        title: str,
+        brief: str,
+        acceptance_criteria: list[str],
+        *,
+        approval_rules: list[dict[str, Any]] | None = None,
+        agent_id: str | None = None,
+        settlement_asset: SettlementAsset = "usdg",
+        budget: float | None = None,
+    ) -> JobTemplate:
+        """Save a job template; an existing name is replaced. Moves no funds."""
+        body = _template_body(
+            name, title, brief, acceptance_criteria, approval_rules, agent_id, settlement_asset, budget
+        )
+        return JobTemplate.from_dict(await self._request("POST", "/v1/job-templates", json=body))
+
+    async def delete_job_template(self, template_id: str) -> None:
+        await self._request("DELETE", f"/v1/job-templates/{template_id}")
+
     async def decline_job(self, job_id: str, reason: str) -> Job:
         """Decline a funded job and request the client escrow refund."""
         value = await self._request("POST", f"/v1/jobs/{job_id}/decline", json={"reason": reason})
@@ -799,3 +851,29 @@ def decode_x402_payment_required(value: str) -> dict[str, Any]:
         return parsed
     except (ValueError, UnicodeDecodeError, json.JSONDecodeError, binascii.Error) as error:
         raise LiegeAPIError("The x402 PAYMENT-REQUIRED header is invalid", 502, "x402_invalid_challenge") from error
+
+
+def _template_body(
+    name: str,
+    title: str,
+    brief: str,
+    acceptance_criteria: list[str],
+    approval_rules: list[dict[str, Any]] | None,
+    agent_id: str | None,
+    settlement_asset: str,
+    budget: float | None,
+) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "name": name,
+        "title": title,
+        "brief": brief,
+        "acceptanceCriteria": acceptance_criteria,
+        "settlementAsset": settlement_asset,
+    }
+    if approval_rules:
+        body["approvalRules"] = approval_rules
+    if agent_id:
+        body["agentId"] = agent_id
+    if budget is not None:
+        body["budget"] = budget
+    return body

@@ -371,6 +371,44 @@ class JobRevision:
 
 
 @dataclass(frozen=True)
+class JobTemplate:
+    """A saved job: title, brief, criteria, and optional agent, asset, and budget."""
+
+    id: str
+    name: str
+    title: str
+    brief: str
+    acceptance_criteria: list[str]
+    approval_rules: list[dict[str, Any]] | None
+    agent_id: str | None
+    agent_name: str | None
+    settlement_asset: SettlementAsset
+    budget: str | None
+    created_at: datetime | None
+    updated_at: datetime | None
+    raw: dict[str, Any]
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "JobTemplate":
+        budget = value.get("budget")
+        return cls(
+            str(value["id"]),
+            str(value["name"]),
+            str(value["title"]),
+            str(value.get("brief", "")),
+            [str(item) for item in value.get("acceptanceCriteria", [])],
+            value.get("approvalRules"),
+            value.get("agentId"),
+            value.get("agentName"),
+            value.get("settlementAsset", "usdg"),
+            None if budget is None else str(budget),
+            _date(value.get("createdAt")),
+            _date(value.get("updatedAt")),
+            value,
+        )
+
+
+@dataclass(frozen=True)
 class JobRevisionRequestResult:
     id: str
     public_id: str

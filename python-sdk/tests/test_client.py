@@ -515,3 +515,62 @@ def test_async_super_agent_watch_helpers():
         "budgetAmount": 2, "spendCap": 10,
     })
     assert seen[1][:2] == ("GET", "/v1/super-agents/watchlist/watch-1")
+
+
+def test_job_templates_save_list_and_delete():
+    requests = []
+    template = {
+        "id": "t1",
+        "name": "Weekly market summary",
+        "title": "Summarize this week's market moves",
+        "brief": "Cover the five largest moves and link every source.",
+        "acceptanceCriteria": ["Five moves covered"],
+        "approvalRules": [{"type": "min_links", "value": 5}],
+        "agentId": None,
+        "agentName": None,
+        "settlementAsset": "usdg",
+        "budget": "12.5",
+        "createdAt": "2026-11-08T00:00:00Z",
+        "updatedAt": "2026-11-08T00:00:00Z",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content) if request.content else None
+        requests.append((request.method, request.url.path, body))
+        if request.method == "DELETE":
+            return httpx.Response(204)
+        return httpx.Response(201 if request.method == "POST" else 200,
+                              json={"data": template if request.method == "POST" else [template]})
+
+    with LiegeClient("https://api.test", token="session",
+                     client=httpx.Client(transport=httpx.MockTransport(handler))) as client:
+        saved = client.save_job_template(
+            "Weekly market summary",
+            "Summarize this week's market moves",
+            "Cover the five largest moves and link every source.",
+            ["Five moves covered"],
+            approval_rules=[{"type": "min_links", "value": 5}],
+            budget=12.5,
+        )
+        assert saved.id == "t1" and saved.budget == "12.5"
+        assert saved.acceptance_criteria == ["Five moves covered"]
+        assert requests[0] == ("POST", "/v1/job-templates", {
+            "name": "Weekly market summary",
+            "title": "Summarize this week's market moves",
+            "brief": "Cover the five largest moves and link every source.",
+            "acceptanceCriteria": ["Five moves covered"],
+            "settlementAsset": "usdg",
+            "approvalRules": [{"type": "min_links", "value": 5}],
+            "budget": 12.5,
+        })
+        assert [t.name for t in client.list_job_templates()] == ["Weekly market summary"]
+        client.delete_job_template("t1")
+        assert requests[-1] == ("DELETE", "/v1/job-templates/t1", None)
+
+    async def run() -> None:
+        async with AsyncLiegeClient("https://api.test", token="session",
+                                    client=httpx.AsyncClient(transport=httpx.MockTransport(handler))) as client:
+            assert (await client.list_job_templates())[0].id == "t1"
+            await client.delete_job_template("t1")
+
+    asyncio.run(run())
