@@ -26,6 +26,8 @@ import {
   type Job,
   type JobRevision,
   type JobRevisionRequestResult,
+  type JobTemplate,
+  type JobTemplateInput,
   type JobEvent,
   type Session,
   type SuperAgentDashboard,
@@ -118,6 +120,17 @@ export class LiegeClient {
       method: "POST",
       body: { feedback },
     });
+  }
+  /** Your saved job templates, most recently saved first, with their briefs decrypted. */
+  listJobTemplates(): Promise<JobTemplate[]> {
+    return this.call("/v1/job-templates");
+  }
+  /** Save a template; an existing name is replaced. Up to 50 per account. Moves no funds. */
+  saveJobTemplate(input: JobTemplateInput): Promise<JobTemplate> {
+    return this.call("/v1/job-templates", { method: "POST", body: input });
+  }
+  async deleteJobTemplate(id: string): Promise<void> {
+    await this.call(`/v1/job-templates/${encodeURIComponent(id)}`, { method: "DELETE" });
   }
   getPrivatePayload(
     id: string,

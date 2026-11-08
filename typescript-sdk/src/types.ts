@@ -1,5 +1,5 @@
 export type Signer = (message: string) => Promise<string> | string;
-export const SDK_VERSION = "0.1.23";
+export const SDK_VERSION = "0.1.24";
 
 export interface X402PaymentRequired {
   x402Version: number;
@@ -158,6 +158,37 @@ export interface JobRevisionRequestResult {
   deadline_at: string;
   expires_at: string;
   revision_count: number;
+}
+/** An objective check that accepts a delivery automatically when every check passes. */
+export type JobApprovalRule =
+  | { type: "min_words" | "max_words" | "min_links"; value: number }
+  | { type: "contains" | "heading"; value: string }
+  | { type: "json"; keys?: string[] };
+export interface JobTemplateInput {
+  /** Saving under a name you already use replaces that template. */
+  name: string;
+  title: string;
+  brief: string;
+  acceptanceCriteria: string[];
+  approvalRules?: JobApprovalRule[];
+  agentId?: string;
+  settlementAsset?: SettlementAsset;
+  budget?: number;
+}
+export interface JobTemplate {
+  id: string;
+  name: string;
+  title: string;
+  brief: string;
+  acceptanceCriteria: string[];
+  approvalRules: JobApprovalRule[] | null;
+  agentId: string | null;
+  agentName: string | null;
+  settlementAsset: SettlementAsset;
+  /** Decimal string, or null when the template leaves the budget open. */
+  budget: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 export interface Page<T> {
   items: T[];

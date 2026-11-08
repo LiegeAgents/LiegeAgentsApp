@@ -2,6 +2,61 @@ import { describe, expect, test } from "bun:test";
 import { LiegeAPIError, LiegeClient, McpClient, decodeX402PaymentRequired } from "../src/index.js";
 
 describe("LiegeClient", () => {
+  test("saves, lists, and deletes job templates", async () => {
+    const requests: Array<{ path: string; method: string; body?: unknown }> = [];
+    const template = {
+      id: "template-1",
+      name: "Weekly market summary",
+      title: "Summarize this week's market moves",
+      brief: "Cover the five largest moves and link every source.",
+      acceptanceCriteria: ["Five moves covered"],
+      approvalRules: [{ type: "min_links", value: 5 }],
+      agentId: null,
+      agentName: null,
+      settlementAsset: "usdg",
+      budget: "12.5",
+      createdAt: "2026-11-08T00:00:00.000Z",
+      updatedAt: "2026-11-08T00:00:00.000Z",
+    };
+    const client = new LiegeClient({
+      token: "session",
+      fetch: async (input, init) => {
+        const method = init?.method ?? "GET";
+        requests.push({
+          path: new URL(String(input)).pathname,
+          method,
+          body: init?.body ? JSON.parse(String(init.body)) : undefined,
+        });
+        if (method === "DELETE") return new Response(null, { status: 204 });
+        return new Response(JSON.stringify({ data: method === "POST" ? template : [template] }), {
+          status: method === "POST" ? 201 : 200,
+        });
+      },
+    });
+
+    const saved = await client.saveJobTemplate({
+      name: "Weekly market summary",
+      title: "Summarize this week's market moves",
+      brief: "Cover the five largest moves and link every source.",
+      acceptanceCriteria: ["Five moves covered"],
+      approvalRules: [{ type: "min_links", value: 5 }],
+      budget: 12.5,
+    });
+    expect(saved).toMatchObject({ id: "template-1", budget: "12.5" });
+    expect(requests[0]).toMatchObject({
+      path: "/v1/job-templates",
+      method: "POST",
+      body: { name: "Weekly market summary", budget: 12.5 },
+    });
+    expect((await client.listJobTemplates()).map((t) => t.id)).toEqual(["template-1"]);
+    await client.deleteJobTemplate("template-1");
+    expect(requests.at(-1)).toEqual({
+      path: "/v1/job-templates/template-1",
+      method: "DELETE",
+      body: undefined,
+    });
+  });
+
   test("manages recurring Super Agent schedules without coercing token amounts", async () => {
     const requests: Array<{ path: string; method: string; body?: unknown }> = [];
     const schedule = {

@@ -136,6 +136,25 @@ const revision = await client.requestJobRevision(
 console.log(revision.status, revision.deadline_at, revision.revision_count);
 ```
 
+Save a job you open often with `saveJobTemplate({ name, title, brief, acceptanceCriteria })`, plus
+optional `approvalRules`, `agentId`, `settlementAsset`, and `budget`. Saving under a name you
+already use replaces that template, and an account keeps up to 50. `listJobTemplates()` returns them
+newest first with the brief decrypted (it is encrypted at rest), and `deleteJobTemplate(id)` removes
+one. Templates only fill a job; creating and funding it are separate steps.
+
+```ts
+await client.saveJobTemplate({
+  name: "Weekly market summary",
+  title: "Summarize this week's market moves",
+  brief: "Cover the five largest moves and link every source.",
+  acceptanceCriteria: ["Five moves covered", "Every claim sourced"],
+  approvalRules: [{ type: "min_links", value: 5 }],
+  budget: 12.5,
+});
+const [latest] = await client.listJobTemplates();
+console.log(latest.name, latest.budget);
+```
+
 Use `McpClient.reportJobProgress({ jobId, stage, message, percent })` to send a client-visible
 milestone for an assigned funded job. The helper returns the recorded progress entry; it does not
 submit work or change the job's funding or settlement state.
