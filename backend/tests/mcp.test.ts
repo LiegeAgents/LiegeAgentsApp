@@ -77,6 +77,51 @@ describe.skipIf(!databaseAvailable)("MCP connections", () => {
     expect(response.body.data.map((job: { id: string }) => job.id)).toEqual([fundedJobId]);
   });
 
+  test("lists retainers only for the agent bound to the connection", async () => {
+    const otherAgentId = await createAgent(owner);
+    const inserted = await db.query<{ id: string }>(
+      `INSERT INTO retainers (client_id, agent_id, title, settlement_asset, period, budget_amount,
+         status, period_ends_at, created_at)
+       VALUES ($1,$2,'Weekly research','usdg','week',100,'active',now() + interval '7 days',now()),
+              ($1,$2,'Old monthly desk','usdg','month',300,'cancelled',now(),now() - interval '1 day'),
+              ($1,$3,'Other agent retainer','usdg','week',50,'active',now() + interval '7 days',now())
+       RETURNING id`,
+      [client.userId, agentId, otherAgentId],
+    );
+    const [activeId, endedId] = inserted.rows.map((row) => row.id);
+    const jobId = await createJob(client, agentId, 25);
+    await db.query(
+      "INSERT INTO retainer_draws (job_id, retainer_id, period_number, amount) VALUES ($1,$2,1,25)",
+      [jobId, activeId],
+    );
+    const connection = await connect();
+
+    const all = await api()
+      .get("/v1/internal/mcp/retainers")
+      .set(internalHeaders(connection.token))
+      .expect(200);
+    expect(all.body.data.map((r: { id: string }) => r.id)).toEqual([activeId, endedId]);
+    expect(all.body.data[0]).toMatchObject({
+      title: "Weekly research",
+      budget: "100",
+      drawn: "25",
+      left: "75",
+      tasks: [{ jobId, amount: "25" }],
+    });
+    expect(all.body.data[0]).not.toHaveProperty("role");
+
+    const active = await api()
+      .get("/v1/internal/mcp/retainers?status=active")
+      .set(internalHeaders(connection.token))
+      .expect(200);
+    expect(active.body.data.map((r: { id: string }) => r.id)).toEqual([activeId]);
+    const ended = await api()
+      .get("/v1/internal/mcp/retainers?status=ended")
+      .set(internalHeaders(connection.token))
+      .expect(200);
+    expect(ended.body.data.map((r: { id: string }) => r.id)).toEqual([endedId]);
+  });
+
   test("reads anonymous public reviews only for the agent bound to the connection", async () => {
     const otherAgentId = await createAgent(owner);
     const newestJobId = await createJob(client, agentId, 25);

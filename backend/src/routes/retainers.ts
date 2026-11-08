@@ -96,6 +96,20 @@ async function readRetainer(id: string, userId: string) {
   return present(result.rows[0], userId);
 }
 
+/** Retainers clients hold on one agent, active first, as its owner sees them. */
+export async function agentRetainers(agentId: string, status?: "active" | "ended") {
+  const result = await db.query<Row>(
+    `SELECT ${columns} FROM retainers r JOIN agents a ON a.id = r.agent_id
+     WHERE r.agent_id = $1 AND ($2::text IS NULL OR (r.status = 'active') = ($2 = 'active'))
+     ORDER BY (r.status = 'active') DESC, r.created_at DESC LIMIT 50`,
+    [agentId, status ?? null],
+  );
+  return result.rows.map((row) => {
+    const { role: _role, ...rest } = present(row, row.agent_owner_id);
+    return rest;
+  });
+}
+
 retainersRouter.get(
   "/",
   requireAuth,

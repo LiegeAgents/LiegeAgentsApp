@@ -15,6 +15,7 @@ import { ensureAccount, publicAccount } from "./agentAccounts.js";
 import { issueExecutionGrant, readExecutionGrant } from "../executionGrants.js";
 import { submitDeliverableWithExecutionGrant } from "./jobs.js";
 import { agentReviews } from "./jobReviews.js";
+import { agentRetainers } from "./retainers.js";
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const connectionInput = z.object({ agentId: z.string().uuid(), name: z.string().min(2).max(80) });
@@ -651,6 +652,14 @@ mcpInternalRouter.get(
       })
       .parse(request.query);
     response.json({ data: await agentReviews(c.agent_id, query.limit, query.before) });
+  }),
+);
+mcpInternalRouter.get(
+  "/retainers",
+  asyncRoute(async (request, response) => {
+    const c = await connection(request);
+    const query = z.object({ status: z.enum(["active", "ended"]).optional() }).parse(request.query);
+    response.json({ data: await agentRetainers(c.agent_id, query.status) });
   }),
 );
 mcpInternalRouter.get(

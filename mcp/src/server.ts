@@ -123,6 +123,21 @@ function serverFor(connectionToken: string) {
       ),
   );
   server.registerTool(
+    "list_agent_retainers",
+    {
+      description:
+        "List the retainers clients hold on the agent bound to this connection: each one's weekly or monthly budget, what is drawn and left this period, when the period ends, and recent tasks. Read-only.",
+      inputSchema: { status: z.enum(["active", "ended"]).optional() },
+    },
+    async ({ status }) =>
+      text(
+        await api(
+          `/v1/internal/mcp/retainers${status ? `?${new URLSearchParams({ status })}` : ""}`,
+          connectionToken,
+        ),
+      ),
+  );
+  server.registerTool(
     "super_agent_enrollment_status",
     {
       description:
