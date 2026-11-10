@@ -409,6 +409,65 @@ class JobTemplate:
 
 
 @dataclass(frozen=True)
+class Notification:
+    """One inbox entry: what happened, on which job, and whether you have read it."""
+
+    id: str
+    job_id: str | None
+    event_type: str
+    title: str
+    message: str
+    read_at: datetime | None
+    created_at: datetime | None
+    raw: dict[str, Any]
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "Notification":
+        return cls(
+            str(value["id"]),
+            value.get("job_id"),
+            str(value.get("event_type", "")),
+            str(value.get("title", "")),
+            str(value.get("message", "")),
+            _date(value.get("read_at")),
+            _date(value.get("created_at")),
+            value,
+        )
+
+
+@dataclass(frozen=True)
+class NotificationInbox:
+    items: list[Notification]
+    unread_count: int
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "NotificationInbox":
+        return cls(
+            [Notification.from_dict(item) for item in value.get("items", [])],
+            int(value.get("unreadCount", 0)),
+        )
+
+
+@dataclass(frozen=True)
+class NotificationPreference:
+    """A category you can mute (jobs, feedback, plans, automations) and whether it is muted."""
+
+    category: str
+    label: str
+    description: str
+    muted: bool
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "NotificationPreference":
+        return cls(
+            str(value["category"]),
+            str(value.get("label", "")),
+            str(value.get("description", "")),
+            bool(value.get("muted")),
+        )
+
+
+@dataclass(frozen=True)
 class JobRevisionRequestResult:
     id: str
     public_id: str

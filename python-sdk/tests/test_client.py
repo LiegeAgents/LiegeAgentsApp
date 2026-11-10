@@ -574,3 +574,55 @@ def test_job_templates_save_list_and_delete():
             await client.delete_job_template("t1")
 
     asyncio.run(run())
+
+
+def test_notifications_inbox_and_mutes():
+    requests = []
+    note = {
+        "id": "n1",
+        "job_id": "job-1",
+        "event_type": "job.completed",
+        "title": "Job accepted",
+        "message": "Your delivery was accepted.",
+        "read_at": None,
+        "created_at": "2026-11-10T00:00:00Z",
+    }
+    prefs = [
+        {"category": "jobs", "label": "Job updates", "description": "Jobs.", "muted": False},
+        {"category": "automations", "label": "Watchlist and schedules", "description": "Alerts.", "muted": True},
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content) if request.content else None
+        requests.append((request.method, request.url.path, dict(request.url.params), body))
+        path = request.url.path
+        if path.endswith("/preferences"):
+            data = prefs
+        elif path.endswith("/read-all"):
+            data = {"markedRead": 2, "unreadCount": 0}
+        elif path.endswith("/read"):
+            data = {**note, "read_at": "2026-11-10T01:00:00Z"}
+        else:
+            data = {"items": [note], "unreadCount": 1}
+        return httpx.Response(200, json={"data": data})
+
+    with LiegeClient("https://api.test", token="session",
+                     client=httpx.Client(transport=httpx.MockTransport(handler))) as client:
+        inbox = client.list_notifications(limit=10)
+        assert inbox.unread_count == 1 and inbox.items[0].title == "Job accepted"
+        assert requests[0][:3] == ("GET", "/v1/notifications", {"limit": "10"})
+        assert client.mark_notification_read("n1").read_at is not None
+        assert requests[1][:2] == ("POST", "/v1/notifications/n1/read")
+        assert client.mark_all_notifications_read() == 2
+        muted = client.set_muted_notifications(["automations"])
+        assert [p.category for p in muted if p.muted] == ["automations"]
+        assert requests[-1] == ("PUT", "/v1/notifications/preferences", {}, {"muted": ["automations"]})
+
+    async def run() -> None:
+        async with AsyncLiegeClient("https://api.test", token="session",
+                                    client=httpx.AsyncClient(transport=httpx.MockTransport(handler))) as client:
+            assert (await client.list_notifications()).unread_count == 1
+            assert await client.mark_all_notifications_read() == 2
+            assert len(await client.get_notification_preferences()) == 2
+
+    asyncio.run(run())

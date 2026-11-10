@@ -19,6 +19,9 @@ from .models import (
     JobRevision,
     JobRevisionRequestResult,
     JobTemplate,
+    Notification,
+    NotificationInbox,
+    NotificationPreference,
     JobEvent,
     McpEvent,
     McpEventPage,
@@ -62,6 +65,9 @@ __all__ = [
     "JobRevision",
     "JobRevisionRequestResult",
     "JobTemplate",
+    "Notification",
+    "NotificationInbox",
+    "NotificationPreference",
     "JobEvent",
     "LiegeAPIError",
     "LiegeClient",
@@ -112,4 +118,4 @@ __all__ = [
     "SuperAgentWatchRun",
     "SuperAgentWatchSignal",
 ]
-__version__ = "0.1.20"
+__version__ = "0.1.21"

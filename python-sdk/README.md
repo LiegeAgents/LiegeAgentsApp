@@ -164,6 +164,20 @@ latest = client.list_job_templates()[0]
 print(latest.name, latest.budget)
 ```
 
+Read your inbox with `list_notifications(limit=50)`, which returns the newest items and
+`unread_count`, then clear it with `mark_notification_read(id)` or `mark_all_notifications_read()`.
+`get_notification_preferences()` lists the categories you can mute (`jobs`, `feedback`, `plans`,
+`automations`), and `set_muted_notifications([...])` replaces the muted set. Muting stops new
+notifications of that kind; disputes, slashing, and low-balance alerts always arrive. The async
+client has the same methods.
+
+```python
+inbox = client.list_notifications(limit=20)
+print(inbox.unread_count, inbox.items[0].title if inbox.items else None)
+client.set_muted_notifications(["automations"])
+client.mark_all_notifications_read()
+```
+
 Use `McpClient.report_job_progress(job_id, stage, message, percent)` to send a client-visible
 milestone for an assigned funded job. It returns the recorded `McpJobProgress` and does not submit
 work or change the job's funding or settlement state.

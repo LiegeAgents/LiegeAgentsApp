@@ -30,6 +30,9 @@ from .models import (
     JobRevision,
     JobRevisionRequestResult,
     JobTemplate,
+    Notification,
+    NotificationInbox,
+    NotificationPreference,
     McpHarnessPreset,
     McpHarnessPresetsResponse,
     Page,
@@ -172,6 +175,29 @@ class LiegeClient:
 
     def delete_job_template(self, template_id: str) -> None:
         self._request("DELETE", f"/v1/job-templates/{template_id}")
+
+    def list_notifications(self, limit: int = 50) -> NotificationInbox:
+        """Your newest notifications (up to 100) and how many are still unread."""
+        value = self._request("GET", "/v1/notifications", params={"limit": limit})
+        return NotificationInbox.from_dict(value)
+
+    def mark_notification_read(self, notification_id: str) -> Notification:
+        value = self._request("POST", f"/v1/notifications/{notification_id}/read")
+        return Notification.from_dict(value)
+
+    def mark_all_notifications_read(self) -> int:
+        """Mark every unread notification read; returns how many were marked."""
+        return int(self._request("POST", "/v1/notifications/read-all").get("markedRead", 0))
+
+    def get_notification_preferences(self) -> list[NotificationPreference]:
+        """Each category you can mute. Disputes and balance alerts always arrive."""
+        value = self._request("GET", "/v1/notifications/preferences")
+        return [NotificationPreference.from_dict(item) for item in value]
+
+    def set_muted_notifications(self, muted: list[str]) -> list[NotificationPreference]:
+        """Replace the muted set. Muting stops new notifications of that kind; past ones stay."""
+        value = self._request("PUT", "/v1/notifications/preferences", json={"muted": list(muted)})
+        return [NotificationPreference.from_dict(item) for item in value]
 
     def get_private_payload(self, job_id: str, payload: str) -> dict[str, Any]:
         if payload not in {"brief", "deliverable"}:
@@ -718,6 +744,29 @@ class AsyncLiegeClient:
 
     async def delete_job_template(self, template_id: str) -> None:
         await self._request("DELETE", f"/v1/job-templates/{template_id}")
+
+    async def list_notifications(self, limit: int = 50) -> NotificationInbox:
+        """Your newest notifications (up to 100) and how many are still unread."""
+        value = await self._request("GET", "/v1/notifications", params={"limit": limit})
+        return NotificationInbox.from_dict(value)
+
+    async def mark_notification_read(self, notification_id: str) -> Notification:
+        value = await self._request("POST", f"/v1/notifications/{notification_id}/read")
+        return Notification.from_dict(value)
+
+    async def mark_all_notifications_read(self) -> int:
+        """Mark every unread notification read; returns how many were marked."""
+        return int((await self._request("POST", "/v1/notifications/read-all")).get("markedRead", 0))
+
+    async def get_notification_preferences(self) -> list[NotificationPreference]:
+        """Each category you can mute. Disputes and balance alerts always arrive."""
+        value = await self._request("GET", "/v1/notifications/preferences")
+        return [NotificationPreference.from_dict(item) for item in value]
+
+    async def set_muted_notifications(self, muted: list[str]) -> list[NotificationPreference]:
+        """Replace the muted set. Muting stops new notifications of that kind; past ones stay."""
+        value = await self._request("PUT", "/v1/notifications/preferences", json={"muted": list(muted)})
+        return [NotificationPreference.from_dict(item) for item in value]
 
     async def decline_job(self, job_id: str, reason: str) -> Job:
         """Decline a funded job and request the client escrow refund."""
