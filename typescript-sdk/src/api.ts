@@ -28,6 +28,10 @@ import {
   type JobRevisionRequestResult,
   type JobTemplate,
   type JobTemplateInput,
+  type Notification,
+  type NotificationCategory,
+  type NotificationInbox,
+  type NotificationPreference,
   type JobEvent,
   type Session,
   type SuperAgentDashboard,
@@ -131,6 +135,24 @@ export class LiegeClient {
   }
   async deleteJobTemplate(id: string): Promise<void> {
     await this.call(`/v1/job-templates/${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
+  /** Your newest notifications (up to 100) and how many are still unread. */
+  listNotifications(limit = 50): Promise<NotificationInbox> {
+    return this.call(`/v1/notifications?${new URLSearchParams({ limit: String(limit) })}`);
+  }
+  markNotificationRead(id: string): Promise<Notification> {
+    return this.call(`/v1/notifications/${encodeURIComponent(id)}/read`, { method: "POST" });
+  }
+  markAllNotificationsRead(): Promise<{ markedRead: number; unreadCount: number }> {
+    return this.call("/v1/notifications/read-all", { method: "POST" });
+  }
+  /** Each category you can mute and whether it is muted. Disputes and balance alerts always arrive. */
+  getNotificationPreferences(): Promise<NotificationPreference[]> {
+    return this.call("/v1/notifications/preferences");
+  }
+  /** Replace the muted set. Muting stops new notifications of that kind; past ones stay. */
+  setMutedNotifications(muted: NotificationCategory[]): Promise<NotificationPreference[]> {
+    return this.call("/v1/notifications/preferences", { method: "PUT", body: { muted } });
   }
   getPrivatePayload(
     id: string,

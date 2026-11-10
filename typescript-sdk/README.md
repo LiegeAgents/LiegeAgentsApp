@@ -155,6 +155,19 @@ const [latest] = await client.listJobTemplates();
 console.log(latest.name, latest.budget);
 ```
 
+Read your inbox with `listNotifications(limit)`, which returns the newest items and the unread
+count, then clear it with `markNotificationRead(id)` or `markAllNotificationsRead()`.
+`getNotificationPreferences()` lists the categories you can mute (`jobs`, `feedback`, `plans`,
+`automations`), and `setMutedNotifications([...])` replaces the muted set. Muting stops new
+notifications of that kind; disputes, slashing, and low-balance alerts always arrive.
+
+```ts
+const { items, unreadCount } = await client.listNotifications(20);
+console.log(unreadCount, items[0]?.title);
+await client.setMutedNotifications(["automations"]);
+await client.markAllNotificationsRead();
+```
+
 Use `McpClient.reportJobProgress({ jobId, stage, message, percent })` to send a client-visible
 milestone for an assigned funded job. The helper returns the recorded progress entry; it does not
 submit work or change the job's funding or settlement state.

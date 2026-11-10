@@ -1,5 +1,5 @@
 export type Signer = (message: string) => Promise<string> | string;
-export const SDK_VERSION = "0.1.24";
+export const SDK_VERSION = "0.1.25";
 
 export interface X402PaymentRequired {
   x402Version: number;
@@ -189,6 +189,26 @@ export interface JobTemplate {
   budget: string | null;
   createdAt: string;
   updatedAt: string;
+}
+export interface Notification {
+  id: string;
+  job_id: string | null;
+  event_type: string;
+  title: string;
+  message: string;
+  read_at: string | null;
+  created_at: string;
+}
+export interface NotificationInbox {
+  items: Notification[];
+  unreadCount: number;
+}
+export type NotificationCategory = "jobs" | "feedback" | "plans" | "automations";
+export interface NotificationPreference {
+  category: NotificationCategory;
+  label: string;
+  description: string;
+  muted: boolean;
 }
 export interface Page<T> {
   items: T[];

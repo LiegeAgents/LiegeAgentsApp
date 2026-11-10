@@ -2,6 +2,63 @@ import { describe, expect, test } from "bun:test";
 import { LiegeAPIError, LiegeClient, McpClient, decodeX402PaymentRequired } from "../src/index.js";
 
 describe("LiegeClient", () => {
+  test("reads notifications and replaces the muted categories", async () => {
+    const requests: Array<{ path: string; method: string; body?: unknown }> = [];
+    const notification = {
+      id: "note-1",
+      job_id: "job-1",
+      event_type: "job.completed",
+      title: "Job accepted",
+      message: "Your delivery was accepted.",
+      read_at: null,
+      created_at: "2026-11-10T00:00:00.000Z",
+    };
+    const preferences = [
+      { category: "jobs", label: "Job updates", description: "Jobs.", muted: false },
+      {
+        category: "automations",
+        label: "Watchlist and schedules",
+        description: "Alerts.",
+        muted: true,
+      },
+    ];
+    const client = new LiegeClient({
+      token: "session",
+      fetch: async (input, init) => {
+        const url = new URL(String(input));
+        const method = init?.method ?? "GET";
+        requests.push({
+          path: url.pathname + url.search,
+          method,
+          body: init?.body ? JSON.parse(String(init.body)) : undefined,
+        });
+        const data = url.pathname.endsWith("/preferences")
+          ? preferences
+          : url.pathname.endsWith("/read-all")
+            ? { markedRead: 1, unreadCount: 0 }
+            : url.pathname.endsWith("/read")
+              ? { ...notification, read_at: "2026-11-10T01:00:00.000Z" }
+              : { items: [notification], unreadCount: 1 };
+        return new Response(JSON.stringify({ data }), { status: 200 });
+      },
+    });
+
+    const inbox = await client.listNotifications(10);
+    expect(inbox.unreadCount).toBe(1);
+    expect(requests[0]).toMatchObject({ path: "/v1/notifications?limit=10", method: "GET" });
+    expect((await client.markNotificationRead("note-1")).read_at).not.toBeNull();
+    expect(requests[1]).toMatchObject({ path: "/v1/notifications/note-1/read", method: "POST" });
+    expect(await client.markAllNotificationsRead()).toEqual({ markedRead: 1, unreadCount: 0 });
+    const muted = await client.setMutedNotifications(["automations"]);
+    expect(muted.filter((p) => p.muted).map((p) => p.category)).toEqual(["automations"]);
+    expect(requests.at(-1)).toEqual({
+      path: "/v1/notifications/preferences",
+      method: "PUT",
+      body: { muted: ["automations"] },
+    });
+    expect(await client.getNotificationPreferences()).toHaveLength(2);
+  });
+
   test("saves, lists, and deletes job templates", async () => {
     const requests: Array<{ path: string; method: string; body?: unknown }> = [];
     const template = {
