@@ -64,7 +64,7 @@ const planColumns = `p.id, p.agent_id, a.name AS agent_name, p.title, p.brief_ci
     FROM milestone_plan_steps s LEFT JOIN jobs j ON j.id = s.job_id WHERE s.plan_id = p.id) x),
     '[]'::json) AS milestones`;
 
-const present = (row: PlanRow) => {
+const present = (row: PlanRow, withBrief = true) => {
   const paid = row.milestones
     .filter((step) => step.job_status === "completed")
     .reduce((sum, step) => sum + Number(step.amount), 0);
@@ -73,7 +73,9 @@ const present = (row: PlanRow) => {
     agentId: row.agent_id,
     agentName: row.agent_name,
     title: row.title,
-    brief: decryptPayload(row.brief_ciphertext, payloadContext(row.id, "milestones")),
+    brief: withBrief
+      ? decryptPayload(row.brief_ciphertext, payloadContext(row.id, "milestones"))
+      : null,
     asset: row.settlement_asset,
     total: row.total_amount,
     // Accepted milestones' budgets; what went back to the client when the plan ended.
@@ -106,6 +108,23 @@ async function readPlan(planId: string, userId: string) {
   return present(result.rows[0]);
 }
 
+/**
+ * Milestone plans clients run with one agent, for that agent's MCP connection. The plan brief is
+ * left out: each started milestone is an ordinary job whose brief the agent reads there.
+ */
+export async function agentMilestonePlans(agentId: string, status?: "running" | "ended") {
+  const result = await db.query<PlanRow>(
+    `SELECT ${planColumns} FROM milestone_plans p JOIN agents a ON a.id = p.agent_id
+     WHERE p.agent_id = $1 AND ($2::text IS NULL OR (p.status = 'running') = ($2 = 'running'))
+     ORDER BY (p.status = 'running') DESC, p.created_at DESC LIMIT 50`,
+    [agentId, status ?? null],
+  );
+  return result.rows.map((row) => {
+    const { brief: _brief, ...rest } = present(row, false);
+    return rest;
+  });
+}
+
 milestonesRouter.get(
   "/",
   requireAuth,
@@ -115,7 +134,7 @@ milestonesRouter.get(
        WHERE p.client_id = $1 ORDER BY (p.status = 'running') DESC, p.created_at DESC LIMIT 50`,
       [request.auth!.userId],
     );
-    response.json({ data: result.rows.map(present) });
+    response.json({ data: result.rows.map((row) => present(row)) });
   }),
 );
 

@@ -15,6 +15,7 @@ import { ensureAccount, publicAccount } from "./agentAccounts.js";
 import { issueExecutionGrant, readExecutionGrant } from "../executionGrants.js";
 import { submitDeliverableWithExecutionGrant } from "./jobs.js";
 import { agentReviews } from "./jobReviews.js";
+import { agentMilestonePlans } from "./milestones.js";
 import { agentRetainers } from "./retainers.js";
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -660,6 +661,16 @@ mcpInternalRouter.get(
     const c = await connection(request);
     const query = z.object({ status: z.enum(["active", "ended"]).optional() }).parse(request.query);
     response.json({ data: await agentRetainers(c.agent_id, query.status) });
+  }),
+);
+mcpInternalRouter.get(
+  "/milestone-plans",
+  asyncRoute(async (request, response) => {
+    const c = await connection(request);
+    const query = z
+      .object({ status: z.enum(["running", "ended"]).optional() })
+      .parse(request.query);
+    response.json({ data: await agentMilestonePlans(c.agent_id, query.status) });
   }),
 );
 mcpInternalRouter.get(

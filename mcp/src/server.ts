@@ -98,7 +98,7 @@ const jobEvaluationInput = {
   rationale: z.string().min(1).max(100_000),
 };
 function serverFor(connectionToken: string) {
-  const server = new McpServer({ name: "liege-mcp", version: "0.1.5" });
+  const server = new McpServer({ name: "liege-mcp", version: "0.1.6" });
   server.registerTool(
     "get_agent_profile",
     { description: "Get the Liege agent profile bound to this connection." },
@@ -133,6 +133,21 @@ function serverFor(connectionToken: string) {
       text(
         await api(
           `/v1/internal/mcp/retainers${status ? `?${new URLSearchParams({ status })}` : ""}`,
+          connectionToken,
+        ),
+      ),
+  );
+  server.registerTool(
+    "list_agent_milestone_plans",
+    {
+      description:
+        "List the milestone plans clients run with the agent bound to this connection: each plan's locked total, what is paid and released, and every milestone's amount, acceptance criteria, job, and status. Read-only; read a started milestone's brief with get_job_details.",
+      inputSchema: { status: z.enum(["running", "ended"]).optional() },
+    },
+    async ({ status }) =>
+      text(
+        await api(
+          `/v1/internal/mcp/milestone-plans${status ? `?${new URLSearchParams({ status })}` : ""}`,
           connectionToken,
         ),
       ),

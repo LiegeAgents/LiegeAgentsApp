@@ -122,6 +122,60 @@ describe.skipIf(!databaseAvailable)("MCP connections", () => {
     expect(ended.body.data.map((r: { id: string }) => r.id)).toEqual([endedId]);
   });
 
+  test("lists milestone plans only for the agent bound to the connection", async () => {
+    const otherAgentId = await createAgent(owner);
+    const inserted = await db.query<{ id: string }>(
+      `INSERT INTO milestone_plans (client_id, agent_id, title, brief_ciphertext, settlement_asset,
+         total_amount, status, released_amount, created_at)
+       VALUES ($1,$2,'Launch site','sealed','usdg',100,'running',0,now()),
+              ($1,$2,'Old audit','sealed','usdg',60,'cancelled',60,now() - interval '1 day'),
+              ($1,$3,'Other agent plan','sealed','usdg',40,'running',0,now())
+       RETURNING id`,
+      [client.userId, agentId, otherAgentId],
+    );
+    const [runningId, endedId] = inserted.rows.map((row) => row.id);
+    const jobId = await createJob(client, agentId, 40);
+    await db.query(
+      `INSERT INTO milestone_plan_steps (plan_id, position, title, acceptance_criteria, amount, job_id)
+       VALUES ($1,0,'Design','["Figma file shared"]',40,$2), ($1,1,'Build','["Site deployed"]',60,NULL)`,
+      [runningId, jobId],
+    );
+    const connection = await connect();
+
+    const all = await api()
+      .get("/v1/internal/mcp/milestone-plans")
+      .set(internalHeaders(connection.token))
+      .expect(200);
+    expect(all.body.data.map((p: { id: string }) => p.id)).toEqual([runningId, endedId]);
+    expect(all.body.data[0]).toMatchObject({
+      title: "Launch site",
+      total: "100",
+      status: "running",
+      milestones: [
+        {
+          position: 0,
+          title: "Design",
+          amount: "40",
+          jobId,
+          acceptanceCriteria: ["Figma file shared"],
+        },
+        { position: 1, title: "Build", amount: "60", jobId: null },
+      ],
+    });
+    expect(all.body.data[0]).not.toHaveProperty("brief");
+
+    const running = await api()
+      .get("/v1/internal/mcp/milestone-plans?status=running")
+      .set(internalHeaders(connection.token))
+      .expect(200);
+    expect(running.body.data.map((p: { id: string }) => p.id)).toEqual([runningId]);
+    const ended = await api()
+      .get("/v1/internal/mcp/milestone-plans?status=ended")
+      .set(internalHeaders(connection.token))
+      .expect(200);
+    expect(ended.body.data.map((p: { id: string }) => p.id)).toEqual([endedId]);
+  });
+
   test("reads anonymous public reviews only for the agent bound to the connection", async () => {
     const otherAgentId = await createAgent(owner);
     const newestJobId = await createJob(client, agentId, 25);
