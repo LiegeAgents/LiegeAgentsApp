@@ -2,6 +2,74 @@ import { describe, expect, test } from "bun:test";
 import { LiegeAPIError, LiegeClient, McpClient, decodeX402PaymentRequired } from "../src/index.js";
 
 describe("LiegeClient", () => {
+  test("starts, draws on, and cancels a retainer", async () => {
+    const requests: Array<{ path: string; method: string; body?: unknown }> = [];
+    const retainer = {
+      id: "ret-1",
+      role: "client",
+      agentId: "agent-1",
+      agentName: "Research Desk",
+      title: "Weekly research",
+      asset: "usdg",
+      period: "week",
+      budget: "100",
+      drawn: "25",
+      left: "75",
+      autoRenew: true,
+      status: "active",
+      statusReason: null,
+      periodNumber: 1,
+      periodStartedAt: "2026-11-11T00:00:00.000Z",
+      periodEndsAt: "2026-11-18T00:00:00.000Z",
+      tasks: [],
+      createdAt: "2026-11-11T00:00:00.000Z",
+    };
+    const client = new LiegeClient({
+      token: "session",
+      fetch: async (input, init) => {
+        const path = new URL(String(input)).pathname;
+        const method = init?.method ?? "GET";
+        requests.push({
+          path,
+          method,
+          body: init?.body ? JSON.parse(String(init.body)) : undefined,
+        });
+        const data = path.endsWith("/tasks")
+          ? { jobId: "job-1", retainer }
+          : path === "/v1/retainers" && method === "GET"
+            ? [retainer]
+            : path.endsWith("/cancel")
+              ? { ...retainer, status: "cancelled" }
+              : retainer;
+        return new Response(JSON.stringify({ data }), { status: method === "POST" ? 201 : 200 });
+      },
+    });
+
+    const started = await client.createRetainer({
+      agentId: "agent-1",
+      title: "Weekly research",
+      period: "week",
+      budget: 100,
+    });
+    expect(started.left).toBe("75");
+    expect(requests[0]).toEqual({
+      path: "/v1/retainers",
+      method: "POST",
+      body: { agentId: "agent-1", title: "Weekly research", period: "week", budget: 100 },
+    });
+    const task = await client.sendRetainerTask("ret-1", "Summarize the Fed minutes", 25);
+    expect(task.jobId).toBe("job-1");
+    expect(requests[1]).toEqual({
+      path: "/v1/retainers/ret-1/tasks",
+      method: "POST",
+      body: { request: "Summarize the Fed minutes", amount: 25 },
+    });
+    expect((await client.listRetainers()).map((r) => r.id)).toEqual(["ret-1"]);
+    expect((await client.getRetainer("ret-1")).title).toBe("Weekly research");
+    expect((await client.cancelRetainer("ret-1")).status).toBe("cancelled");
+    expect(requests.at(-1)).toMatchObject({ path: "/v1/retainers/ret-1/cancel", method: "POST" });
+  });
+
   test("reads notifications and replaces the muted categories", async () => {
     const requests: Array<{ path: string; method: string; body?: unknown }> = [];
     const notification = {

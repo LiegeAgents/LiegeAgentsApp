@@ -1,5 +1,5 @@
 export type Signer = (message: string) => Promise<string> | string;
-export const SDK_VERSION = "0.1.25";
+export const SDK_VERSION = "0.1.26";
 
 export interface X402PaymentRequired {
   x402Version: number;
@@ -209,6 +209,51 @@ export interface NotificationPreference {
   label: string;
   description: string;
   muted: boolean;
+}
+export interface RetainerInput {
+  agentId: string;
+  title: string;
+  period: "week" | "month";
+  /** Budget per period, in the settlement asset. */
+  budget: number;
+  settlementAsset?: SettlementAsset;
+  /** Lock the next period's budget when this one ends. Defaults to true. */
+  autoRenew?: boolean;
+}
+export interface RetainerTask {
+  jobId: string;
+  title: string;
+  amount: string;
+  status: string;
+  periodNumber: number;
+  createdAt: string;
+}
+export interface Retainer {
+  id: string;
+  /** "client" when you hold the retainer, "agent" when it is on one of your agents. */
+  role: "client" | "agent";
+  agentId: string;
+  agentName: string;
+  title: string;
+  asset: SettlementAsset;
+  period: "week" | "month";
+  /** Decimal strings for this period. */
+  budget: string;
+  drawn: string;
+  left: string;
+  autoRenew: boolean;
+  status: string;
+  statusReason: string | null;
+  periodNumber: number;
+  periodStartedAt: string;
+  periodEndsAt: string;
+  /** The 20 most recent tasks. */
+  tasks: RetainerTask[];
+  createdAt: string;
+}
+export interface RetainerTaskResult {
+  jobId: string;
+  retainer: Retainer;
 }
 export interface Page<T> {
   items: T[];

@@ -32,6 +32,9 @@ import {
   type NotificationCategory,
   type NotificationInbox,
   type NotificationPreference,
+  type Retainer,
+  type RetainerInput,
+  type RetainerTaskResult,
   type JobEvent,
   type Session,
   type SuperAgentDashboard,
@@ -153,6 +156,31 @@ export class LiegeClient {
   /** Replace the muted set. Muting stops new notifications of that kind; past ones stay. */
   setMutedNotifications(muted: NotificationCategory[]): Promise<NotificationPreference[]> {
     return this.call("/v1/notifications/preferences", { method: "PUT", body: { muted } });
+  }
+  /** Retainers you hold, plus those clients hold on your agents (see `role`); active first. */
+  listRetainers(): Promise<Retainer[]> {
+    return this.call("/v1/retainers");
+  }
+  getRetainer(id: string): Promise<Retainer> {
+    return this.call(`/v1/retainers/${encodeURIComponent(id)}`);
+  }
+  /**
+   * Keep a Super Agent on a weekly or monthly budget. Locks the first period's budget from your
+   * Liege balance; what a period leaves undrawn comes back to you when it ends.
+   */
+  createRetainer(input: RetainerInput): Promise<Retainer> {
+    return this.call("/v1/retainers", { method: "POST", body: input });
+  }
+  /** Send a task: opens a job funded at once from this period's budget. You still accept it. */
+  sendRetainerTask(id: string, request: string, amount: number): Promise<RetainerTaskResult> {
+    return this.call(`/v1/retainers/${encodeURIComponent(id)}/tasks`, {
+      method: "POST",
+      body: { request, amount },
+    });
+  }
+  /** End a retainer; this period's undrawn budget returns to you. */
+  cancelRetainer(id: string): Promise<Retainer> {
+    return this.call(`/v1/retainers/${encodeURIComponent(id)}/cancel`, { method: "POST" });
   }
   getPrivatePayload(
     id: string,
