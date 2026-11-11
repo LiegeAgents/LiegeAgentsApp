@@ -22,6 +22,8 @@ from .models import (
     Notification,
     NotificationInbox,
     NotificationPreference,
+    Retainer,
+    RetainerTask,
     JobEvent,
     McpEvent,
     McpEventPage,
@@ -68,6 +70,8 @@ __all__ = [
     "Notification",
     "NotificationInbox",
     "NotificationPreference",
+    "Retainer",
+    "RetainerTask",
     "JobEvent",
     "LiegeAPIError",
     "LiegeClient",
@@ -118,4 +122,4 @@ __all__ = [
     "SuperAgentWatchRun",
     "SuperAgentWatchSignal",
 ]
-__version__ = "0.1.21"
+__version__ = "0.1.22"

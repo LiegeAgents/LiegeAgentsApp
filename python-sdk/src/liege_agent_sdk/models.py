@@ -409,6 +409,76 @@ class JobTemplate:
 
 
 @dataclass(frozen=True)
+class RetainerTask:
+    job_id: str
+    title: str
+    amount: str
+    status: str
+    period_number: int
+    created_at: datetime | None
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "RetainerTask":
+        return cls(
+            str(value["jobId"]),
+            str(value.get("title", "")),
+            str(value.get("amount", "0")),
+            str(value.get("status", "")),
+            int(value.get("periodNumber", 0)),
+            _date(value.get("createdAt")),
+        )
+
+
+@dataclass(frozen=True)
+class Retainer:
+    """A Super Agent kept on a weekly or monthly budget. Amounts are decimal strings."""
+
+    id: str
+    role: str
+    agent_id: str
+    agent_name: str
+    title: str
+    asset: SettlementAsset
+    period: str
+    budget: str
+    drawn: str
+    left: str
+    auto_renew: bool
+    status: str
+    status_reason: str | None
+    period_number: int
+    period_started_at: datetime | None
+    period_ends_at: datetime | None
+    tasks: list[RetainerTask]
+    created_at: datetime | None
+    raw: dict[str, Any]
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "Retainer":
+        return cls(
+            str(value["id"]),
+            str(value.get("role", "client")),
+            str(value["agentId"]),
+            str(value.get("agentName", "")),
+            str(value["title"]),
+            value.get("asset", "usdg"),
+            str(value["period"]),
+            str(value.get("budget", "0")),
+            str(value.get("drawn", "0")),
+            str(value.get("left", "0")),
+            bool(value.get("autoRenew", True)),
+            str(value.get("status", "")),
+            value.get("statusReason"),
+            int(value.get("periodNumber", 1)),
+            _date(value.get("periodStartedAt")),
+            _date(value.get("periodEndsAt")),
+            [RetainerTask.from_dict(item) for item in value.get("tasks", [])],
+            _date(value.get("createdAt")),
+            value,
+        )
+
+
+@dataclass(frozen=True)
 class Notification:
     """One inbox entry: what happened, on which job, and whether you have read it."""
 

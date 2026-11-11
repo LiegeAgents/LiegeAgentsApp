@@ -33,6 +33,7 @@ from .models import (
     Notification,
     NotificationInbox,
     NotificationPreference,
+    Retainer,
     McpHarnessPreset,
     McpHarnessPresetsResponse,
     Page,
@@ -175,6 +176,38 @@ class LiegeClient:
 
     def delete_job_template(self, template_id: str) -> None:
         self._request("DELETE", f"/v1/job-templates/{template_id}")
+
+    def list_retainers(self) -> list[Retainer]:
+        """Retainers you hold and those clients hold on your agents (see ``role``), active first."""
+        return [Retainer.from_dict(item) for item in self._request("GET", "/v1/retainers")]
+
+    def get_retainer(self, retainer_id: str) -> Retainer:
+        return Retainer.from_dict(self._request("GET", f"/v1/retainers/{retainer_id}"))
+
+    def create_retainer(
+        self,
+        agent_id: str,
+        title: str,
+        period: str,
+        budget: float,
+        *,
+        settlement_asset: SettlementAsset = "usdg",
+        auto_renew: bool = True,
+    ) -> Retainer:
+        """Keep a Super Agent on a weekly or monthly budget, locked from your Liege balance."""
+        body = _retainer_body(agent_id, title, period, budget, settlement_asset, auto_renew)
+        return Retainer.from_dict(self._request("POST", "/v1/retainers", json=body))
+
+    def send_retainer_task(self, retainer_id: str, request: str, amount: float) -> tuple[str, Retainer]:
+        """Open a job funded from this period's budget; returns the job id and updated retainer."""
+        value = self._request(
+            "POST", f"/v1/retainers/{retainer_id}/tasks", json={"request": request, "amount": amount}
+        )
+        return str(value["jobId"]), Retainer.from_dict(value["retainer"])
+
+    def cancel_retainer(self, retainer_id: str) -> Retainer:
+        """End a retainer; this period's undrawn budget returns to you."""
+        return Retainer.from_dict(self._request("POST", f"/v1/retainers/{retainer_id}/cancel"))
 
     def list_notifications(self, limit: int = 50) -> NotificationInbox:
         """Your newest notifications (up to 100) and how many are still unread."""
@@ -745,6 +778,38 @@ class AsyncLiegeClient:
     async def delete_job_template(self, template_id: str) -> None:
         await self._request("DELETE", f"/v1/job-templates/{template_id}")
 
+    async def list_retainers(self) -> list[Retainer]:
+        """Retainers you hold and those clients hold on your agents (see ``role``), active first."""
+        return [Retainer.from_dict(item) for item in await self._request("GET", "/v1/retainers")]
+
+    async def get_retainer(self, retainer_id: str) -> Retainer:
+        return Retainer.from_dict(await self._request("GET", f"/v1/retainers/{retainer_id}"))
+
+    async def create_retainer(
+        self,
+        agent_id: str,
+        title: str,
+        period: str,
+        budget: float,
+        *,
+        settlement_asset: SettlementAsset = "usdg",
+        auto_renew: bool = True,
+    ) -> Retainer:
+        """Keep a Super Agent on a weekly or monthly budget, locked from your Liege balance."""
+        body = _retainer_body(agent_id, title, period, budget, settlement_asset, auto_renew)
+        return Retainer.from_dict(await self._request("POST", "/v1/retainers", json=body))
+
+    async def send_retainer_task(self, retainer_id: str, request: str, amount: float) -> tuple[str, Retainer]:
+        """Open a job funded from this period's budget; returns the job id and updated retainer."""
+        value = await self._request(
+            "POST", f"/v1/retainers/{retainer_id}/tasks", json={"request": request, "amount": amount}
+        )
+        return str(value["jobId"]), Retainer.from_dict(value["retainer"])
+
+    async def cancel_retainer(self, retainer_id: str) -> Retainer:
+        """End a retainer; this period's undrawn budget returns to you."""
+        return Retainer.from_dict(await self._request("POST", f"/v1/retainers/{retainer_id}/cancel"))
+
     async def list_notifications(self, limit: int = 50) -> NotificationInbox:
         """Your newest notifications (up to 100) and how many are still unread."""
         value = await self._request("GET", "/v1/notifications", params={"limit": limit})
@@ -926,3 +991,18 @@ def _template_body(
     if budget is not None:
         body["budget"] = budget
     return body
+
+
+def _retainer_body(
+    agent_id: str, title: str, period: str, budget: float, settlement_asset: str, auto_renew: bool
+) -> dict[str, Any]:
+    if period not in {"week", "month"}:
+        raise ValueError("period must be 'week' or 'month'")
+    return {
+        "agentId": agent_id,
+        "title": title,
+        "period": period,
+        "budget": budget,
+        "settlementAsset": settlement_asset,
+        "autoRenew": auto_renew,
+    }

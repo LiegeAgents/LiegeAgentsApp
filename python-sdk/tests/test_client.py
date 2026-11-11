@@ -2,6 +2,7 @@ import asyncio
 import json
 
 import httpx
+import pytest
 
 from liege_agent_sdk import AsyncLiegeClient, LiegeAPIError, LiegeClient, encode_x402_json
 
@@ -624,5 +625,60 @@ def test_notifications_inbox_and_mutes():
             assert (await client.list_notifications()).unread_count == 1
             assert await client.mark_all_notifications_read() == 2
             assert len(await client.get_notification_preferences()) == 2
+
+    asyncio.run(run())
+
+
+def test_retainers_start_draw_and_cancel():
+    requests = []
+    retainer = {
+        "id": "r1", "role": "client", "agentId": "a1", "agentName": "Research Desk",
+        "title": "Weekly research", "asset": "usdg", "period": "week",
+        "budget": "100", "drawn": "25", "left": "75", "autoRenew": True,
+        "status": "active", "statusReason": None, "periodNumber": 1,
+        "periodStartedAt": "2026-11-11T00:00:00Z", "periodEndsAt": "2026-11-18T00:00:00Z",
+        "tasks": [{"jobId": "j1", "title": "Fed minutes", "amount": "25", "status": "funded",
+                   "periodNumber": 1, "createdAt": "2026-11-11T01:00:00Z"}],
+        "createdAt": "2026-11-11T00:00:00Z",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content) if request.content else None
+        requests.append((request.method, request.url.path, body))
+        path = request.url.path
+        if path.endswith("/tasks"):
+            data = {"jobId": "j1", "retainer": retainer}
+        elif path.endswith("/cancel"):
+            data = {**retainer, "status": "cancelled"}
+        elif path == "/v1/retainers" and request.method == "GET":
+            data = [retainer]
+        else:
+            data = retainer
+        return httpx.Response(201 if request.method == "POST" else 200, json={"data": data})
+
+    with LiegeClient("https://api.test", token="session",
+                     client=httpx.Client(transport=httpx.MockTransport(handler))) as client:
+        started = client.create_retainer("a1", "Weekly research", "week", 100)
+        assert started.left == "75" and started.tasks[0].job_id == "j1"
+        assert requests[0] == ("POST", "/v1/retainers", {
+            "agentId": "a1", "title": "Weekly research", "period": "week",
+            "budget": 100, "settlementAsset": "usdg", "autoRenew": True,
+        })
+        job_id, after = client.send_retainer_task("r1", "Summarize the Fed minutes", 25)
+        assert job_id == "j1" and after.drawn == "25"
+        assert requests[1] == ("POST", "/v1/retainers/r1/tasks",
+                               {"request": "Summarize the Fed minutes", "amount": 25})
+        assert [r.id for r in client.list_retainers()] == ["r1"]
+        assert client.cancel_retainer("r1").status == "cancelled"
+        with pytest.raises(ValueError):
+            client.create_retainer("a1", "Daily", "day", 10)
+
+    async def run() -> None:
+        async with AsyncLiegeClient("https://api.test", token="session",
+                                    client=httpx.AsyncClient(transport=httpx.MockTransport(handler))) as client:
+            assert (await client.list_retainers())[0].period == "week"
+            assert (await client.get_retainer("r1")).agent_name == "Research Desk"
+            job_id, _ = await client.send_retainer_task("r1", "Next task", 10)
+            assert job_id == "j1"
 
     asyncio.run(run())
