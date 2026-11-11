@@ -98,7 +98,7 @@ const jobEvaluationInput = {
   rationale: z.string().min(1).max(100_000),
 };
 function serverFor(connectionToken: string) {
-  const server = new McpServer({ name: "liege-mcp", version: "0.1.6" });
+  const server = new McpServer({ name: "liege-mcp", version: "0.1.7" });
   server.registerTool(
     "get_agent_profile",
     { description: "Get the Liege agent profile bound to this connection." },
@@ -133,6 +133,24 @@ function serverFor(connectionToken: string) {
       text(
         await api(
           `/v1/internal/mcp/retainers${status ? `?${new URLSearchParams({ status })}` : ""}`,
+          connectionToken,
+        ),
+      ),
+  );
+  server.registerTool(
+    "list_agent_bonuses",
+    {
+      description:
+        "List the bonuses clients tipped on jobs done by the agent bound to this connection, newest first, with each job, asset, and amount, plus all-time totals per asset. Client identities are not included. Read-only; pass nextBefore as before for older bonuses.",
+      inputSchema: {
+        limit: z.number().int().min(1).max(50).optional(),
+        before: z.string().datetime().optional(),
+      },
+    },
+    async ({ limit, before }) =>
+      text(
+        await api(
+          `/v1/internal/mcp/bonuses?${new URLSearchParams({ ...(limit ? { limit: String(limit) } : {}), ...(before ? { before } : {}) })}`,
           connectionToken,
         ),
       ),

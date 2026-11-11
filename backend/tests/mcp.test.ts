@@ -122,6 +122,41 @@ describe.skipIf(!databaseAvailable)("MCP connections", () => {
     expect(ended.body.data.map((r: { id: string }) => r.id)).toEqual([endedId]);
   });
 
+  test("lists bonuses on the connected agent's jobs without client identities", async () => {
+    const otherAgentId = await createAgent(owner);
+    const first = await createJob(client, agentId, 10);
+    const second = await createJob(client, agentId, 10);
+    const elsewhere = await createJob(client, otherAgentId, 10);
+    const tx = await db.query<{ id: string }>(
+      "INSERT INTO ledger_transactions (reference, type) VALUES (gen_random_uuid()::text, 'bonus') RETURNING id",
+    );
+    await db.query(
+      `INSERT INTO job_bonuses (job_id, agent_id, client_id, recipient_id, asset, amount,
+         ledger_transaction_id, created_at)
+       VALUES ($1,$4,$6,$7,'usdg',2.5,$8,now() - interval '1 hour'),
+              ($2,$4,$6,$7,'usdg',4,$8,now()),
+              ($3,$5,$6,$7,'usdg',9,$8,now())`,
+      [first, second, elsewhere, agentId, otherAgentId, client.userId, owner.userId, tx.rows[0].id],
+    );
+    const connection = await connect();
+
+    const page = await api()
+      .get("/v1/internal/mcp/bonuses?limit=1")
+      .set(internalHeaders(connection.token))
+      .expect(200);
+    expect(page.body.data.items).toEqual([
+      expect.objectContaining({ jobId: second, asset: "usdg", amount: "4" }),
+    ]);
+    expect(page.body.data.items[0]).not.toHaveProperty("clientId");
+    expect(page.body.data.totals).toEqual([{ asset: "usdg", count: 2, total: "6.5" }]);
+    const older = await api()
+      .get(`/v1/internal/mcp/bonuses?before=${encodeURIComponent(page.body.data.nextBefore)}`)
+      .set(internalHeaders(connection.token))
+      .expect(200);
+    expect(older.body.data.items.map((b: { jobId: string }) => b.jobId)).toEqual([first]);
+    expect(older.body.data.nextBefore).toBeNull();
+  });
+
   test("lists milestone plans only for the agent bound to the connection", async () => {
     const otherAgentId = await createAgent(owner);
     const inserted = await db.query<{ id: string }>(

@@ -15,6 +15,7 @@ The service exposes agent operations and wallet controls:
 - `get_agent_profile`: Fetch connected agent profile and identity.
 - `get_agent_reviews`: Read the connected agent's public rating summary and anonymous client reviews, paged by `before`.
 - `list_agent_retainers`: List clients' weekly or monthly retainers on the connected agent, with this period's budget, drawn and left amounts, period end, and recent tasks; optionally filter by `status` (`active` or `ended`).
+- `list_agent_bonuses`: List bonuses clients tipped on the connected agent's jobs, newest first, with job, asset, amount, and all-time totals per asset, without client identities; page with `limit` and `before`.
 - `list_agent_milestone_plans`: List clients' milestone plans with the connected agent, with each plan's locked total, paid and released amounts, and every milestone's amount, criteria, job, and status; optionally filter by `status` (`running` or `ended`).
 - `super_agent_enrollment_status`: Check the connected agent's service, runtime verification, and discovery status.
 - `list_job_events`: Read durable job and invoice lifecycle events with a monotonic cursor; optionally filter by `jobId` or `eventType`.

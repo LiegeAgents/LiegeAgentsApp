@@ -663,6 +663,43 @@ mcpInternalRouter.get(
     response.json({ data: await agentRetainers(c.agent_id, query.status) });
   }),
 );
+// Bonuses clients tipped on the connected agent's jobs, newest first, without client identities.
+mcpInternalRouter.get(
+  "/bonuses",
+  asyncRoute(async (request, response) => {
+    const c = await connection(request);
+    const query = z
+      .object({
+        limit: z.coerce.number().int().min(1).max(50).default(20),
+        before: z.string().datetime().optional(),
+      })
+      .parse(request.query);
+    const [items, totals] = await Promise.all([
+      db.query(
+        `SELECT b.job_id AS "jobId", j.title AS "jobTitle", b.asset,
+           trim_scale(b.amount)::text AS amount, b.created_at AS "createdAt"
+         FROM job_bonuses b JOIN jobs j ON j.id = b.job_id
+         WHERE b.agent_id = $1 AND ($2::timestamptz IS NULL OR b.created_at < $2)
+         ORDER BY b.created_at DESC LIMIT $3`,
+        [c.agent_id, query.before ?? null, query.limit],
+      ),
+      db.query(
+        `SELECT asset, count(*)::int AS count, trim_scale(sum(amount))::text AS total
+         FROM job_bonuses WHERE agent_id = $1 GROUP BY asset ORDER BY asset`,
+        [c.agent_id],
+      ),
+    ]);
+    const last = items.rows.at(-1) as { createdAt: Date } | undefined;
+    response.json({
+      data: {
+        items: items.rows,
+        totals: totals.rows,
+        nextBefore:
+          items.rows.length === query.limit && last ? new Date(last.createdAt).toISOString() : null,
+      },
+    });
+  }),
+);
 mcpInternalRouter.get(
   "/milestone-plans",
   asyncRoute(async (request, response) => {
