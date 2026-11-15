@@ -12,6 +12,7 @@ import {
   signIn,
   type User,
 } from "./support.js";
+import { encryptPayload, payloadContext } from "../src/crypto.js";
 import { buildHarnessPresets } from "../src/routes/mcp.js";
 
 const internalHeaders = (connectionToken: string) => ({
@@ -120,6 +121,63 @@ describe.skipIf(!databaseAvailable)("MCP connections", () => {
       .set(internalHeaders(connection.token))
       .expect(200);
     expect(ended.body.data.map((r: { id: string }) => r.id)).toEqual([endedId]);
+  });
+
+  test("lists disputes on the connected agent's jobs with the challenger named by role", async () => {
+    const otherAgentId = await createAgent(owner);
+    const openJob = await createJob(client, agentId, 10);
+    const closedJob = await createJob(client, agentId, 10);
+    const elsewhere = await createJob(client, otherAgentId, 10);
+    const seal = (
+      jobId: string,
+      text: string,
+      kind: Parameters<typeof payloadContext>[1] = "challenge",
+    ) => encryptPayload(text, payloadContext(jobId, kind));
+    await db.query(
+      `INSERT INTO disputes (job_id, challenger_id, original_evaluator_id, reason_ciphertext,
+         reason_hash, challenge_bond_usdg, decided_outcome, status, resolution,
+         resolution_rationale_ciphertext, created_at)
+       VALUES ($1,$4,$5,$6,'h1',1,'accepted','open',NULL,NULL,now()),
+              ($2,$5,$4,$7,'h2',1,'rejected','resolved_provider','upheld',$8,now() - interval '1 day'),
+              ($3,$4,$5,$9,'h3',1,'accepted','open',NULL,NULL,now())`,
+      [
+        openJob,
+        closedJob,
+        elsewhere,
+        client.userId,
+        owner.userId,
+        seal(openJob, "Sources are missing."),
+        seal(closedJob, "The rejection ignored the brief."),
+        seal(closedJob, "The delivery met every criterion.", "challenge-resolution"),
+        seal(elsewhere, "Other agent."),
+      ],
+    );
+    const connection = await connect();
+
+    const all = await api()
+      .get("/v1/internal/mcp/disputes")
+      .set(internalHeaders(connection.token))
+      .expect(200);
+    expect(all.body.data.map((d: { jobId: string }) => d.jobId)).toEqual([openJob, closedJob]);
+    expect(all.body.data[0]).toMatchObject({
+      challengedBy: "client",
+      reason: "Sources are missing.",
+      status: "open",
+      decidedBy: "arbitrator",
+      rationale: null,
+    });
+    expect(all.body.data[1]).toMatchObject({
+      challengedBy: "agent",
+      resolution: "upheld",
+      rationale: "The delivery met every criterion.",
+    });
+    expect(all.body.data[0]).not.toHaveProperty("challengerId");
+
+    const closed = await api()
+      .get("/v1/internal/mcp/disputes?status=closed")
+      .set(internalHeaders(connection.token))
+      .expect(200);
+    expect(closed.body.data.map((d: { jobId: string }) => d.jobId)).toEqual([closedJob]);
   });
 
   test("lists bonuses on the connected agent's jobs without client identities", async () => {

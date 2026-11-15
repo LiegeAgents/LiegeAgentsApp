@@ -663,6 +663,69 @@ mcpInternalRouter.get(
     response.json({ data: await agentRetainers(c.agent_id, query.status) });
   }),
 );
+// Disputes on the connected agent's jobs, open first. The challenger is named only by role.
+mcpInternalRouter.get(
+  "/disputes",
+  asyncRoute(async (request, response) => {
+    const c = await connection(request);
+    const query = z.object({ status: z.enum(["open", "closed"]).optional() }).parse(request.query);
+    const result = await db.query<{
+      id: string;
+      job_id: string;
+      job_title: string;
+      challenged_by: string;
+      reason_ciphertext: string;
+      decided_outcome: string | null;
+      status: string;
+      resolution: string | null;
+      rationale_ciphertext: string | null;
+      mode: string;
+      panel_deadline_at: Date | null;
+      panel_resolution: string | null;
+      appeal_deadline_at: Date | null;
+      appealed: boolean;
+      created_at: Date;
+      resolved_at: Date | null;
+    }>(
+      `SELECT d.id, d.job_id, j.title AS job_title,
+         CASE d.challenger_id WHEN j.client_id THEN 'client' WHEN a.owner_id THEN 'agent'
+           ELSE 'other' END AS challenged_by,
+         d.reason_ciphertext, d.decided_outcome, d.status, d.resolution,
+         d.resolution_rationale_ciphertext AS rationale_ciphertext, d.mode, d.panel_deadline_at,
+         d.panel_resolution, d.appeal_deadline_at, d.appellant_id IS NOT NULL AS appealed,
+         d.created_at, d.resolved_at
+       FROM disputes d JOIN jobs j ON j.id = d.job_id JOIN agents a ON a.id = j.agent_id
+       WHERE j.agent_id = $1 AND ($2::text IS NULL OR (d.status = 'open') = ($2 = 'open'))
+       ORDER BY (d.status = 'open') DESC, d.created_at DESC LIMIT 50`,
+      [c.agent_id, query.status ?? null],
+    );
+    response.json({
+      data: result.rows.map((row) => ({
+        id: row.id,
+        jobId: row.job_id,
+        jobTitle: row.job_title,
+        challengedBy: row.challenged_by,
+        reason: decryptPayload(row.reason_ciphertext, payloadContext(row.job_id, "challenge")),
+        decidedOutcome: row.decided_outcome,
+        status: row.status,
+        resolution: row.resolution,
+        rationale: row.rationale_ciphertext
+          ? decryptPayload(
+              row.rationale_ciphertext,
+              payloadContext(row.job_id, "challenge-resolution"),
+            )
+          : null,
+        decidedBy: row.mode,
+        panelDeadlineAt: row.panel_deadline_at,
+        panelResolution: row.panel_resolution,
+        appealDeadlineAt: row.appeal_deadline_at,
+        appealed: row.appealed,
+        createdAt: row.created_at,
+        resolvedAt: row.resolved_at,
+      })),
+    });
+  }),
+);
 // Bonuses clients tipped on the connected agent's jobs, newest first, without client identities.
 mcpInternalRouter.get(
   "/bonuses",

@@ -98,7 +98,7 @@ const jobEvaluationInput = {
   rationale: z.string().min(1).max(100_000),
 };
 function serverFor(connectionToken: string) {
-  const server = new McpServer({ name: "liege-mcp", version: "0.1.7" });
+  const server = new McpServer({ name: "liege-mcp", version: "0.1.8" });
   server.registerTool(
     "get_agent_profile",
     { description: "Get the Liege agent profile bound to this connection." },
@@ -133,6 +133,21 @@ function serverFor(connectionToken: string) {
       text(
         await api(
           `/v1/internal/mcp/retainers${status ? `?${new URLSearchParams({ status })}` : ""}`,
+          connectionToken,
+        ),
+      ),
+  );
+  server.registerTool(
+    "list_agent_disputes",
+    {
+      description:
+        "List disputes on jobs done by the agent bound to this connection, open first: the job, whether the client or the agent challenged, the challenge reason, the original outcome, who decides (panel or arbitrator), deadlines, appeals, and the resolution with its rationale. Read-only.",
+      inputSchema: { status: z.enum(["open", "closed"]).optional() },
+    },
+    async ({ status }) =>
+      text(
+        await api(
+          `/v1/internal/mcp/disputes${status ? `?${new URLSearchParams({ status })}` : ""}`,
           connectionToken,
         ),
       ),
