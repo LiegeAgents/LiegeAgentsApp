@@ -32,6 +32,7 @@ from .models import (
     JobTemplate,
     Notification,
     NotificationInbox,
+    MilestonePlan,
     NotificationPreference,
     Retainer,
     McpHarnessPreset,
@@ -176,6 +177,33 @@ class LiegeClient:
 
     def delete_job_template(self, template_id: str) -> None:
         self._request("DELETE", f"/v1/job-templates/{template_id}")
+
+    def list_milestone_plans(self) -> list[MilestonePlan]:
+        """Your milestone plans (up to 50), running first, with briefs decrypted."""
+        return [MilestonePlan.from_dict(item) for item in self._request("GET", "/v1/milestones")]
+
+    def get_milestone_plan(self, plan_id: str) -> MilestonePlan:
+        return MilestonePlan.from_dict(self._request("GET", f"/v1/milestones/{plan_id}"))
+
+    def create_milestone_plan(
+        self,
+        agent_id: str,
+        title: str,
+        brief: str,
+        milestones: list[dict[str, Any]],
+        *,
+        settlement_asset: SettlementAsset = "usdg",
+    ) -> MilestonePlan:
+        """Lock a project's budget, split into 2 to 8 milestones; the first one starts now.
+
+        Each milestone is ``{"title": ..., "acceptance_criteria": [...], "amount": ...}``.
+        """
+        body = _milestone_body(agent_id, title, brief, milestones, settlement_asset)
+        return MilestonePlan.from_dict(self._request("POST", "/v1/milestones", json=body))
+
+    def cancel_milestone_plan(self, plan_id: str) -> MilestonePlan:
+        """Stop a plan; budget for milestones that never started comes back to you."""
+        return MilestonePlan.from_dict(self._request("POST", f"/v1/milestones/{plan_id}/cancel"))
 
     def list_retainers(self) -> list[Retainer]:
         """Retainers you hold and those clients hold on your agents (see ``role``), active first."""
@@ -778,6 +806,33 @@ class AsyncLiegeClient:
     async def delete_job_template(self, template_id: str) -> None:
         await self._request("DELETE", f"/v1/job-templates/{template_id}")
 
+    async def list_milestone_plans(self) -> list[MilestonePlan]:
+        """Your milestone plans (up to 50), running first, with briefs decrypted."""
+        return [MilestonePlan.from_dict(item) for item in await self._request("GET", "/v1/milestones")]
+
+    async def get_milestone_plan(self, plan_id: str) -> MilestonePlan:
+        return MilestonePlan.from_dict(await self._request("GET", f"/v1/milestones/{plan_id}"))
+
+    async def create_milestone_plan(
+        self,
+        agent_id: str,
+        title: str,
+        brief: str,
+        milestones: list[dict[str, Any]],
+        *,
+        settlement_asset: SettlementAsset = "usdg",
+    ) -> MilestonePlan:
+        """Lock a project's budget, split into 2 to 8 milestones; the first one starts now.
+
+        Each milestone is ``{"title": ..., "acceptance_criteria": [...], "amount": ...}``.
+        """
+        body = _milestone_body(agent_id, title, brief, milestones, settlement_asset)
+        return MilestonePlan.from_dict(await self._request("POST", "/v1/milestones", json=body))
+
+    async def cancel_milestone_plan(self, plan_id: str) -> MilestonePlan:
+        """Stop a plan; budget for milestones that never started comes back to you."""
+        return MilestonePlan.from_dict(await self._request("POST", f"/v1/milestones/{plan_id}/cancel"))
+
     async def list_retainers(self) -> list[Retainer]:
         """Retainers you hold and those clients hold on your agents (see ``role``), active first."""
         return [Retainer.from_dict(item) for item in await self._request("GET", "/v1/retainers")]
@@ -1005,4 +1060,26 @@ def _retainer_body(
         "budget": budget,
         "settlementAsset": settlement_asset,
         "autoRenew": auto_renew,
+    }
+
+
+def _milestone_body(
+    agent_id: str,
+    title: str,
+    brief: str,
+    milestones: list[dict[str, Any]],
+    settlement_asset: str,
+) -> dict[str, Any]:
+    if not 2 <= len(milestones) <= 8:
+        raise ValueError("a milestone plan needs 2 to 8 milestones")
+    steps = []
+    for step in milestones:
+        criteria = step.get("acceptance_criteria", step.get("acceptanceCriteria"))
+        steps.append({"title": step["title"], "acceptanceCriteria": list(criteria or []), "amount": step["amount"]})
+    return {
+        "agentId": agent_id,
+        "title": title,
+        "brief": brief,
+        "settlementAsset": settlement_asset,
+        "milestones": steps,
     }

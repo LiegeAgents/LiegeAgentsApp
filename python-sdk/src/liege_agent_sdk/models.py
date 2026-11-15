@@ -409,6 +409,70 @@ class JobTemplate:
 
 
 @dataclass(frozen=True)
+class Milestone:
+    position: int
+    title: str
+    acceptance_criteria: list[str]
+    amount: str
+    job_id: str | None
+    job_status: str | None
+    started_at: datetime | None
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "Milestone":
+        return cls(
+            int(value["position"]),
+            str(value["title"]),
+            [str(item) for item in value.get("acceptanceCriteria", [])],
+            str(value.get("amount", "0")),
+            value.get("jobId"),
+            value.get("jobStatus"),
+            _date(value.get("startedAt")),
+        )
+
+
+@dataclass(frozen=True)
+class MilestonePlan:
+    """A project budget locked up front and paid one accepted milestone at a time."""
+
+    id: str
+    agent_id: str
+    agent_name: str
+    title: str
+    brief: str
+    asset: SettlementAsset
+    total: str
+    paid: str
+    released: str
+    status: str
+    status_reason: str | None
+    milestones: list[Milestone]
+    created_at: datetime | None
+    updated_at: datetime | None
+    raw: dict[str, Any]
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "MilestonePlan":
+        return cls(
+            str(value["id"]),
+            str(value["agentId"]),
+            str(value.get("agentName", "")),
+            str(value["title"]),
+            str(value.get("brief") or ""),
+            value.get("asset", "usdg"),
+            str(value.get("total", "0")),
+            str(value.get("paid", "0")),
+            str(value.get("released", "0")),
+            str(value.get("status", "")),
+            value.get("statusReason"),
+            [Milestone.from_dict(item) for item in value.get("milestones", [])],
+            _date(value.get("createdAt")),
+            _date(value.get("updatedAt")),
+            value,
+        )
+
+
+@dataclass(frozen=True)
 class RetainerTask:
     job_id: str
     title: str

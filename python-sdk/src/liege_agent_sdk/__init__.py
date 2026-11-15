@@ -19,6 +19,8 @@ from .models import (
     JobRevision,
     JobRevisionRequestResult,
     JobTemplate,
+    Milestone,
+    MilestonePlan,
     Notification,
     NotificationInbox,
     NotificationPreference,
@@ -67,6 +69,8 @@ __all__ = [
     "JobRevision",
     "JobRevisionRequestResult",
     "JobTemplate",
+    "Milestone",
+    "MilestonePlan",
     "Notification",
     "NotificationInbox",
     "NotificationPreference",
@@ -122,4 +126,4 @@ __all__ = [
     "SuperAgentWatchRun",
     "SuperAgentWatchSignal",
 ]
-__version__ = "0.1.22"
+__version__ = "0.1.23"

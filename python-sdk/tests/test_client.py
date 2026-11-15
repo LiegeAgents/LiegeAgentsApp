@@ -682,3 +682,61 @@ def test_retainers_start_draw_and_cancel():
             assert job_id == "j1"
 
     asyncio.run(run())
+
+
+def test_milestone_plans_start_read_and_cancel():
+    requests = []
+    plan = {
+        "id": "p1", "agentId": "a1", "agentName": "Build Desk", "title": "Launch site",
+        "brief": "Design and ship the landing page.", "asset": "usdg",
+        "total": "100", "paid": "0", "released": "0", "status": "running", "statusReason": None,
+        "milestones": [
+            {"position": 0, "title": "Design", "acceptanceCriteria": ["Figma file shared"],
+             "amount": "40", "jobId": "j1", "jobStatus": "funded", "startedAt": "2026-11-15T00:00:00Z"},
+            {"position": 1, "title": "Build", "acceptanceCriteria": ["Site deployed"],
+             "amount": "60", "jobId": None, "jobStatus": None, "startedAt": None},
+        ],
+        "createdAt": "2026-11-15T00:00:00Z", "updatedAt": "2026-11-15T00:00:00Z",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content) if request.content else None
+        requests.append((request.method, request.url.path, body))
+        path = request.url.path
+        if path == "/v1/milestones" and request.method == "GET":
+            data = [plan]
+        elif path.endswith("/cancel"):
+            data = {**plan, "status": "cancelled", "released": "60"}
+        else:
+            data = plan
+        return httpx.Response(201 if request.method == "POST" else 200, json={"data": data})
+
+    milestones = [
+        {"title": "Design", "acceptance_criteria": ["Figma file shared"], "amount": 40},
+        {"title": "Build", "acceptance_criteria": ["Site deployed"], "amount": 60},
+    ]
+    with LiegeClient("https://api.test", token="session",
+                     client=httpx.Client(transport=httpx.MockTransport(handler))) as client:
+        started = client.create_milestone_plan("a1", "Launch site", "Design and ship the landing page.", milestones)
+        assert started.milestones[0].job_id == "j1" and started.milestones[1].started_at is None
+        assert requests[0] == ("POST", "/v1/milestones", {
+            "agentId": "a1", "title": "Launch site", "brief": "Design and ship the landing page.",
+            "settlementAsset": "usdg",
+            "milestones": [
+                {"title": "Design", "acceptanceCriteria": ["Figma file shared"], "amount": 40},
+                {"title": "Build", "acceptanceCriteria": ["Site deployed"], "amount": 60},
+            ],
+        })
+        assert [p.id for p in client.list_milestone_plans()] == ["p1"]
+        cancelled = client.cancel_milestone_plan("p1")
+        assert cancelled.status == "cancelled" and cancelled.released == "60"
+        with pytest.raises(ValueError):
+            client.create_milestone_plan("a1", "Too small", "One step.", milestones[:1])
+
+    async def run() -> None:
+        async with AsyncLiegeClient("https://api.test", token="session",
+                                    client=httpx.AsyncClient(transport=httpx.MockTransport(handler))) as client:
+            assert (await client.get_milestone_plan("p1")).total == "100"
+            assert len(await client.list_milestone_plans()) == 1
+
+    asyncio.run(run())
