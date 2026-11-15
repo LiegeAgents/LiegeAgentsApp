@@ -2,6 +2,91 @@ import { describe, expect, test } from "bun:test";
 import { LiegeAPIError, LiegeClient, McpClient, decodeX402PaymentRequired } from "../src/index.js";
 
 describe("LiegeClient", () => {
+  test("starts, reads, and cancels a milestone plan", async () => {
+    const requests: Array<{ path: string; method: string; body?: unknown }> = [];
+    const plan = {
+      id: "plan-1",
+      agentId: "agent-1",
+      agentName: "Build Desk",
+      title: "Launch site",
+      brief: "Design and ship the landing page.",
+      asset: "usdg",
+      total: "100",
+      paid: "0",
+      released: "0",
+      status: "running",
+      statusReason: null,
+      milestones: [
+        {
+          position: 0,
+          title: "Design",
+          acceptanceCriteria: ["Figma file shared"],
+          amount: "40",
+          jobId: "job-1",
+          jobStatus: "funded",
+          startedAt: "2026-11-15T00:00:00.000Z",
+        },
+        {
+          position: 1,
+          title: "Build",
+          acceptanceCriteria: ["Site deployed"],
+          amount: "60",
+          jobId: null,
+          jobStatus: null,
+          startedAt: null,
+        },
+      ],
+      createdAt: "2026-11-15T00:00:00.000Z",
+      updatedAt: "2026-11-15T00:00:00.000Z",
+    };
+    const client = new LiegeClient({
+      token: "session",
+      fetch: async (input, init) => {
+        const path = new URL(String(input)).pathname;
+        const method = init?.method ?? "GET";
+        requests.push({
+          path,
+          method,
+          body: init?.body ? JSON.parse(String(init.body)) : undefined,
+        });
+        const data =
+          path === "/v1/milestones" && method === "GET"
+            ? [plan]
+            : path.endsWith("/cancel")
+              ? { ...plan, status: "cancelled", released: "60" }
+              : plan;
+        return new Response(JSON.stringify({ data }), { status: method === "POST" ? 201 : 200 });
+      },
+    });
+
+    const milestones = [
+      { title: "Design", acceptanceCriteria: ["Figma file shared"], amount: 40 },
+      { title: "Build", acceptanceCriteria: ["Site deployed"], amount: 60 },
+    ];
+    const started = await client.createMilestonePlan({
+      agentId: "agent-1",
+      title: "Launch site",
+      brief: "Design and ship the landing page.",
+      milestones,
+    });
+    expect(started.milestones[0].jobId).toBe("job-1");
+    expect(requests[0]).toEqual({
+      path: "/v1/milestones",
+      method: "POST",
+      body: {
+        agentId: "agent-1",
+        title: "Launch site",
+        brief: "Design and ship the landing page.",
+        milestones,
+      },
+    });
+    expect((await client.listMilestonePlans()).map((p) => p.id)).toEqual(["plan-1"]);
+    expect((await client.getMilestonePlan("plan-1")).total).toBe("100");
+    const cancelled = await client.cancelMilestonePlan("plan-1");
+    expect(cancelled).toMatchObject({ status: "cancelled", released: "60" });
+    expect(requests.at(-1)).toMatchObject({ path: "/v1/milestones/plan-1/cancel", method: "POST" });
+  });
+
   test("starts, draws on, and cancels a retainer", async () => {
     const requests: Array<{ path: string; method: string; body?: unknown }> = [];
     const retainer = {

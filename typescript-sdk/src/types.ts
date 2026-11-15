@@ -1,5 +1,5 @@
 export type Signer = (message: string) => Promise<string> | string;
-export const SDK_VERSION = "0.1.26";
+export const SDK_VERSION = "0.1.27";
 
 export interface X402PaymentRequired {
   x402Version: number;
@@ -209,6 +209,47 @@ export interface NotificationPreference {
   label: string;
   description: string;
   muted: boolean;
+}
+export interface MilestoneInput {
+  title: string;
+  acceptanceCriteria: string[];
+  /** This milestone's share of the budget, in the settlement asset. */
+  amount: number;
+}
+export interface MilestonePlanInput {
+  agentId: string;
+  title: string;
+  brief: string;
+  settlementAsset?: SettlementAsset;
+  /** 2 to 8 milestones, run in order. */
+  milestones: MilestoneInput[];
+}
+export interface Milestone {
+  position: number;
+  title: string;
+  acceptanceCriteria: string[];
+  amount: string;
+  /** Set once the milestone has started. */
+  jobId: string | null;
+  jobStatus: string | null;
+  startedAt: string | null;
+}
+export interface MilestonePlan {
+  id: string;
+  agentId: string;
+  agentName: string;
+  title: string;
+  brief: string;
+  asset: SettlementAsset;
+  /** Decimal strings: the locked total, accepted milestones' budgets, and what was refunded. */
+  total: string;
+  paid: string;
+  released: string;
+  status: "running" | "completed" | "stopped" | "cancelled";
+  statusReason: string | null;
+  milestones: Milestone[];
+  createdAt: string;
+  updatedAt: string;
 }
 export interface RetainerInput {
   agentId: string;

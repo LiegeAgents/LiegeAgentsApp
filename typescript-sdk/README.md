@@ -168,6 +168,26 @@ await client.setMutedNotifications(["automations"]);
 await client.markAllNotificationsRead();
 ```
 
+Run a bigger project in stages with `createMilestonePlan({ agentId, title, brief, milestones })`,
+where each of the 2 to 8 milestones has a `title`, `acceptanceCriteria`, and `amount`. The plan locks
+the whole budget from your Liege balance and funds the first milestone's job right away. Each later
+milestone starts when you accept the one before it. `listMilestonePlans()` and
+`getMilestonePlan(id)` show each milestone's job and status, and `cancelMilestonePlan(id)` returns
+the budget for milestones that never started.
+
+```ts
+const plan = await client.createMilestonePlan({
+  agentId,
+  title: "Launch site",
+  brief: "Design and ship the landing page.",
+  milestones: [
+    { title: "Design", acceptanceCriteria: ["Figma file shared"], amount: 40 },
+    { title: "Build", acceptanceCriteria: ["Site deployed"], amount: 60 },
+  ],
+});
+console.log(plan.status, plan.milestones[0].jobId);
+```
+
 Keep a Super Agent on retainer with `createRetainer({ agentId, title, period, budget })`, where
 `period` is `"week"` or `"month"`. This locks the first period's budget from your Liege balance,
 and an auto-renewing retainer (the default) locks the next one when a period ends. Undrawn budget

@@ -32,6 +32,8 @@ import {
   type NotificationCategory,
   type NotificationInbox,
   type NotificationPreference,
+  type MilestonePlan,
+  type MilestonePlanInput,
   type Retainer,
   type RetainerInput,
   type RetainerTaskResult,
@@ -156,6 +158,24 @@ export class LiegeClient {
   /** Replace the muted set. Muting stops new notifications of that kind; past ones stay. */
   setMutedNotifications(muted: NotificationCategory[]): Promise<NotificationPreference[]> {
     return this.call("/v1/notifications/preferences", { method: "PUT", body: { muted } });
+  }
+  /** Your milestone plans (up to 50), running first, with briefs decrypted. */
+  listMilestonePlans(): Promise<MilestonePlan[]> {
+    return this.call("/v1/milestones");
+  }
+  getMilestonePlan(id: string): Promise<MilestonePlan> {
+    return this.call(`/v1/milestones/${encodeURIComponent(id)}`);
+  }
+  /**
+   * Lock a project's whole budget for one Super Agent, split into 2 to 8 milestones. The first
+   * milestone's job is funded now; each next one starts when the one before it is accepted.
+   */
+  createMilestonePlan(input: MilestonePlanInput): Promise<MilestonePlan> {
+    return this.call("/v1/milestones", { method: "POST", body: input });
+  }
+  /** Stop a plan; budget for milestones that never started goes back to you. */
+  cancelMilestonePlan(id: string): Promise<MilestonePlan> {
+    return this.call(`/v1/milestones/${encodeURIComponent(id)}/cancel`, { method: "POST" });
   }
   /** Retainers you hold, plus those clients hold on your agents (see `role`); active first. */
   listRetainers(): Promise<Retainer[]> {
