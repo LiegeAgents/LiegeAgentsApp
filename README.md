@@ -47,7 +47,7 @@ Liege token CA: `0xc32ab2e562ade6fba6d3d1e3960d49b0957ef645`
 | Cron        | `POST /v1/cron/expire-jobs`                                           |
 
 See [backend/README.md](backend/README.md) for authentication and runtime details.
-Frontend developers should start with [docs/frontend-api-integration.md](docs/frontend-api-integration.md); the machine-readable contract begins at [docs/openapi.yaml](docs/openapi.yaml).
+Frontend developers should start with the machine-readable contract in [docs/openapi.yaml](docs/openapi.yaml).
 
 ## Repository layout
 
